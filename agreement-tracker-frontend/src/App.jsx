@@ -1,122 +1,77 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Provider } from 'react-redux';
+import { ThemeProvider } from '@mui/material/styles';
+import { LocalizationProvider } from '@mui/x-date-pickers';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { SnackbarProvider } from 'notistack';
+import store from './store';
+import theme from './config/theme';
+import { ROUTES } from './config/routes';
+import { ProtectedRoute, AdminRoute } from './utils/ProtectedRoute';
+import DashboardLayout from './layouts/DashboardLayout';
+import LoginPage from './pages/auth/LoginPage';
+import DashboardPage from './pages/dashboard/DashboardPage';
+import AgreementListPage from './pages/agreements/AgreementListPage';
+import AgreementCreatePage from './pages/agreements/AgreementCreatePage';
+import AgreementDetailPage from './pages/agreements/AgreementDetailPage';
+import ApprovalsPage from './pages/approvals/ApprovalsPage';
+import MasterDataLayout from './pages/master/MasterDataLayout';
+import CompanyMasterPage from './pages/master/CompanyMasterPage';
+import VendorMasterPage from './pages/master/VendorMasterPage';
+import ManufacturerMasterPage from './pages/master/ManufacturerMasterPage';
+import DivisionMasterPage from './pages/master/DivisionMasterPage';
+import ProductMasterPage from './pages/master/ProductMasterPage';
+import IncomeTypePage from './pages/master/IncomeTypePage';
+import AgreementTypePage from './pages/master/AgreementTypePage';
+import RolePage from './pages/master/RolePage';
+import RightPage from './pages/master/RightPage';
 
-function App() {
-  const [count, setCount] = useState(0)
-
+export default function App() {
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <Provider store={store}>
+      <ThemeProvider theme={theme}>
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <SnackbarProvider
+            maxSnack={4}
+            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+            autoHideDuration={4000}
+          >
+            <BrowserRouter>
+              <Routes>
+                <Route path={ROUTES.LOGIN} element={<LoginPage />} />
 
-      <div className="ticks"></div>
+                <Route element={<ProtectedRoute />}>
+                  <Route element={<DashboardLayout />}>
+                    <Route index element={<DashboardPage />} />
+                    <Route path={ROUTES.AGREEMENTS} element={<AgreementListPage />} />
+                    <Route path={ROUTES.AGREEMENT_CREATE} element={<AgreementCreatePage />} />
+                    <Route path="/agreements/groups/:groupId" element={<AgreementDetailPage />} />
+                    <Route path={ROUTES.APPROVALS} element={<ApprovalsPage />} />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+                    {/* Master Data Configuration (admin-only) */}
+                    <Route element={<AdminRoute />}>
+                      <Route path={ROUTES.MASTER} element={<MasterDataLayout />}>
+                        <Route index element={<Navigate to={ROUTES.MASTER_COMPANIES} replace />} />
+                        <Route path={ROUTES.MASTER_COMPANIES}      element={<CompanyMasterPage />} />
+                        <Route path={ROUTES.MASTER_VENDORS}        element={<VendorMasterPage />} />
+                        <Route path={ROUTES.MASTER_MANUFACTURERS}  element={<ManufacturerMasterPage />} />
+                        <Route path={ROUTES.MASTER_DIVISIONS}      element={<DivisionMasterPage />} />
+                        <Route path={ROUTES.MASTER_PRODUCTS}       element={<ProductMasterPage />} />
+                        <Route path={ROUTES.MASTER_INCOME_TYPES}   element={<IncomeTypePage />} />
+                        <Route path={ROUTES.MASTER_AGREEMENT_TYPES} element={<AgreementTypePage />} />
+                        <Route path={ROUTES.MASTER_ROLES}          element={<RolePage />} />
+                        <Route path={ROUTES.MASTER_RIGHTS}         element={<RightPage />} />
+                      </Route>
+                    </Route>
+                  </Route>
+                </Route>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </SnackbarProvider>
+        </LocalizationProvider>
+      </ThemeProvider>
+    </Provider>
+  );
 }
-
-export default App
