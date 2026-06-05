@@ -34,14 +34,42 @@ public class AuthServiceImpl implements AuthService {
         );
         String token = jwtTokenProvider.generateToken(authentication);
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        var user = userRepository.findById(principal.getId()).orElseThrow();
 
-        List<String> roles = userRoleRepository.findByUserIdWithRole(principal.getId())
-                .stream()
+        List<String> roles = userRoleRepository.findByUserIdWithRole(principal.getId()).stream()
                 .map(UserRole::getRole)
                 .map(role -> role.getName().name())
                 .toList();
 
+        return new AuthResponse(
+                token,
+                principal.getId(),
+                principal.getUsername(),
+                user.getFullName(),
+                principal.getEmail(),
+                roles,
+                principal.getRights()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AuthResponse getSession(UserPrincipal principal) {
         var user = userRepository.findById(principal.getId()).orElseThrow();
-        return new AuthResponse(token, principal.getId(), principal.getUsername(), user.getFullName(), principal.getEmail(), roles);
+
+        List<String> roles = userRoleRepository.findByUserIdWithRole(principal.getId()).stream()
+                .map(UserRole::getRole)
+                .map(role -> role.getName().name())
+                .toList();
+
+        return new AuthResponse(
+                null,
+                principal.getId(),
+                principal.getUsername(),
+                user.getFullName(),
+                principal.getEmail(),
+                roles,
+                principal.getRights()
+        );
     }
 }

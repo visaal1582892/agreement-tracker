@@ -7,7 +7,7 @@ import com.medplus.agreement_tracker_backend.dto.request.TerminateAgreementReque
 import com.medplus.agreement_tracker_backend.dto.response.AgreementGroupResponse;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
-import com.medplus.agreement_tracker_backend.enums.RoleName;
+import com.medplus.agreement_tracker_backend.enums.RightCode;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;
 import com.medplus.agreement_tracker_backend.service.AgreementService;
 import jakarta.validation.Valid;
@@ -23,6 +23,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+import static com.medplus.agreement_tracker_backend.security.RightExpressions.*;
+
 @RestController
 @RequestMapping("/agreements")
 @RequiredArgsConstructor
@@ -31,7 +33,7 @@ public class AgreementController {
     private final AgreementService agreementService;
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNT_MANAGER')")
+    @PreAuthorize(AGREEMENT_CREATE)
     public ResponseEntity<AgreementResponse> createDraft(
             @Valid @RequestBody CreateAgreementRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -40,7 +42,7 @@ public class AgreementController {
     }
 
     @PostMapping("/groups/{groupId}/new-version")
-    @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNT_MANAGER')")
+    @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<AgreementResponse> createNewVersion(
             @PathVariable Long groupId,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -49,33 +51,34 @@ public class AgreementController {
     }
 
     @GetMapping("/groups")
+    @PreAuthorize(AGREEMENT_VIEW)
     public ResponseEntity<Page<AgreementGroupResponse>> getAllGroups(
             @PageableDefault(size = 20) Pageable pageable,
             @AuthenticationPrincipal UserPrincipal principal) {
-        boolean isAdmin = principal.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_" + RoleName.ADMIN.name())
-                        || a.getAuthority().equals("ROLE_" + RoleName.LEADERSHIP.name())
-                        || a.getAuthority().equals("ROLE_" + RoleName.FINANCE.name()));
-        return ResponseEntity.ok(agreementService.getAllGroups(pageable, principal.getId(), isAdmin));
+        boolean viewAll = principal.hasRight(RightCode.AGREEMENT_VIEW_ALL.name());
+        return ResponseEntity.ok(agreementService.getAllGroups(pageable, principal.getId(), viewAll));
     }
 
     @GetMapping("/groups/{groupId}")
+    @PreAuthorize(AGREEMENT_VIEW)
     public ResponseEntity<AgreementGroupResponse> getGroup(@PathVariable Long groupId) {
         return ResponseEntity.ok(agreementService.getGroupById(groupId));
     }
 
     @GetMapping("/groups/{groupId}/versions")
+    @PreAuthorize(AGREEMENT_VIEW)
     public ResponseEntity<List<AgreementResponse>> getVersions(@PathVariable Long groupId) {
         return ResponseEntity.ok(agreementService.getVersionsByGroup(groupId));
     }
 
     @GetMapping("/{agreementId}")
+    @PreAuthorize(AGREEMENT_VIEW)
     public ResponseEntity<AgreementResponse> getAgreement(@PathVariable Long agreementId) {
         return ResponseEntity.ok(agreementService.getAgreementById(agreementId));
     }
 
     @PostMapping("/{agreementId}/submit")
-    @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNT_MANAGER')")
+    @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<AgreementResponse> submitForApproval(
             @PathVariable Long agreementId,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -83,7 +86,7 @@ public class AgreementController {
     }
 
     @PostMapping("/{agreementId}/approve")
-    @PreAuthorize("hasAnyRole('ADMIN', 'APPROVER')")
+    @PreAuthorize(AGREEMENT_APPROVE)
     public ResponseEntity<AgreementResponse> approve(
             @PathVariable Long agreementId,
             @RequestBody(required = false) ApprovalActionRequest request,
@@ -93,7 +96,7 @@ public class AgreementController {
     }
 
     @PostMapping("/{agreementId}/reject")
-    @PreAuthorize("hasAnyRole('ADMIN', 'APPROVER')")
+    @PreAuthorize(AGREEMENT_APPROVE)
     public ResponseEntity<AgreementResponse> reject(
             @PathVariable Long agreementId,
             @Valid @RequestBody ApprovalActionRequest request,
@@ -102,7 +105,7 @@ public class AgreementController {
     }
 
     @PostMapping("/{agreementId}/terminate")
-    @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNT_MANAGER')")
+    @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<AgreementResponse> terminate(
             @PathVariable Long agreementId,
             @Valid @RequestBody TerminateAgreementRequest request,
@@ -111,7 +114,7 @@ public class AgreementController {
     }
 
     @PatchMapping("/{agreementId}/in-progress")
-    @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNT_MANAGER')")
+    @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<AgreementResponse> toggleInProgress(
             @PathVariable Long agreementId,
             @RequestParam boolean value,
@@ -120,19 +123,20 @@ public class AgreementController {
     }
 
     @GetMapping("/pending-approvals")
-    @PreAuthorize("hasAnyRole('ADMIN', 'APPROVER')")
+    @PreAuthorize(AGREEMENT_APPROVE)
     public ResponseEntity<Page<AgreementResponse>> getPendingApprovals(
             @PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(agreementService.getPendingApprovals(pageable));
     }
 
     @GetMapping("/{agreementId}/timeline")
+    @PreAuthorize(AGREEMENT_VIEW)
     public ResponseEntity<List<ApprovalTimelineResponse>> getTimeline(@PathVariable Long agreementId) {
         return ResponseEntity.ok(agreementService.getApprovalTimeline(agreementId));
     }
 
     @PostMapping("/bulk-transfer")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(ADMIN_USERS)
     public ResponseEntity<Void> bulkTransfer(
             @Valid @RequestBody BulkTransferRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {

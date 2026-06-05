@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, Navigate } from 'react-router-dom';
 import {
   Box, Typography, Tabs, Tab, Paper, alpha,
 } from '@mui/material';
@@ -8,29 +8,41 @@ import {
 } from '@mui/icons-material';
 import { BRAND } from '../../config/theme';
 import { ROUTES } from '../../config/routes';
+import { RIGHTS } from '../../config/rights';
+import { useAuth } from '../../hooks/useAuth';
 
 const MASTER_TABS = [
-  { label: 'Companies',        icon: <Business />,        path: ROUTES.MASTER_COMPANIES },
-  { label: 'Vendors',          icon: <LocalShipping />,   path: ROUTES.MASTER_VENDORS },
-  { label: 'Manufacturers',    icon: <Factory />,         path: ROUTES.MASTER_MANUFACTURERS },
-  { label: 'Divisions',        icon: <AccountTree />,     path: ROUTES.MASTER_DIVISIONS },
-  { label: 'Products',         icon: <Inventory2 />,      path: ROUTES.MASTER_PRODUCTS },
-  { label: 'Income Types',     icon: <AttachMoney />,     path: ROUTES.MASTER_INCOME_TYPES },
-  { label: 'Agreement Types',  icon: <Description />,     path: ROUTES.MASTER_AGREEMENT_TYPES },
-  { label: 'Roles',            icon: <ManageAccounts />,  path: ROUTES.MASTER_ROLES },
-  { label: 'Rights',           icon: <Security />,        path: ROUTES.MASTER_RIGHTS },
+  { label: 'Companies',        icon: <Business />,        path: ROUTES.MASTER_COMPANIES,       rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Vendors',          icon: <LocalShipping />,   path: ROUTES.MASTER_VENDORS,         rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Manufacturers',    icon: <Factory />,         path: ROUTES.MASTER_MANUFACTURERS,   rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Divisions',        icon: <AccountTree />,     path: ROUTES.MASTER_DIVISIONS,       rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Products',         icon: <Inventory2 />,      path: ROUTES.MASTER_PRODUCTS,        rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Income Types',     icon: <AttachMoney />,     path: ROUTES.MASTER_INCOME_TYPES,    rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Agreement Types',  icon: <Description />,     path: ROUTES.MASTER_AGREEMENT_TYPES, rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Roles',            icon: <ManageAccounts />,  path: ROUTES.MASTER_ROLES,           rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Rights',           icon: <Security />,        path: ROUTES.MASTER_RIGHTS,          rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
 ];
 
 export default function MasterDataLayout() {
   const location = useLocation();
+  const { hasAnyRight } = useAuth();
 
-  const activeIndex = MASTER_TABS.findIndex((t) =>
+  const visibleTabs = MASTER_TABS.filter((tab) => hasAnyRight(tab.rights));
+
+  const activeIndex = visibleTabs.findIndex((t) =>
     location.pathname === t.path || location.pathname.startsWith(t.path + '/'),
   );
 
+  if (visibleTabs.length === 0) {
+    return <Navigate to={ROUTES.DASHBOARD} replace />;
+  }
+
+  if (location.pathname === ROUTES.MASTER || activeIndex === -1) {
+    return <Navigate to={visibleTabs[0].path} replace />;
+  }
+
   return (
     <Box>
-      {/* Page header */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" sx={{ fontWeight: 800 }} color="text.primary">
           Master Data Configuration
@@ -40,7 +52,6 @@ export default function MasterDataLayout() {
         </Typography>
       </Box>
 
-      {/* Tab navigation */}
       <Paper
         elevation={0}
         sx={{
@@ -51,7 +62,7 @@ export default function MasterDataLayout() {
         }}
       >
         <Tabs
-          value={activeIndex === -1 ? 0 : activeIndex}
+          value={activeIndex}
           variant="scrollable"
           scrollButtons="auto"
           slotProps={{
@@ -73,7 +84,7 @@ export default function MasterDataLayout() {
             },
           }}
         >
-          {MASTER_TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <Tab
               key={tab.path}
               label={tab.label}
@@ -86,7 +97,6 @@ export default function MasterDataLayout() {
         </Tabs>
       </Paper>
 
-      {/* Active master page */}
       <Outlet />
     </Box>
   );

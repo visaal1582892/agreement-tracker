@@ -15,6 +15,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import static com.medplus.agreement_tracker_backend.security.RightExpressions.*;
+
 import java.util.List;
 
 @RestController
@@ -25,29 +27,32 @@ public class RightController {
     private final RightService service;
 
     @PostMapping("/search")
+    @PreAuthorize(MASTER_VIEW)
     public ResponseEntity<PagedResponse<RightResponse>> search(@RequestBody MasterPageRequest req) {
         return ResponseEntity.ok(service.search(req));
     }
 
     @GetMapping
+    @PreAuthorize(MASTER_VIEW)
     public ResponseEntity<List<Right>> list() {
         return ResponseEntity.ok(service.findAllActive());
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize(MASTER_VIEW)
     public ResponseEntity<RightResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(service.getById(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<RightResponse> create(@Valid @RequestBody RightRequest req,
                                                  @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(req, principal.getId()));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<RightResponse> update(@PathVariable Long id,
                                                  @Valid @RequestBody RightRequest req,
                                                  @AuthenticationPrincipal UserPrincipal principal) {
@@ -55,7 +60,7 @@ public class RightController {
     }
 
     @PatchMapping("/{id}/toggle-status")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<Void> toggleStatus(@PathVariable Long id,
                                               @AuthenticationPrincipal UserPrincipal principal) {
         service.toggleStatus(id, principal.getId());

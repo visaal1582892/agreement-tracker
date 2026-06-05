@@ -14,6 +14,7 @@ import {
 import { useDispatch } from 'react-redux';
 import { BRAND } from '../config/theme';
 import { ROUTES } from '../config/routes';
+import { RIGHTS } from '../config/rights';
 import { logout } from '../store/slices/authSlice';
 import { useAuth } from '../hooks/useAuth';
 
@@ -21,10 +22,10 @@ const DRAWER_WIDTH = 260;
 const DRAWER_COLLAPSED_WIDTH = 68;
 
 const NAV_ITEMS = [
-  { label: 'Dashboard',    icon: <Dashboard sx={{ fontSize: 20 }} />,          path: ROUTES.DASHBOARD },
-  { label: 'Agreements',   icon: <Description sx={{ fontSize: 20 }} />,         path: ROUTES.AGREEMENTS },
-  { label: 'Approvals',    icon: <CheckCircle sx={{ fontSize: 20 }} />,         path: ROUTES.APPROVALS, badge: true },
-  { label: 'Master Data',  icon: <Storage sx={{ fontSize: 20 }} />,             path: ROUTES.MASTER, adminOnly: true },
+  { label: 'Dashboard',   icon: <Dashboard sx={{ fontSize: 20 }} />,  path: ROUTES.DASHBOARD,   rights: [RIGHTS.DASHBOARD_VIEW] },
+  { label: 'Agreements',  icon: <Description sx={{ fontSize: 20 }} />, path: ROUTES.AGREEMENTS,  rights: [RIGHTS.AGREEMENT_VIEW] },
+  { label: 'Approvals',   icon: <CheckCircle sx={{ fontSize: 20 }} />, path: ROUTES.APPROVALS,   rights: [RIGHTS.AGREEMENT_APPROVE], badge: true },
+  { label: 'Master Data', icon: <Storage sx={{ fontSize: 20 }} />,     path: ROUTES.MASTER,      rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
 ];
 
 export default function DashboardLayout() {
@@ -33,14 +34,14 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
-  const { user, isAdmin } = useAuth();
+  const { user, hasAnyRight } = useAuth();
 
   const handleLogout = () => {
     dispatch(logout());
     navigate(ROUTES.LOGIN);
   };
 
-  const filteredNav = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+  const filteredNav = NAV_ITEMS.filter((item) => hasAnyRight(item.rights));
 
   const isActive = (path) =>
     location.pathname === path || (path !== '/' && location.pathname.startsWith(path));

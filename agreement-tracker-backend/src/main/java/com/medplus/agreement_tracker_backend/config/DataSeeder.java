@@ -1,6 +1,7 @@
 package com.medplus.agreement_tracker_backend.config;
 
 import com.medplus.agreement_tracker_backend.entity.*;
+import com.medplus.agreement_tracker_backend.enums.RightCode;
 import com.medplus.agreement_tracker_backend.enums.RoleName;
 import com.medplus.agreement_tracker_backend.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +12,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -30,6 +33,7 @@ public class DataSeeder implements CommandLineRunner {
     private final ProductMasterRepository productRepository;
     private final VendorMasterRepository vendorRepository;
     private final RightRepository rightRepository;
+    private final RoleRightRepository roleRightRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -39,6 +43,7 @@ public class DataSeeder implements CommandLineRunner {
         seedAdminUser();
         seedLookups();
         seedRights();
+        seedRoleRights();
         seedMockMasterData();
         log.info("Data seeding complete");
     }
@@ -90,17 +95,64 @@ public class DataSeeder implements CommandLineRunner {
 
     private void seedRights() {
         List<Right> defaults = List.of(
-                Right.builder().code("AGREEMENT_VIEW").name("View Agreements").module("AGREEMENTS").build(),
-                Right.builder().code("AGREEMENT_CREATE").name("Create Agreements").module("AGREEMENTS").build(),
-                Right.builder().code("AGREEMENT_APPROVE").name("Approve Agreements").module("AGREEMENTS").build(),
-                Right.builder().code("MASTER_MANAGE").name("Manage Master Data").module("MASTER").build(),
-                Right.builder().code("ADMIN_USERS").name("Manage Users").module("ADMIN").build()
+                right(RightCode.DASHBOARD_VIEW, "View Dashboard", "DASHBOARD"),
+                right(RightCode.AGREEMENT_VIEW, "View Agreements", "AGREEMENTS"),
+                right(RightCode.AGREEMENT_VIEW_ALL, "View All Agreements", "AGREEMENTS"),
+                right(RightCode.AGREEMENT_CREATE, "Create Agreements", "AGREEMENTS"),
+                right(RightCode.AGREEMENT_EDIT, "Edit Agreements", "AGREEMENTS"),
+                right(RightCode.AGREEMENT_APPROVE, "Approve Agreements", "AGREEMENTS"),
+                right(RightCode.MASTER_VIEW, "View Master Data", "MASTER"),
+                right(RightCode.MASTER_MANAGE, "Manage Master Data", "MASTER"),
+                right(RightCode.ADMIN_USERS, "Manage Users", "ADMIN")
         );
         for (Right right : defaults) {
             if (rightRepository.findByCode(right.getCode()).isEmpty()) {
                 rightRepository.save(right);
             }
         }
+    }
+
+    private Right right(RightCode code, String name, String module) {
+        return Right.builder().code(code.name()).name(name).module(module).build();
+    }
+
+    private void seedRoleRights() {
+        List<String> allRights = Arrays.stream(RightCode.values()).map(Enum::name).toList();
+
+        Map<RoleName, List<String>> mappings = Map.of(
+                RoleName.ADMIN, allRights,
+                RoleName.ACCOUNT_MANAGER, List.of(
+                        RightCode.DASHBOARD_VIEW.name(),
+                        RightCode.AGREEMENT_VIEW.name(),
+                        RightCode.AGREEMENT_CREATE.name(),
+                        RightCode.AGREEMENT_EDIT.name()
+                ),
+                RoleName.APPROVER, List.of(
+                        RightCode.DASHBOARD_VIEW.name(),
+                        RightCode.AGREEMENT_VIEW.name(),
+                        RightCode.AGREEMENT_APPROVE.name()
+                ),
+                RoleName.LEADERSHIP, List.of(
+                        RightCode.DASHBOARD_VIEW.name(),
+                        RightCode.AGREEMENT_VIEW.name(),
+                        RightCode.AGREEMENT_VIEW_ALL.name()
+                ),
+                RoleName.FINANCE, List.of(
+                        RightCode.DASHBOARD_VIEW.name(),
+                        RightCode.AGREEMENT_VIEW.name(),
+                        RightCode.AGREEMENT_VIEW_ALL.name()
+                )
+        );
+
+        mappings.forEach((roleName, rightCodes) -> {
+            Role role = roleRepository.findByName(roleName).orElseThrow();
+            for (String code : rightCodes) {
+                Right right = rightRepository.findByCode(code).orElseThrow();
+                if (!roleRightRepository.existsByRoleIdAndRightId(role.getId(), right.getId())) {
+                    roleRightRepository.save(RoleRight.builder().role(role).right(right).build());
+                }
+            }
+        });
     }
 
     private void seedMockMasterData() {

@@ -5,6 +5,7 @@ export const API_BASE = BASE;
 export const ENDPOINTS = {
   // Auth
   LOGIN: `${BASE}/auth/login`,
+  AUTH_ME: `${BASE}/auth/me`,
 
   // Users
   USERS: `${BASE}/users`,

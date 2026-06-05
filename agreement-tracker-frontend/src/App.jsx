@@ -7,7 +7,8 @@ import { SnackbarProvider } from 'notistack';
 import store from './store';
 import theme from './config/theme';
 import { ROUTES } from './config/routes';
-import { ProtectedRoute, AdminRoute } from './utils/ProtectedRoute';
+import { RIGHTS } from './config/rights';
+import { ProtectedRoute, RightRoute } from './utils/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
 import LoginPage from './pages/auth/LoginPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
@@ -42,25 +43,35 @@ export default function App() {
 
                 <Route element={<ProtectedRoute />}>
                   <Route element={<DashboardLayout />}>
-                    <Route index element={<DashboardPage />} />
-                    <Route path={ROUTES.AGREEMENTS} element={<AgreementListPage />} />
-                    <Route path={ROUTES.AGREEMENT_CREATE} element={<AgreementCreatePage />} />
-                    <Route path="/agreements/groups/:groupId" element={<AgreementDetailPage />} />
-                    <Route path={ROUTES.APPROVALS} element={<ApprovalsPage />} />
+                    <Route element={<RightRoute rights={[RIGHTS.DASHBOARD_VIEW]} />}>
+                      <Route index element={<DashboardPage />} />
+                    </Route>
 
-                    {/* Master Data Configuration (admin-only) */}
-                    <Route element={<AdminRoute />}>
+                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_VIEW]} />}>
+                      <Route path={ROUTES.AGREEMENTS} element={<AgreementListPage />} />
+                      <Route path="/agreements/groups/:groupId" element={<AgreementDetailPage />} />
+                    </Route>
+
+                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_CREATE]} />}>
+                      <Route path={ROUTES.AGREEMENT_CREATE} element={<AgreementCreatePage />} />
+                    </Route>
+
+                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_APPROVE]} />}>
+                      <Route path={ROUTES.APPROVALS} element={<ApprovalsPage />} />
+                    </Route>
+
+                    <Route element={<RightRoute rights={[RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE]} />}>
                       <Route path={ROUTES.MASTER} element={<MasterDataLayout />}>
                         <Route index element={<Navigate to={ROUTES.MASTER_COMPANIES} replace />} />
-                        <Route path={ROUTES.MASTER_COMPANIES}      element={<CompanyMasterPage />} />
-                        <Route path={ROUTES.MASTER_VENDORS}        element={<VendorMasterPage />} />
-                        <Route path={ROUTES.MASTER_MANUFACTURERS}  element={<ManufacturerMasterPage />} />
-                        <Route path={ROUTES.MASTER_DIVISIONS}      element={<DivisionMasterPage />} />
-                        <Route path={ROUTES.MASTER_PRODUCTS}       element={<ProductMasterPage />} />
-                        <Route path={ROUTES.MASTER_INCOME_TYPES}   element={<IncomeTypePage />} />
+                        <Route path={ROUTES.MASTER_COMPANIES} element={<CompanyMasterPage />} />
+                        <Route path={ROUTES.MASTER_VENDORS} element={<VendorMasterPage />} />
+                        <Route path={ROUTES.MASTER_MANUFACTURERS} element={<ManufacturerMasterPage />} />
+                        <Route path={ROUTES.MASTER_DIVISIONS} element={<DivisionMasterPage />} />
+                        <Route path={ROUTES.MASTER_PRODUCTS} element={<ProductMasterPage />} />
+                        <Route path={ROUTES.MASTER_INCOME_TYPES} element={<IncomeTypePage />} />
                         <Route path={ROUTES.MASTER_AGREEMENT_TYPES} element={<AgreementTypePage />} />
-                        <Route path={ROUTES.MASTER_ROLES}          element={<RolePage />} />
-                        <Route path={ROUTES.MASTER_RIGHTS}         element={<RightPage />} />
+                        <Route path={ROUTES.MASTER_ROLES} element={<RolePage />} />
+                        <Route path={ROUTES.MASTER_RIGHTS} element={<RightPage />} />
                       </Route>
                     </Route>
                   </Route>

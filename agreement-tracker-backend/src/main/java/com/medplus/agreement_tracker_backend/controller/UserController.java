@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+import static com.medplus.agreement_tracker_backend.security.RightExpressions.ADMIN_USERS;
+
 @RestController
 @RequestMapping("/users")
 @RequiredArgsConstructor
@@ -25,7 +27,7 @@ public class UserController {
     private final UserService userService;
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(ADMIN_USERS)
     public ResponseEntity<UserResponse> createUser(
             @Valid @RequestBody CreateUserRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -34,19 +36,19 @@ public class UserController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(ADMIN_USERS)
     public ResponseEntity<Page<UserResponse>> getAllUsers(@PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(userService.getAllUsers(pageable));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or #id == authentication.principal.id")
+    @PreAuthorize("hasAuthority('ADMIN_USERS') or #id == authentication.principal.id")
     public ResponseEntity<UserResponse> getUser(@PathVariable Long id) {
         return ResponseEntity.ok(userService.getUserById(id));
     }
 
     @PutMapping("/{id}/roles")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(ADMIN_USERS)
     public ResponseEntity<UserResponse> updateRoles(
             @PathVariable Long id,
             @RequestBody List<String> roles,
@@ -55,7 +57,7 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(ADMIN_USERS)
     public ResponseEntity<Void> deactivateUser(
             @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -64,6 +66,7 @@ public class UserController {
     }
 
     @GetMapping("/search")
+    @PreAuthorize(ADMIN_USERS)
     public ResponseEntity<List<UserResponse>> search(@RequestParam String q) {
         return ResponseEntity.ok(userService.searchUsers(q));
     }

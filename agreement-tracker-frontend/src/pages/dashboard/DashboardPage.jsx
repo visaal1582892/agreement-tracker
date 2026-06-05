@@ -16,6 +16,7 @@ import KpiCard from '../../components/ui/KpiCard';
 import StatusBadge from '../../components/ui/StatusBadge';
 import PageHeader from '../../components/ui/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
+import { RIGHTS } from '../../config/rights';
 
 const EXPIRY_BANDS = [
   { label: 'Expiring in 30 days', key: 'expiringIn30Days', color: '#DC2626', bg: '#FEE2E2' },
@@ -26,7 +27,7 @@ const EXPIRY_BANDS = [
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { user, isAdmin, isApprover } = useAuth();
+  const { user, hasRight } = useAuth();
   const [stats, setStats] = useState(null);
   const [recentGroups, setRecentGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -209,7 +210,7 @@ export default function DashboardPage() {
           </Paper>
 
           {/* Quick Actions */}
-          {(isApprover || isAdmin) && (
+          {hasRight(RIGHTS.AGREEMENT_APPROVE) && (
             <Paper sx={{ borderRadius: 3, p: 3, border: `1px solid ${BRAND.borderLight}` }}>
               <Typography variant="subtitle1" sx={{ mb: 2 }}>Quick Actions</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -228,7 +229,7 @@ export default function DashboardPage() {
                     />
                   )}
                 </Button>
-                {(isAdmin) && (
+                {hasRight(RIGHTS.AGREEMENT_CREATE) && (
                   <Button
                     fullWidth variant="outlined"
                     onClick={() => navigate(ROUTES.AGREEMENT_CREATE)}

@@ -4,9 +4,9 @@ import {
   Box, Button, TextField, Chip, Stack, Typography, FormControlLabel, Switch, alpha,
   MenuItem, Select, FormControl, InputLabel, FormHelperText,
 } from '@mui/material';
-import { Add, Edit, PowerSettingsNew } from '@mui/icons-material';
 import DataTable from '../../components/ui/DataTable';
 import SlidePanel from '../../components/ui/SlidePanel';
+import { MasterAddButton, MasterRowActions } from '../../components/master/MasterCrudActions';
 import { productApi, manufacturerApi, divisionApi } from '../../api/masterApi';
 import { useMasterPage } from '../../hooks/useMasterPage';
 import { BRAND } from '../../config/theme';
@@ -45,15 +45,11 @@ export default function ProductMasterPage() {
   const enrichedRows = page.rows.map((row) => ({
     ...row,
     _actions: (
-      <Stack direction="row" spacing={0.5}>
-        <Button size="small" variant="outlined" startIcon={<Edit sx={{ fontSize: 14 }} />}
-          onClick={(e) => { e.stopPropagation(); page.openEdit(row); }}
-          sx={{ fontSize: '0.72rem', py: 0.3, px: 1 }}>Edit</Button>
-        <Button size="small" variant="outlined" color={isRecordActive(row) ? 'error' : 'success'}
-          startIcon={<PowerSettingsNew sx={{ fontSize: 14 }} />}
-          onClick={(e) => { e.stopPropagation(); page.handleToggleStatus(row); }}
-          sx={{ fontSize: '0.72rem', py: 0.3, px: 1 }}>{isRecordActive(row) ? 'Deactivate' : 'Activate'}</Button>
-      </Stack>
+      <MasterRowActions
+        row={row}
+        onEdit={page.openEdit}
+        onToggleStatus={page.handleToggleStatus}
+      />
     ),
   }));
 
@@ -64,7 +60,7 @@ export default function ProductMasterPage() {
           <Typography variant="h6" sx={{ fontWeight: 700 }}>Products</Typography>
           <Typography variant="body2" color="text.secondary">{page.totalCount} record{page.totalCount !== 1 ? 's' : ''}</Typography>
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={page.openCreate} sx={{ background: BRAND.redGradient }}>Add Product</Button>
+        <MasterAddButton label="Add Product" onClick={page.openCreate} />
       </Stack>
       <DataTable columns={COLUMNS} rows={enrichedRows} loading={page.loading} totalCount={page.totalCount}
         page={page.page} rowsPerPage={page.rowsPerPage} onPageChange={page.handlePageChange}

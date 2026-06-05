@@ -15,6 +15,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import static com.medplus.agreement_tracker_backend.security.RightExpressions.*;
+
 import java.util.List;
 
 @RestController
@@ -25,12 +27,14 @@ public class ProductMasterController {
     private final ProductMasterService service;
 
     @PostMapping("/search")
+    @PreAuthorize(MASTER_VIEW)
     public ResponseEntity<PagedResponse<ProductMasterResponse>> search(@RequestBody MasterPageRequest req) {
         return ResponseEntity.ok(service.search(req));
     }
 
     /** Wizard backward-compat endpoint. */
     @GetMapping
+    @PreAuthorize(MASTER_OR_AGREEMENT_READ)
     public ResponseEntity<List<ProductMaster>> list(
             @RequestParam List<Long> vendorIds,
             @RequestParam(required = false) Long manufacturerId,
@@ -45,12 +49,13 @@ public class ProductMasterController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize(MASTER_VIEW)
     public ResponseEntity<ProductMasterResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(service.getById(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<ProductMasterResponse> create(
             @Valid @RequestBody ProductMasterRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -58,7 +63,7 @@ public class ProductMasterController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<ProductMasterResponse> update(
             @PathVariable Long id,
             @Valid @RequestBody ProductMasterRequest req,
@@ -67,7 +72,7 @@ public class ProductMasterController {
     }
 
     @PatchMapping("/{id}/toggle-status")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<Void> toggleStatus(
             @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal) {

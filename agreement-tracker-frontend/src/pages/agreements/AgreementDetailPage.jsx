@@ -14,6 +14,7 @@ import { BRAND } from '../../config/theme';
 import StatusBadge from '../../components/ui/StatusBadge';
 import LoadingOverlay from '../../components/ui/LoadingOverlay';
 import { useAuth } from '../../hooks/useAuth';
+import { RIGHTS } from '../../config/rights';
 import { useModal } from '../../hooks/useModal';
 import dayjs from 'dayjs';
 
@@ -21,7 +22,7 @@ export default function AgreementDetailPage() {
   const { groupId } = useParams();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
-  const { user, isAdmin, isApprover, isAccountManager } = useAuth();
+  const { user, hasRight } = useAuth();
 
   const [group, setGroup] = useState(null);
   const [versions, setVersions] = useState([]);
@@ -126,10 +127,10 @@ export default function AgreementDetailPage() {
   };
 
   const isOwner = agreement?.ownerId === user?.id;
-  const canSubmit = isOwner && agreement?.approvalStatus === 'DRAFT';
-  const canApprove = (isApprover || isAdmin) && agreement?.approvalStatus === 'PENDING_APPROVAL' && agreement?.ownerId !== user?.id;
-  const canNewVersion = (isOwner || isAdmin) && agreement?.approvalStatus === 'APPROVED';
-  const canTerminate = isAdmin && agreement?.approvalStatus === 'APPROVED' && !agreement?.terminationDate;
+  const canSubmit = isOwner && agreement?.approvalStatus === 'DRAFT' && hasRight(RIGHTS.AGREEMENT_EDIT);
+  const canApprove = hasRight(RIGHTS.AGREEMENT_APPROVE) && agreement?.approvalStatus === 'PENDING_APPROVAL' && agreement?.ownerId !== user?.id;
+  const canNewVersion = (isOwner || hasRight(RIGHTS.AGREEMENT_EDIT)) && agreement?.approvalStatus === 'APPROVED';
+  const canTerminate = hasRight(RIGHTS.AGREEMENT_EDIT) && agreement?.approvalStatus === 'APPROVED' && !agreement?.terminationDate;
 
   const ACTION_COLOR = { SUBMITTED: '#2196F3', APPROVED: BRAND.green, REJECTED: BRAND.red };
 

@@ -9,9 +9,11 @@ public record AuthResponse(
         String username,
         String fullName,
         String email,
-        List<String> roles
+        List<String> roles,
+        List<String> rights
 ) {
-    public AuthResponse(String token, Long userId, String username, String fullName, String email, List<String> roles) {
-        this(token, "Bearer", userId, username, fullName, email, roles);
+    public AuthResponse(String token, Long userId, String username, String fullName, String email,
+                        List<String> roles, List<String> rights) {
+        this(token, "Bearer", userId, username, fullName, email, roles, rights);
     }
 }

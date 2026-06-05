@@ -1,15 +1,17 @@
 package com.medplus.agreement_tracker_backend.controller;
 
 import com.medplus.agreement_tracker_backend.dto.response.DashboardStatsResponse;
-import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
 import com.medplus.agreement_tracker_backend.repository.AgreementRepository;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+
+import static com.medplus.agreement_tracker_backend.security.RightExpressions.DASHBOARD_VIEW;
 
 @RestController
 @RequestMapping("/dashboard")
@@ -19,6 +21,7 @@ public class DashboardController {
     private final AgreementRepository agreementRepository;
 
     @GetMapping("/stats")
+    @PreAuthorize(DASHBOARD_VIEW)
     public ResponseEntity<DashboardStatsResponse> getStats(
             @AuthenticationPrincipal UserPrincipal principal) {
         LocalDate today = LocalDate.now();

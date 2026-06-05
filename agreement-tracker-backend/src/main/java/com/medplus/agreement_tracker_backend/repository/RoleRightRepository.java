@@ -13,6 +13,8 @@ public interface RoleRightRepository extends JpaRepository<RoleRight, Long> {
 
     List<RoleRight> findByRoleId(Long roleId);
 
+    boolean existsByRoleIdAndRightId(Long roleId, Long rightId);
+
     @Query("SELECT rr.right.code FROM RoleRight rr WHERE rr.role.id IN :roleIds AND rr.right.isActive = true")
     List<String> findRightCodesByRoleIds(@Param("roleIds") List<Long> roleIds);
 }

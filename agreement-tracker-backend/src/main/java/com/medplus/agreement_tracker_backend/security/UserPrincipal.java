@@ -6,6 +6,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -17,23 +18,24 @@ public class UserPrincipal implements UserDetails {
     private final String email;
     private final String password;
     private final boolean active;
+    private final List<String> rights;
     private final Collection<? extends GrantedAuthority> authorities;
 
     public UserPrincipal(Long id, String username, String email, String password, boolean active,
-                         Collection<? extends GrantedAuthority> authorities) {
+                         List<String> rights, Collection<? extends GrantedAuthority> authorities) {
         this.id = id;
         this.username = username;
         this.email = email;
         this.password = password;
         this.active = active;
+        this.rights = rights;
         this.authorities = authorities;
     }
 
-    public static UserPrincipal build(User user, List<String> roleNames) {
-        List<GrantedAuthority> authorities = roleNames.stream()
-                .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-                .map(a -> (GrantedAuthority) a)
-                .toList();
+    public static UserPrincipal build(User user, List<String> roleNames, List<String> rights) {
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        roleNames.forEach(role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + role)));
+        rights.forEach(right -> authorities.add(new SimpleGrantedAuthority(right)));
 
         return new UserPrincipal(
                 user.getId(),
@@ -41,8 +43,13 @@ public class UserPrincipal implements UserDetails {
                 user.getEmail(),
                 user.getPasswordHash(),
                 user.isActive(),
+                List.copyOf(rights),
                 authorities
         );
+    }
+
+    public boolean hasRight(String rightCode) {
+        return rights.contains(rightCode);
     }
 
     @Override

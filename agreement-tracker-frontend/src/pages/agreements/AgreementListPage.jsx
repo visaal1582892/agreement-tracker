@@ -10,6 +10,7 @@ import DataTable from '../../components/ui/DataTable';
 import StatusBadge from '../../components/ui/StatusBadge';
 import { useDataTable } from '../../hooks/useDataTable';
 import { useAuth } from '../../hooks/useAuth';
+import { RIGHTS } from '../../config/rights';
 
 const COLUMNS = [
   { field: 'agreementNumber', header: 'Agreement No.', sortable: true },
@@ -25,7 +26,7 @@ const COLUMNS = [
 export default function AgreementListPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const { isAdmin, isAccountManager } = useAuth();
+  const { hasRight } = useAuth();
 
   const { groups, totalElements, loading } = useSelector((s) => s.agreements);
   const { page, rowsPerPage, search, sortBy, sortDir, handlePageChange, handleRowsPerPageChange, handleSearch, handleSort } = useDataTable();
@@ -42,7 +43,7 @@ export default function AgreementListPage() {
         title="Agreements"
         subtitle="All commercial agreements across companies"
         actionLabel="New Agreement"
-        onAction={(isAdmin || isAccountManager) ? () => navigate(ROUTES.AGREEMENT_CREATE) : undefined}
+        onAction={hasRight(RIGHTS.AGREEMENT_CREATE) ? () => navigate(ROUTES.AGREEMENT_CREATE) : undefined}
       />
       <DataTable
         columns={COLUMNS}

@@ -7,8 +7,8 @@ import {
   Alert, CircularProgress, InputAdornment, IconButton, alpha,
 } from '@mui/material';
 import { Visibility, VisibilityOff, LockOutlined, PersonOutlined } from '@mui/icons-material';
-import { login, clearError, selectAuthLoading, selectAuthError, selectIsAuthenticated } from '../../store/slices/authSlice';
-import { ROUTES } from '../../config/routes';
+import { login, clearError, selectAuthLoading, selectAuthError, selectIsAuthenticated, selectUserRights } from '../../store/slices/authSlice';
+import { defaultRouteForRights } from '../../config/rights';
 import { BRAND } from '../../config/theme';
 
 export default function LoginPage() {
@@ -17,13 +17,14 @@ export default function LoginPage() {
   const loading = useSelector(selectAuthLoading);
   const error = useSelector(selectAuthError);
   const isAuthenticated = useSelector(selectIsAuthenticated);
+  const rights = useSelector(selectUserRights);
   const [showPassword, setShowPassword] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm();
 
   useEffect(() => {
-    if (isAuthenticated) navigate(ROUTES.DASHBOARD);
-  }, [isAuthenticated, navigate]);
+    if (isAuthenticated) navigate(defaultRouteForRights(rights));
+  }, [isAuthenticated, rights, navigate]);
 
   useEffect(() => {
     return () => { dispatch(clearError()); };

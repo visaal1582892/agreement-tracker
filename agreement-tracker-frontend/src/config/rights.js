@@ -1,0 +1,59 @@
+/** Rights codes — must stay in sync with backend {@code RightCode} enum. */
+import { ROUTES } from './routes';
+
+export const RIGHTS = {
+  DASHBOARD_VIEW: 'DASHBOARD_VIEW',
+  AGREEMENT_VIEW: 'AGREEMENT_VIEW',
+  AGREEMENT_VIEW_ALL: 'AGREEMENT_VIEW_ALL',
+  AGREEMENT_CREATE: 'AGREEMENT_CREATE',
+  AGREEMENT_EDIT: 'AGREEMENT_EDIT',
+  AGREEMENT_APPROVE: 'AGREEMENT_APPROVE',
+  MASTER_VIEW: 'MASTER_VIEW',
+  MASTER_MANAGE: 'MASTER_MANAGE',
+  ADMIN_USERS: 'ADMIN_USERS',
+};
+
+/** Minimum right(s) required to access a route (any match grants access). */
+export const ROUTE_RIGHTS = {
+  '/': [RIGHTS.DASHBOARD_VIEW],
+  '/agreements': [RIGHTS.AGREEMENT_VIEW],
+  '/agreements/new': [RIGHTS.AGREEMENT_CREATE],
+  '/approvals': [RIGHTS.AGREEMENT_APPROVE],
+  '/master': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+  '/master/companies': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+  '/master/vendors': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+  '/master/manufacturers': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+  '/master/divisions': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+  '/master/products': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+  '/master/income-types': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+  '/master/agreement-types': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+  '/master/roles': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+  '/master/rights': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+};
+
+export function rightsForPath(pathname) {
+  if (ROUTE_RIGHTS[pathname]) return ROUTE_RIGHTS[pathname];
+  if (pathname.startsWith('/agreements/groups/')) return [RIGHTS.AGREEMENT_VIEW];
+  const prefix = Object.keys(ROUTE_RIGHTS)
+    .filter((p) => p !== '/')
+    .sort((a, b) => b.length - a.length)
+    .find((p) => pathname.startsWith(p));
+  return prefix ? ROUTE_RIGHTS[prefix] : [];
+}
+
+export function hasAnyRequiredRight(userRights, requiredRights) {
+  if (!requiredRights?.length) return true;
+  const granted = userRights ?? [];
+  return requiredRights.some((r) => granted.includes(r));
+}
+
+/** First route the user is allowed to access (post-login landing page). */
+export function defaultRouteForRights(userRights) {
+  const candidates = [
+    ROUTES.DASHBOARD,
+    ROUTES.AGREEMENTS,
+    ROUTES.APPROVALS,
+    ROUTES.MASTER,
+  ];
+  return candidates.find((path) => hasAnyRequiredRight(userRights, ROUTE_RIGHTS[path])) ?? ROUTES.DASHBOARD;
+}

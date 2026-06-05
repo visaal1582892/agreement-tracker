@@ -15,6 +15,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import static com.medplus.agreement_tracker_backend.security.RightExpressions.*;
+
 import java.util.List;
 
 @RestController
@@ -25,23 +27,26 @@ public class VendorMasterController {
     private final VendorMasterService service;
 
     @PostMapping("/search")
+    @PreAuthorize(MASTER_VIEW)
     public ResponseEntity<PagedResponse<VendorMasterResponse>> search(@RequestBody MasterPageRequest req) {
         return ResponseEntity.ok(service.search(req));
     }
 
     @GetMapping
+    @PreAuthorize(MASTER_OR_AGREEMENT_READ)
     public ResponseEntity<List<VendorMaster>> list(@RequestParam(required = false) String search) {
         if (search != null && !search.isBlank()) return ResponseEntity.ok(service.searchVendors(search));
         return ResponseEntity.ok(service.findAllActive());
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize(MASTER_VIEW)
     public ResponseEntity<VendorMasterResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(service.getById(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<VendorMasterResponse> create(
             @Valid @RequestBody VendorMasterRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -49,7 +54,7 @@ public class VendorMasterController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<VendorMasterResponse> update(
             @PathVariable Long id,
             @Valid @RequestBody VendorMasterRequest req,
@@ -58,7 +63,7 @@ public class VendorMasterController {
     }
 
     @PatchMapping("/{id}/toggle-status")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<Void> toggleStatus(
             @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal) {

@@ -1,15 +1,43 @@
+import { useEffect } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
-import { useSelector } from 'react-redux';
-import { selectIsAuthenticated } from '../store/slices/authSlice';
+import { useDispatch, useSelector } from 'react-redux';
+import {
+  selectIsAuthenticated,
+  selectUserRights,
+  refreshSession,
+  logout,
+} from '../store/slices/authSlice';
 import { ROUTES } from '../config/routes';
+import { hasAnyRequiredRight } from '../config/rights';
 
 export function ProtectedRoute() {
+  const dispatch = useDispatch();
   const isAuthenticated = useSelector(selectIsAuthenticated);
+  const rights = useSelector(selectUserRights);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (rights.length > 0) return;
+
+    dispatch(refreshSession())
+      .unwrap()
+      .catch(() => dispatch(logout()));
+  }, [dispatch, isAuthenticated, rights.length]);
+
   return isAuthenticated ? <Outlet /> : <Navigate to={ROUTES.LOGIN} replace />;
 }
 
+/**
+ * Guards routes by user rights from login (CAS-ready).
+ * Pass `rights` as an array; user needs any one of them.
+ */
+export function RightRoute({ rights = [], redirectTo = ROUTES.DASHBOARD }) {
+  const userRights = useSelector(selectUserRights);
+  const allowed = hasAnyRequiredRight(userRights, rights);
+  return allowed ? <Outlet /> : <Navigate to={redirectTo} replace />;
+}
+
+/** @deprecated Use RightRoute with MASTER_VIEW / MASTER_MANAGE instead */
 export function AdminRoute() {
-  const user = useSelector((s) => s.auth.user);
-  const isAdmin = user?.roles?.includes('ADMIN');
-  return isAdmin ? <Outlet /> : <Navigate to={ROUTES.DASHBOARD} replace />;
+  return <RightRoute rights={['MASTER_VIEW', 'MASTER_MANAGE']} />;
 }

@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+import static com.medplus.agreement_tracker_backend.security.RightExpressions.*;
+
 @RestController
 @RequestMapping("/master/companies")
 @RequiredArgsConstructor
@@ -24,17 +26,15 @@ public class CompanyMasterController {
 
     private final CompanyMasterService service;
 
-    /** Paginated search with column-level filters. */
     @PostMapping("/search")
-    public ResponseEntity<PagedResponse<CompanyMasterResponse>> search(
-            @RequestBody MasterPageRequest req) {
+    @PreAuthorize(MASTER_VIEW)
+    public ResponseEntity<PagedResponse<CompanyMasterResponse>> search(@RequestBody MasterPageRequest req) {
         return ResponseEntity.ok(service.search(req));
     }
 
-    /** Lightweight list for dropdowns (backward-compatible with wizard). */
     @GetMapping
-    public ResponseEntity<List<CompanyMaster>> list(
-            @RequestParam(required = false) String search) {
+    @PreAuthorize(MASTER_OR_AGREEMENT_READ)
+    public ResponseEntity<List<CompanyMaster>> list(@RequestParam(required = false) String search) {
         if (search != null && !search.isBlank()) {
             return ResponseEntity.ok(service.searchByName(search));
         }
@@ -42,12 +42,13 @@ public class CompanyMasterController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize(MASTER_VIEW)
     public ResponseEntity<CompanyMasterResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(service.getById(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<CompanyMasterResponse> create(
             @Valid @RequestBody CompanyMasterRequest req,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -55,7 +56,7 @@ public class CompanyMasterController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<CompanyMasterResponse> update(
             @PathVariable Long id,
             @Valid @RequestBody CompanyMasterRequest req,
@@ -64,7 +65,7 @@ public class CompanyMasterController {
     }
 
     @PatchMapping("/{id}/toggle-status")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<Void> toggleStatus(
             @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -72,9 +73,8 @@ public class CompanyMasterController {
         return ResponseEntity.noContent().build();
     }
 
-    /** Kept for backward compatibility with existing wizard integrations. */
     @PatchMapping("/{id}/deactivate")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(MASTER_MANAGE)
     public ResponseEntity<Void> deactivate(
             @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal) {
