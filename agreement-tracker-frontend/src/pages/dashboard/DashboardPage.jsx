@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Grid, Box, Typography, Paper, List, ListItemButton, ListItemText,
-  Divider, Button, Chip, alpha, Skeleton,
+  Grid, Box, Typography, Paper, List, ListItemButton,
+  Divider, Button, alpha, Skeleton,
 } from '@mui/material';
 import {
   Description, Warning, HourglassEmpty, Cancel,
-  ArrowForward, FiberManualRecord,
+  ArrowForward, EventNote, Bolt, Add,
 } from '@mui/icons-material';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
@@ -14,20 +14,84 @@ import { ROUTES } from '../../config/routes';
 import { BRAND } from '../../config/theme';
 import KpiCard from '../../components/ui/KpiCard';
 import StatusBadge from '../../components/ui/StatusBadge';
-import PageHeader from '../../components/ui/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
-import { RIGHTS } from '../../config/rights';
 
 const EXPIRY_BANDS = [
-  { label: 'Expiring in 30 days', key: 'expiringIn30Days', color: '#DC2626', bg: '#FEE2E2' },
-  { label: 'Expiring 31–60 days', key: 'expiringIn60Days', color: '#D97706', bg: '#FEF3C7' },
-  { label: 'Expiring 61–90 days', key: 'expiringIn90Days', color: '#0369A1', bg: '#DBEAFE' },
-  { label: 'In Progress',         key: 'inProgress',       color: '#7C3AED', bg: '#EDE9FE' },
+  { label: 'Expiring in 30 days', key: 'expiringIn30Days', color: '#DC2626', bg: 'linear-gradient(90deg, #FEF2F2 0%, #FFF5F5 100%)' },
+  { label: 'Expiring 31–60 days', key: 'expiringIn60Days', color: '#D97706', bg: 'linear-gradient(90deg, #FFFBEB 0%, #FFF7ED 100%)' },
+  { label: 'Expiring 61–90 days', key: 'expiringIn90Days', color: '#2563EB', bg: 'linear-gradient(90deg, #EFF6FF 0%, #F0F7FF 100%)' },
+  { label: 'In Progress', key: 'inProgress', color: '#7C3AED', bg: 'linear-gradient(90deg, #F5F3FF 0%, #FAF5FF 100%)' },
 ];
+
+const cardSx = {
+  borderRadius: 3.5,
+  border: '1px solid rgba(226, 232, 240, 0.8)',
+  boxShadow: '0 4px 24px rgba(15, 23, 42, 0.05)',
+  overflow: 'hidden',
+  bgcolor: '#fff',
+};
+
+const cardHeaderSx = {
+  px: 3,
+  py: 2.25,
+  background: 'linear-gradient(180deg, #FAFBFC 0%, #fff 100%)',
+  borderBottom: '1px solid #F1F5F9',
+};
+
+function SunriseDecoration() {
+  return (
+    <Box sx={{
+      position: 'absolute', right: 0, top: 0, bottom: 0,
+      width: { sm: 240, md: 300 },
+      pointerEvents: 'none',
+    }}>
+      <svg
+        viewBox="0 0 300 120"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        width="100%"
+        height="100%"
+        preserveAspectRatio="xMaxYMax slice"
+      >
+        <defs>
+          <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#FDBA74" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#FED7AA" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect x="0" y="95" width="300" height="25" fill="#FCE7F3" opacity="0.5" />
+        <path d="M0 105 Q80 82 160 92 T300 88 L300 120 L0 120 Z" fill="#FCE7F3" opacity="0.45" />
+        <path d="M40 100 Q120 78 200 88 T300 84 L300 120 L40 120 Z" fill="#FBCFE8" opacity="0.4" />
+        <path d="M100 98 Q170 72 230 82 T300 78 L300 120 L100 120 Z" fill="#FECDD3" opacity="0.55" />
+        <circle cx="230" cy="42" r="30" fill="url(#sunGlow)" />
+        <circle cx="230" cy="44" r="19" fill="#FB923C" opacity="0.55" />
+      </svg>
+    </Box>
+  );
+}
+
+function SectionHeader({ icon, title }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
+      <Box sx={{
+        width: 34, height: 34, borderRadius: 2.5,
+        background: `linear-gradient(135deg, ${alpha(BRAND.red, 0.12)} 0%, ${alpha(BRAND.red, 0.05)} 100%)`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: BRAND.red,
+        border: `1px solid ${alpha(BRAND.red, 0.1)}`,
+      }}>
+        {icon}
+      </Box>
+      <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, color: BRAND.textPrimary, letterSpacing: '-0.2px' }}>
+        {title}
+      </Typography>
+    </Box>
+  );
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { user, hasRight } = useAuth();
+  const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [recentGroups, setRecentGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,118 +114,156 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  const firstName = user?.fullName?.split(' ')[0] || 'User';
+  const firstName = user?.fullName?.split(' ')[0] || 'System';
+  const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
     <Box>
-      {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" fontWeight={700} sx={{ color: BRAND.textPrimary }}>
-          Good morning, {firstName} 👋
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.3 }}>
-          Here's what's happening with your agreements today.
-        </Typography>
-      </Box>
+      {/* Hero greeting */}
+      <Paper
+        elevation={0}
+        sx={{
+          ...cardSx,
+          mb: 3.5,
+          p: { xs: 2.5, md: 3 },
+          background: `linear-gradient(120deg, #fff 40%, ${alpha(BRAND.red, 0.03)} 100%)`,
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
+          <SunriseDecoration />
+        </Box>
+        <Box sx={{ position: 'relative', zIndex: 1, pr: { sm: 28, md: 34 } }}>
+          <Typography sx={{
+            fontSize: '0.72rem', fontWeight: 600, color: BRAND.red,
+            textTransform: 'uppercase', letterSpacing: '0.1em', mb: 0.75,
+          }}>
+            {today}
+          </Typography>
+          <Typography sx={{
+            fontSize: { xs: '1.4rem', md: '1.75rem' }, fontWeight: 800,
+            color: BRAND.textPrimary, letterSpacing: '-0.6px', lineHeight: 1.2,
+          }}>
+            Good morning,{' '}
+            <Box component="span" sx={{ color: BRAND.red }}>{firstName}</Box>
+          </Typography>
+          <Typography sx={{ mt: 0.75, fontSize: '0.9rem', color: '#64748B', maxWidth: 420 }}>
+            Here's what's happening with your agreements today.
+          </Typography>
+        </Box>
+      </Paper>
 
-      {/* KPI Cards */}
+      {/* KPI row */}
       <Grid container spacing={2.5} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          {loading ? <Skeleton variant="rounded" height={120} sx={{ borderRadius: 3 }} /> : (
-            <KpiCard
-              title="Active Agreements"
-              value={stats?.totalActive ?? 0}
-              icon={<Description />}
-              color={BRAND.green}
-              subtitle="Currently live"
-            />
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+          {loading ? <Skeleton variant="rounded" height={140} sx={{ borderRadius: 3.5 }} /> : (
+            <KpiCard title="Active Agreements" value={stats?.totalActive ?? 0} icon={<Description />} color="#16A34A" subtitle="Currently live" />
           )}
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          {loading ? <Skeleton variant="rounded" height={120} sx={{ borderRadius: 3 }} /> : (
-            <KpiCard
-              title="Expiring Soon"
-              value={stats?.expiringIn30Days ?? 0}
-              icon={<Warning />}
-              color="#D97706"
-              subtitle="Within 30 days"
-            />
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+          {loading ? <Skeleton variant="rounded" height={140} sx={{ borderRadius: 3.5 }} /> : (
+            <KpiCard title="Expiring Soon" value={stats?.expiringIn30Days ?? 0} icon={<Warning />} color="#EA580C" subtitle="Within 30 days" />
           )}
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          {loading ? <Skeleton variant="rounded" height={120} sx={{ borderRadius: 3 }} /> : (
-            <KpiCard
-              title="Pending Approval"
-              value={stats?.pendingMyApproval ?? 0}
-              icon={<HourglassEmpty />}
-              color={BRAND.red}
-              subtitle="Needs your action"
-            />
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+          {loading ? <Skeleton variant="rounded" height={140} sx={{ borderRadius: 3.5 }} /> : (
+            <KpiCard title="Pending Approval" value={stats?.pendingMyApproval ?? 0} icon={<HourglassEmpty />} color={BRAND.red} subtitle="Needs your action" />
           )}
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          {loading ? <Skeleton variant="rounded" height={120} sx={{ borderRadius: 3 }} /> : (
-            <KpiCard
-              title="Expired"
-              value={stats?.expired ?? 0}
-              icon={<Cancel />}
-              color="#64748B"
-              subtitle="Need renewal"
-            />
+        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+          {loading ? <Skeleton variant="rounded" height={140} sx={{ borderRadius: 3.5 }} /> : (
+            <KpiCard title="Expired" value={stats?.expired ?? 0} icon={<Cancel />} color="#1E40AF" subtitle="Need renewal" />
           )}
         </Grid>
       </Grid>
 
-      <Grid container spacing={2.5}>
-        {/* Recent Agreements */}
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Paper sx={{ borderRadius: 3, overflow: 'hidden', border: `1px solid ${BRAND.borderLight}` }}>
-            <Box sx={{ px: 3, py: 2.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Grid container spacing={2.5} alignItems="stretch">
+        <Grid size={{ xs: 12, lg: 8 }} sx={{ display: 'flex' }}>
+          <Paper elevation={0} sx={{ ...cardSx, width: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ ...cardHeaderSx, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <Box>
-                <Typography variant="subtitle1">Recent Agreements</Typography>
-                <Typography variant="caption" color="text.secondary">Latest activity across all companies</Typography>
+                <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, color: BRAND.textPrimary }}>
+                  Recent Agreements
+                </Typography>
+                <Typography sx={{ fontSize: '0.8rem', color: '#94A3B8', mt: 0.25 }}>
+                  Latest activity across all companies
+                </Typography>
               </Box>
               <Button
                 size="small"
-                endIcon={<ArrowForward fontSize="small" />}
                 onClick={() => navigate(ROUTES.AGREEMENTS)}
-                sx={{ color: BRAND.red, fontWeight: 600, '&:hover': { bgcolor: alpha(BRAND.red, 0.05) } }}
+                sx={{
+                  color: BRAND.red, fontWeight: 600, fontSize: '0.8rem',
+                  textTransform: 'none', borderRadius: 2,
+                  bgcolor: alpha(BRAND.red, 0.06),
+                  px: 1.5, py: 0.5,
+                  '&:hover': { bgcolor: alpha(BRAND.red, 0.1) },
+                }}
+                endIcon={<ArrowForward sx={{ fontSize: '14px !important' }} />}
               >
                 View all
               </Button>
             </Box>
-            <Divider />
 
             {loading ? (
-              <Box sx={{ p: 2 }}>
+              <Box sx={{ flex: 1, p: 2.5 }}>
                 {[...Array(5)].map((_, i) => (
                   <Skeleton key={i} variant="rounded" height={56} sx={{ mb: 1, borderRadius: 2 }} />
                 ))}
               </Box>
             ) : recentGroups.length === 0 ? (
-              <Box sx={{ py: 6, textAlign: 'center' }}>
-                <Description sx={{ fontSize: 48, color: alpha(BRAND.red, 0.2), mb: 1 }} />
-                <Typography variant="body2" color="text.secondary">No agreements yet</Typography>
+              <Box sx={{
+                flex: 1,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                mx: 3, mb: 3, mt: 1, py: 6, px: 3, textAlign: 'center',
+                borderRadius: 3,
+                border: `2px dashed ${alpha(BRAND.red, 0.15)}`,
+                bgcolor: alpha(BRAND.red, 0.02),
+              }}>
+                <Box sx={{
+                  width: 80, height: 80, borderRadius: '50%',
+                  background: `linear-gradient(135deg, ${alpha(BRAND.red, 0.08)} 0%, ${alpha(BRAND.red, 0.03)} 100%)`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  mx: 'auto', mb: 2,
+                  border: `1px solid ${alpha(BRAND.red, 0.1)}`,
+                }}>
+                  <Description sx={{ fontSize: 38, color: alpha(BRAND.red, 0.35) }} />
+                </Box>
+                <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: BRAND.textPrimary, mb: 0.75 }}>
+                  No agreements yet!
+                </Typography>
+                <Typography sx={{ fontSize: '0.875rem', color: '#64748B', mb: 3, maxWidth: 280, mx: 'auto' }}>
+                  Get started by creating your first commercial agreement.
+                </Typography>
                 <Button
-                  variant="contained" size="small" sx={{ mt: 2 }}
+                  variant="contained"
+                  startIcon={<Add />}
                   onClick={() => navigate(ROUTES.AGREEMENT_CREATE)}
+                  sx={{
+                    px: 3.5, py: 1.35, borderRadius: 3,
+                    fontWeight: 700, fontSize: '0.875rem',
+                    background: BRAND.redGradient,
+                    boxShadow: `0 6px 20px ${alpha(BRAND.red, 0.35)}`,
+                  }}
                 >
                   Create Agreement
                 </Button>
               </Box>
             ) : (
-              <List disablePadding>
+              <List disablePadding sx={{ flex: 1 }}>
                 {recentGroups.map((g, i) => (
                   <Box key={g.id}>
                     <ListItemButton
                       onClick={() => navigate(`/agreements/groups/${g.id}`)}
-                      sx={{ px: 3, py: 1.8, '&:hover': { bgcolor: alpha(BRAND.red, 0.02) } }}
+                      sx={{ px: 3, py: 1.8, '&:hover': { bgcolor: alpha(BRAND.red, 0.03) } }}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
                         <Box sx={{
-                          width: 38, height: 38, borderRadius: 2, flexShrink: 0,
-                          bgcolor: alpha(BRAND.red, 0.08),
+                          width: 40, height: 40, borderRadius: 2.5, flexShrink: 0,
+                          background: `linear-gradient(135deg, ${alpha(BRAND.red, 0.1)} 0%, ${alpha(BRAND.red, 0.05)} 100%)`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: `1px solid ${alpha(BRAND.red, 0.08)}`,
                         }}>
                           <Description sx={{ fontSize: 18, color: BRAND.red }} />
                         </Box>
@@ -177,7 +279,7 @@ export default function DashboardPage() {
                         </Box>
                       </Box>
                     </ListItemButton>
-                    {i < recentGroups.length - 1 && <Divider sx={{ ml: 3 }} />}
+                    {i < recentGroups.length - 1 && <Divider sx={{ ml: 3, borderColor: '#F1F5F9' }} />}
                   </Box>
                 ))}
               </List>
@@ -185,62 +287,75 @@ export default function DashboardPage() {
           </Paper>
         </Grid>
 
-        {/* Right column */}
-        <Grid size={{ xs: 12, md: 4 }}>
-          {/* Expiry Summary */}
-          <Paper sx={{ borderRadius: 3, p: 3, border: `1px solid ${BRAND.borderLight}`, mb: 2.5 }}>
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>Expiry Summary</Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Grid size={{ xs: 12, lg: 4 }} sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+          <Paper elevation={0} sx={{ ...cardSx, p: 3 }}>
+            <SectionHeader icon={<EventNote sx={{ fontSize: 18 }} />} title="Expiry Summary" />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
               {EXPIRY_BANDS.map(({ label, key, color, bg }) => (
                 <Box key={key} sx={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  p: 1.5, borderRadius: 2, bgcolor: bg,
-                  border: `1px solid ${alpha(color, 0.15)}`,
+                  px: 2, py: 1.35, borderRadius: 2.5,
+                  background: bg,
+                  border: `1px solid ${alpha(color, 0.1)}`,
+                  transition: 'transform 0.15s ease',
+                  '&:hover': { transform: 'translateX(3px)' },
                 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <FiberManualRecord sx={{ fontSize: 10, color }} />
-                    <Typography variant="caption" fontWeight={500} color={color}>{label}</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: color, flexShrink: 0 }} />
+                    <Typography sx={{ fontSize: '0.8rem', fontWeight: 500, color: '#334155' }}>
+                      {label}
+                    </Typography>
                   </Box>
-                  <Typography variant="subtitle2" sx={{ color, fontWeight: 700 }}>
-                    {loading ? '…' : (stats?.[key] ?? 0)}
-                  </Typography>
+                  <Box sx={{
+                    minWidth: 28, height: 28, borderRadius: 2,
+                    bgcolor: alpha(color, 0.12),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Typography sx={{ fontSize: '0.85rem', color, fontWeight: 800 }}>
+                      {loading ? '…' : (stats?.[key] ?? 0)}
+                    </Typography>
+                  </Box>
                 </Box>
               ))}
             </Box>
           </Paper>
 
-          {/* Quick Actions */}
-          {hasRight(RIGHTS.AGREEMENT_APPROVE) && (
-            <Paper sx={{ borderRadius: 3, p: 3, border: `1px solid ${BRAND.borderLight}` }}>
-              <Typography variant="subtitle1" sx={{ mb: 2 }}>Quick Actions</Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                <Button
-                  fullWidth variant="contained"
-                  onClick={() => navigate(ROUTES.APPROVALS)}
-                  sx={{ justifyContent: 'space-between', py: 1.2 }}
-                  endIcon={<ArrowForward fontSize="small" />}
-                >
-                  Approval Queue
-                  {stats?.pendingMyApproval > 0 && (
-                    <Chip
-                      label={stats.pendingMyApproval}
-                      size="small"
-                      sx={{ bgcolor: alpha('#fff', 0.25), color: '#fff', fontSize: '0.7rem', height: 20, ml: 1 }}
-                    />
-                  )}
-                </Button>
-                {hasRight(RIGHTS.AGREEMENT_CREATE) && (
-                  <Button
-                    fullWidth variant="outlined"
-                    onClick={() => navigate(ROUTES.AGREEMENT_CREATE)}
-                    sx={{ py: 1.2 }}
-                  >
-                    + New Agreement
-                  </Button>
-                )}
-              </Box>
-            </Paper>
-          )}
+          <Paper elevation={0} sx={{ ...cardSx, p: 3, flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <SectionHeader icon={<Bolt sx={{ fontSize: 18 }} />} title="Quick Actions" />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={() => navigate(ROUTES.APPROVALS)}
+                endIcon={<ArrowForward sx={{ fontSize: '16px !important' }} />}
+                sx={{
+                  justifyContent: 'space-between',
+                  py: 1.5, px: 2.5, borderRadius: 3,
+                  fontWeight: 700, fontSize: '0.875rem',
+                  background: BRAND.redGradient,
+                  boxShadow: `0 6px 20px ${alpha(BRAND.red, 0.3)}`,
+                }}
+              >
+                Approval Queue
+              </Button>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Add sx={{ fontSize: '18px !important' }} />}
+                onClick={() => navigate(ROUTES.AGREEMENT_CREATE)}
+                sx={{
+                  py: 1.5, borderRadius: 3,
+                  fontWeight: 600, fontSize: '0.875rem',
+                  borderColor: alpha(BRAND.red, 0.35),
+                  borderWidth: 1.5,
+                  color: BRAND.red,
+                  '&:hover': { borderWidth: 1.5, borderColor: BRAND.red, bgcolor: alpha(BRAND.red, 0.04) },
+                }}
+              >
+                New Agreement
+              </Button>
+            </Box>
+          </Paper>
         </Grid>
       </Grid>
     </Box>

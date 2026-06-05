@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Box, Typography, Grid, Divider, Alert } from '@mui/material';
+import { Box, Typography, Grid, Alert } from '@mui/material';
+import { BRAND } from '../../../config/theme';
 import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
 import SearchableSelect from '../../../components/forms/SearchableSelect';
@@ -77,11 +78,11 @@ export default function Step1CompanyVendors({ state, updateFields }) {
   };
 
   return (
-    <Box>
-      <Typography variant="h6" fontWeight={600} mb={0.5}>
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <Typography sx={{ fontSize: '1rem', fontWeight: 700, color: BRAND.textPrimary, mb: 0.5 }}>
         Company & Vendor Setup
       </Typography>
-      <Typography variant="body2" color="text.secondary" mb={3}>
+      <Typography sx={{ fontSize: '0.875rem', color: '#64748B', mb: 3 }}>
         Select the company and vendors associated with this agreement.
       </Typography>
 
@@ -91,7 +92,7 @@ export default function Step1CompanyVendors({ state, updateFields }) {
         </Alert>
       )}
 
-      <Grid container spacing={3}>
+      <Grid container spacing={3} sx={{ flex: 1 }}>
         <Grid size={{ xs: 12, md: 6 }}>
           <SearchableSelect
             label="Company"
@@ -108,8 +109,7 @@ export default function Step1CompanyVendors({ state, updateFields }) {
           />
         </Grid>
 
-        <Grid size={12}>
-          <Divider sx={{ my: 1 }} />
+        <Grid size={{ xs: 12, md: 6 }}>
           <SearchableSelect
             label="Vendors"
             placeholder="Search vendors by name or code…"
@@ -124,9 +124,7 @@ export default function Step1CompanyVendors({ state, updateFields }) {
             maxVisibleChips={2}
             required
           />
-          <Box sx={{ mt: 2 }}>
-            <BulkVendorInput selectedVendors={selectedVendors} onChange={handleVendorChange} />
-          </Box>
+          <BulkVendorInput selectedVendors={selectedVendors} onChange={handleVendorChange} />
         </Grid>
       </Grid>
     </Box>

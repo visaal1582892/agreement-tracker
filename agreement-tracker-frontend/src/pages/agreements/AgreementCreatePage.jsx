@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, alpha, Paper } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
 import { ROUTES } from '../../config/routes';
+import { BRAND } from '../../config/theme';
 import WizardLayout from '../../layouts/WizardLayout';
 import { useAgreementWizard } from '../../hooks/useAgreementWizard';
 import Step1CompanyVendors from './wizard/Step1CompanyVendors';
@@ -89,11 +90,31 @@ export default function AgreementCreatePage() {
   ];
 
   return (
-    <Box>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" fontWeight={700}>New Agreement</Typography>
-        <Typography variant="body2" color="text.secondary">Complete all steps to create a new commercial agreement draft</Typography>
-      </Box>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', height: '100%' }}>
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: { xs: 2.5, md: 3 },
+          borderRadius: 3.5,
+          border: '1px solid rgba(226, 232, 240, 0.8)',
+          boxShadow: '0 4px 24px rgba(15, 23, 42, 0.05)',
+          background: `linear-gradient(120deg, #fff 40%, ${alpha(BRAND.red, 0.03)} 100%)`,
+        }}
+      >
+        <Typography sx={{
+          fontSize: '0.72rem', fontWeight: 600, color: BRAND.red,
+          textTransform: 'uppercase', letterSpacing: '0.1em', mb: 0.75,
+        }}>
+          New Draft
+        </Typography>
+        <Typography sx={{ fontSize: { xs: '1.35rem', md: '1.6rem' }, fontWeight: 800, color: BRAND.textPrimary, letterSpacing: '-0.5px' }}>
+          New Agreement
+        </Typography>
+        <Typography sx={{ mt: 0.5, fontSize: '0.9rem', color: '#64748B' }}>
+          Complete all steps to create a new commercial agreement draft
+        </Typography>
+      </Paper>
 
       <WizardLayout
         activeStep={state.step}

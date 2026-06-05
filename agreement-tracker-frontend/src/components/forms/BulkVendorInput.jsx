@@ -1,14 +1,23 @@
 import { useState } from 'react';
-import { Box, Button, TextField, Chip, Typography, CircularProgress, Alert } from '@mui/material';
-import { ContentPaste } from '@mui/icons-material';
+import {
+  Box, TextField, Typography, CircularProgress, Alert, alpha, Collapse,
+} from '@mui/material';
+import { PlaylistAdd, Check } from '@mui/icons-material';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
+import { BRAND } from '../../config/theme';
 
 export default function BulkVendorInput({ selectedVendors, onChange }) {
-  const [bulkMode, setBulkMode] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const handleClose = () => {
+    setExpanded(false);
+    setPasteText('');
+    setError('');
+  };
 
   const handleBulkResolve = async () => {
     setLoading(true);
@@ -19,63 +28,100 @@ export default function BulkVendorInput({ selectedVendors, onChange }) {
         params: { ids: ids.join(',') },
       });
       const resolved = data.filter((v) => ids.includes(v.vendorCode) || ids.includes(String(v.id)));
-      onChange(resolved);
-      setBulkMode(false);
-      setPasteText('');
+      const merged = [...selectedVendors];
+      resolved.forEach((v) => {
+        if (!merged.some((m) => m.id === v.id)) merged.push(v);
+      });
+      onChange(merged);
+      handleClose();
     } catch {
-      setError('Could not resolve vendor IDs. Check and retry.');
+      setError('Could not resolve vendor codes. Check and retry.');
     } finally {
       setLoading(false);
     }
   };
 
-  const removeVendor = (id) => onChange(selectedVendors.filter((v) => v.id !== id));
-
   return (
-    <Box>
-      <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-        <Typography variant="subtitle2" sx={{ alignSelf: 'center' }}>
-          Selected Vendors ({selectedVendors.length})
-        </Typography>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<ContentPaste />}
-          onClick={() => setBulkMode((v) => !v)}
-        >
-          {bulkMode ? 'Cancel Bulk' : 'Bulk Paste IDs'}
-        </Button>
+    <Box sx={{ mt: 1.25 }}>
+      <Box
+        component="button"
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        sx={{
+          display: 'inline-flex', alignItems: 'center', gap: 0.75,
+          border: 'none', background: 'none', cursor: 'pointer',
+          fontSize: '0.78rem', fontWeight: 600, color: BRAND.red,
+          px: 0.5, py: 0.25, borderRadius: 1,
+          transition: 'background 0.15s ease',
+          '&:hover': { bgcolor: alpha(BRAND.red, 0.06) },
+        }}
+      >
+        <PlaylistAdd sx={{ fontSize: 15 }} />
+        {expanded ? 'Hide paste field' : 'Paste vendor codes'}
       </Box>
 
-      {bulkMode && (
-        <Box sx={{ mb: 2 }}>
+      <Collapse in={expanded}>
+        <Box sx={{
+          mt: 1.25,
+          p: 2,
+          borderRadius: 2.5,
+          border: `1px solid ${alpha(BRAND.red, 0.12)}`,
+          bgcolor: alpha(BRAND.red, 0.02),
+        }}>
+          <Typography sx={{ fontSize: '0.75rem', color: '#64748B', mb: 1 }}>
+            Comma-separated codes — e.g. V001, V002, V003
+          </Typography>
           <TextField
             multiline
-            rows={3}
+            rows={2}
             fullWidth
-            placeholder="Paste comma-separated Vendor IDs, e.g. V001, V002, V003"
+            autoFocus
+            placeholder="V001, V002, V003"
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
             size="small"
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                bgcolor: '#fff',
+                borderRadius: 2,
+                fontSize: '0.85rem',
+              },
+            }}
           />
-          {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
-          <Button
-            variant="contained"
-            size="small"
-            sx={{ mt: 1 }}
-            onClick={handleBulkResolve}
-            disabled={!pasteText.trim() || loading}
-          >
-            {loading ? <CircularProgress size={16} /> : 'Resolve Vendors'}
-          </Button>
+          {error && <Alert severity="error" sx={{ mt: 1.25, borderRadius: 2 }}>{error}</Alert>}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1.25, gap: 1 }}>
+            <Box
+              component="button"
+              type="button"
+              onClick={handleClose}
+              sx={{
+                border: 'none', background: 'none', cursor: 'pointer',
+                fontSize: '0.78rem', fontWeight: 500, color: '#64748B', px: 1.5, py: 0.75,
+              }}
+            >
+              Cancel
+            </Box>
+            <Box
+              component="button"
+              type="button"
+              onClick={handleBulkResolve}
+              disabled={!pasteText.trim() || loading}
+              sx={{
+                display: 'inline-flex', alignItems: 'center', gap: 0.75,
+                border: 'none', cursor: 'pointer',
+                fontSize: '0.78rem', fontWeight: 700, color: '#fff',
+                px: 2, py: 0.75, borderRadius: 2,
+                background: BRAND.redGradient,
+                opacity: (!pasteText.trim() || loading) ? 0.5 : 1,
+                '&:disabled': { cursor: 'not-allowed' },
+              }}
+            >
+              {loading ? <CircularProgress size={14} color="inherit" /> : <Check sx={{ fontSize: 14 }} />}
+              Add vendors
+            </Box>
+          </Box>
         </Box>
-      )}
-
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-        {selectedVendors.map((v) => (
-          <Chip key={v.id} label={v.vendorName} onDelete={() => removeVendor(v.id)} size="small" />
-        ))}
-      </Box>
+      </Collapse>
     </Box>
   );
 }
