@@ -113,7 +113,10 @@ export default function DashboardLayout() {
           width: '100%',
           bgcolor: '#fff',
           color: BRAND.textPrimary,
+          borderRadius: 0,
+          border: 'none',
           borderBottom: '1px solid #E8ECF0',
+          boxShadow: 'none',
         }}
       >
         <Toolbar sx={{ gap: 2, minHeight: '68px !important', px: { xs: 2, md: 3 } }}>
