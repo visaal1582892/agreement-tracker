@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Box, Typography, alpha, Paper } from '@mui/material';
 import { useSnackbar } from 'notistack';
@@ -30,6 +30,7 @@ export default function AgreementCreatePage() {
     reset,
     hydrateFromClone,
   } = useAgreementWizard();
+  const [savingDraft, setSavingDraft] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [documentErrors, setDocumentErrors] = useState({});
 
@@ -94,43 +95,68 @@ export default function AgreementCreatePage() {
     }
   };
 
+  const buildPayload = useCallback(() => ({
+    companyId: state.companyId,
+    vendorIds: state.vendorIds,
+    productRules: {
+      manufacturers: state.productRules.manufacturers,
+      divisionRules: state.productRules.divisionRules,
+      productRules: state.productRules.productRules,
+    },
+    agreements: state.agreements.map(({ details, commercials }) => ({
+      details: {
+        incomeTypeId: details.incomeTypeId,
+        agreementTypeId: details.agreementTypeId,
+        startDate: details.startDate?.split('T')[0],
+        expiryDate: details.expiryDate?.split('T')[0],
+        notes: details.notes || null,
+      },
+      commercials: {
+        commercialStructure: commercials.commercialStructure,
+        commercialValue: commercials.commercialValue || null,
+        calculationFormula: commercials.calculationFormula || null,
+      },
+    })),
+  }), [state]);
+
+  const createAgreements = async () => {
+    const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENTS, buildPayload());
+    return data;
+  };
+
+  const submitCreatedAgreements = async (createdAgreements) => {
+    await Promise.all(
+      (createdAgreements || []).map((agreement) =>
+        axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(agreement.id)),
+      ),
+    );
+  };
+
   const handleNext = () => {
     if (!validate()) return;
-    if (state.step === 2) {
-      handleSubmit();
-    } else {
-      nextStep();
+    nextStep();
+  };
+
+  const handleSaveDraft = async () => {
+    setSavingDraft(true);
+    try {
+      const data = await createAgreements();
+      const count = data.agreements?.length || 1;
+      enqueueSnackbar(`${count} agreement(s) saved as draft`, { variant: 'success' });
+      reset();
+      navigate(ROUTES.AGREEMENTS);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to save draft', { variant: 'error' });
+    } finally {
+      setSavingDraft(false);
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmitForApproval = async () => {
     setSubmitting(true);
     try {
-      const payload = {
-        companyId: state.companyId,
-        vendorIds: state.vendorIds,
-        productRules: {
-          manufacturers: state.productRules.manufacturers,
-          divisionRules: state.productRules.divisionRules,
-          productRules: state.productRules.productRules,
-        },
-        agreements: state.agreements.map(({ details, commercials }) => ({
-          details: {
-            incomeTypeId: details.incomeTypeId,
-            agreementTypeId: details.agreementTypeId,
-            startDate: details.startDate?.split('T')[0],
-            expiryDate: details.expiryDate?.split('T')[0],
-            notes: details.notes || null,
-          },
-          commercials: {
-            commercialStructure: commercials.commercialStructure,
-            commercialValue: commercials.commercialValue || null,
-            calculationFormula: commercials.calculationFormula || null,
-          },
-        })),
-      };
-
-      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENTS, payload);
+      const data = await createAgreements();
+      await submitCreatedAgreements(data.agreements);
       const count = data.agreements?.length || 1;
       enqueueSnackbar(`${count} agreement(s) submitted for approval`, { variant: 'success' });
       reset();
@@ -138,8 +164,7 @@ export default function AgreementCreatePage() {
         ? `/agreements/groups/${data.primaryAgreementGroupId}`
         : ROUTES.AGREEMENTS);
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to create agreement';
-      enqueueSnackbar(msg, { variant: 'error' });
+      enqueueSnackbar(err.response?.data?.message || 'Failed to submit agreement', { variant: 'error' });
     } finally {
       setSubmitting(false);
     }
@@ -195,7 +220,10 @@ export default function AgreementCreatePage() {
         onNext={handleNext}
         onBack={prevStep}
         onCancel={() => navigate(ROUTES.AGREEMENTS)}
+        onSaveDraft={handleSaveDraft}
+        onSubmitForApproval={handleSubmitForApproval}
         isLastStep={state.step === 2}
+        isSavingDraft={savingDraft}
         isSubmitting={submitting}
       >
         {STEP_COMPONENTS[state.step]}

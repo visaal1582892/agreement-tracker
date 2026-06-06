@@ -14,7 +14,18 @@ const cardSx = {
   bgcolor: '#fff',
 };
 
-export default function WizardLayout({ activeStep, children, onNext, onBack, onCancel, isLastStep, isSubmitting }) {
+export default function WizardLayout({
+  activeStep,
+  children,
+  onNext,
+  onBack,
+  onCancel,
+  onSaveDraft,
+  onSubmitForApproval,
+  isLastStep,
+  isSavingDraft,
+  isSubmitting,
+}) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <Paper
@@ -83,6 +94,7 @@ export default function WizardLayout({ activeStep, children, onNext, onBack, onC
           alignItems: 'center',
           gap: 2,
           flexShrink: 0,
+          flexWrap: 'wrap',
         }}>
           <Button
             variant="outlined"
@@ -97,31 +109,66 @@ export default function WizardLayout({ activeStep, children, onNext, onBack, onC
           >
             Cancel
           </Button>
-          <Box sx={{ display: 'flex', gap: 1.5 }}>
+          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <Button
               variant="outlined"
               onClick={onBack}
-              disabled={activeStep === 0}
+              disabled={activeStep === 0 || isSavingDraft || isSubmitting}
               sx={{ borderRadius: 2.5, px: 2.5, minWidth: 90 }}
             >
               Back
             </Button>
-            <Button
-              variant="contained"
-              onClick={onNext}
-              disabled={isSubmitting}
-              sx={{
-                borderRadius: 2.5,
-                px: 3,
-                minWidth: 120,
-                fontWeight: 700,
-                background: BRAND.redGradient,
-                boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
-                '&:hover': { background: BRAND.redGradient },
-              }}
-            >
-              {isLastStep ? (isSubmitting ? 'Submitting…' : 'Submit for Approval') : 'Next'}
-            </Button>
+            {isLastStep ? (
+              <>
+                <Button
+                  variant="outlined"
+                  onClick={onSaveDraft}
+                  disabled={isSavingDraft || isSubmitting}
+                  sx={{
+                    borderRadius: 2.5,
+                    px: 2.5,
+                    minWidth: 130,
+                    fontWeight: 600,
+                    borderColor: '#CBD5E1',
+                    color: '#475569',
+                  }}
+                >
+                  {isSavingDraft ? 'Saving…' : 'Save as Draft'}
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={onSubmitForApproval}
+                  disabled={isSavingDraft || isSubmitting}
+                  sx={{
+                    borderRadius: 2.5,
+                    px: 3,
+                    minWidth: 160,
+                    fontWeight: 700,
+                    background: BRAND.redGradient,
+                    boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
+                    '&:hover': { background: BRAND.redGradient },
+                  }}
+                >
+                  {isSubmitting ? 'Submitting…' : 'Submit for Approval'}
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="contained"
+                onClick={onNext}
+                sx={{
+                  borderRadius: 2.5,
+                  px: 3,
+                  minWidth: 120,
+                  fontWeight: 700,
+                  background: BRAND.redGradient,
+                  boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
+                  '&:hover': { background: BRAND.redGradient },
+                }}
+              >
+                Next
+              </Button>
+            )}
           </Box>
         </Box>
       </Paper>

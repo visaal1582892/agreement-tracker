@@ -1,6 +1,7 @@
 import { Box, Typography, alpha } from '@mui/material';
 
 const STATUS_CONFIG = {
+  SUPERSEDED:       { label: 'Superseded',        bg: '#F1F5F9', color: '#94A3B8', dot: '#CBD5E1' },
   ACTIVE:           { label: 'Active',           bg: '#DCFCE7', color: '#15803D', dot: '#22C55E' },
   EXPIRED:          { label: 'Expired',           bg: '#F1F5F9', color: '#64748B', dot: '#94A3B8' },
   TERMINATED:       { label: 'Terminated',        bg: '#FEE2E2', color: '#B91C1C', dot: '#EF4444' },

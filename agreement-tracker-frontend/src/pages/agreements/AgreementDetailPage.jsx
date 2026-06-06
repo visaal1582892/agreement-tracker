@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
@@ -45,9 +45,42 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
   const terminateModal = useModal();
   const [terminateData, setTerminateData] = useState({ terminationDate: '', terminationReason: '' });
 
-  const load = async () => {
+  const loadVersionDetail = useCallback(async (versionId) => {
+    if (!versionId) return null;
+    try {
+      const [agrRes, tlRes] = await Promise.all([
+        axiosInstance.get(ENDPOINTS.AGREEMENT_BY_ID(versionId)),
+        axiosInstance.get(ENDPOINTS.AGREEMENT_TIMELINE(versionId)),
+      ]);
+      setAgreement(agrRes.data);
+      setTimeline(tlRes.data);
+      return agrRes.data;
+    } catch {
+      enqueueSnackbar('Failed to load version details', { variant: 'error' });
+      return null;
+    }
+  }, [enqueueSnackbar]);
+
+  const applyVersionPatch = useCallback((updated) => {
+    if (!updated) return;
+    setAgreement(updated);
+    setVersions((prev) => prev.map((v) => (
+      v.id === updated.id
+        ? {
+          ...v,
+          approvalStatus: updated.approvalStatus,
+          derivedStatus: updated.derivedStatus,
+        }
+        : v
+    )));
+    if (updated.approvalStatus === 'APPROVED') {
+      setGroup((prev) => (prev ? { ...prev, currentVersionId: updated.id } : prev));
+    }
+  }, []);
+
+  const load = async (preferredVersionId, { silent = false } = {}) => {
     if (!groupId || groupId === 'undefined') return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const [groupRes, versionsRes] = await Promise.all([
         axiosInstance.get(ENDPOINTS.AGREEMENT_GROUP_BY_ID(groupId)),
@@ -55,15 +88,24 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
       ]);
       setGroup(groupRes.data);
       setVersions(versionsRes.data);
+
       const pendingVersion = versionsRes.data.find((v) => v.approvalStatus === 'PENDING_APPROVAL');
-      const currentId = pendingVersion?.id
+      const nextVersionId = preferredVersionId
+        || pendingVersion?.id
         || groupRes.data.currentVersionId
         || versionsRes.data[versionsRes.data.length - 1]?.id;
-      setSelectedVersionId(currentId);
+
+      setSelectedVersionId(nextVersionId);
+      if (nextVersionId) {
+        await loadVersionDetail(nextVersionId);
+      } else {
+        setAgreement(null);
+        setTimeline([]);
+      }
     } catch {
       enqueueSnackbar('Failed to load agreement', { variant: 'error' });
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -79,36 +121,30 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
 
   useEffect(() => {
     if (!selectedVersionId) return;
-    const loadVersion = async () => {
-      try {
-        const [agrRes, tlRes] = await Promise.all([
-          axiosInstance.get(ENDPOINTS.AGREEMENT_BY_ID(selectedVersionId)),
-          axiosInstance.get(ENDPOINTS.AGREEMENT_TIMELINE(selectedVersionId)),
-        ]);
-        setAgreement(agrRes.data);
-        setTimeline(tlRes.data);
-      } catch {
-        enqueueSnackbar('Failed to load version details', { variant: 'error' });
-      }
-    };
-    loadVersion();
-  }, [selectedVersionId]);
+    loadVersionDetail(selectedVersionId);
+  }, [selectedVersionId, loadVersionDetail]);
+
+  const refreshAfterMutation = async (updated, versionId = selectedVersionId) => {
+    applyVersionPatch(updated);
+    await load(versionId ?? updated?.id, { silent: true });
+  };
 
   const handleSubmit = async () => {
     try {
-      await dispatch(submitAgreementForApproval(selectedVersionId)).unwrap();
+      const updated = await dispatch(submitAgreementForApproval(selectedVersionId)).unwrap();
       enqueueSnackbar('Submitted for approval', { variant: 'success' });
-      load();
+      await refreshAfterMutation(updated, selectedVersionId);
     } catch (err) {
       enqueueSnackbar(typeof err === 'string' ? err : 'Submit failed', { variant: 'error' });
     }
   };
 
   const handleApprove = async () => {
+    const versionId = selectedVersionId;
     try {
-      await dispatch(approveAgreement({ agreementId: selectedVersionId })).unwrap();
+      const updated = await dispatch(approveAgreement({ agreementId: versionId })).unwrap();
       enqueueSnackbar('Agreement approved', { variant: 'success' });
-      load();
+      await refreshAfterMutation(updated, versionId);
       onActionComplete?.();
     } catch (err) {
       enqueueSnackbar(typeof err === 'string' ? err : 'Approval failed', { variant: 'error' });
@@ -116,12 +152,13 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
   };
 
   const handleReject = async () => {
+    const versionId = selectedVersionId;
     try {
-      await dispatch(rejectAgreement({ agreementId: selectedVersionId, remarks: rejectRemarks })).unwrap();
+      const updated = await dispatch(rejectAgreement({ agreementId: versionId, remarks: rejectRemarks })).unwrap();
       enqueueSnackbar('Agreement rejected', { variant: 'success' });
       rejectModal.close();
       setRejectRemarks('');
-      load();
+      await refreshAfterMutation(updated, versionId);
       onActionComplete?.();
     } catch (err) {
       enqueueSnackbar(typeof err === 'string' ? err : 'Rejection failed', { variant: 'error' });
@@ -131,6 +168,7 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
   const handleNewVersion = async () => {
     try {
       const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_NEW_VERSION(groupId));
+      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(data.id));
       const msg = agreement?.approvalStatus === 'REJECTED'
         ? `Revision V${data.versionNumber} submitted for approval`
         : `New version V${data.versionNumber} submitted for approval`;

@@ -27,6 +27,10 @@ public class AgreementStatusResolver {
             return AgreementStatus.REJECTED;
         }
         if (agreement.getApprovalStatus() == ApprovalStatus.APPROVED) {
+            Long currentVersionId = agreement.getAgreementGroup().getCurrentVersionId();
+            if (currentVersionId != null && !currentVersionId.equals(agreement.getId())) {
+                return AgreementStatus.SUPERSEDED;
+            }
             if (agreement.getExpiryDate().isBefore(LocalDate.now())) {
                 return AgreementStatus.EXPIRED;
             }

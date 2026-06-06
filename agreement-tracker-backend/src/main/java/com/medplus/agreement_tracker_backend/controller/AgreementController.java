@@ -9,6 +9,7 @@ import com.medplus.agreement_tracker_backend.dto.request.TransferOwnershipReques
 import com.medplus.agreement_tracker_backend.dto.response.AgreementGroupResponse;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
+import com.medplus.agreement_tracker_backend.dto.response.BulkAgreementCreateResponse;
 import com.medplus.agreement_tracker_backend.dto.response.PagedResponse;
 import com.medplus.agreement_tracker_backend.enums.RightCode;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;

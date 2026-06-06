@@ -122,7 +122,6 @@ public class AgreementServiceImpl implements AgreementService {
             saveRulesAndComputeProducts(agreement, manufacturerIds, divisionRules, productRules, currentUserId);
 
             recordAudit(group.getId(), agreement.getId(), "AGREEMENT_CREATED", null, agreementNumber, currentUserId);
-            agreement = applySubmitForApproval(agreement, currentUserId);
 
             if (primaryGroupId == null) {
                 primaryGroupId = group.getId();
@@ -169,7 +168,6 @@ public class AgreementServiceImpl implements AgreementService {
         recordAudit(group.getId(), newVersion.getId(), "NEW_VERSION_CREATED",
                 String.valueOf(source.getVersionNumber()), String.valueOf(newVersion.getVersionNumber()), currentUserId);
 
-        newVersion = applySubmitForApproval(newVersion, currentUserId);
         return toAgreementResponse(newVersion);
     }
 
@@ -227,7 +225,6 @@ public class AgreementServiceImpl implements AgreementService {
                 String.valueOf(source.getVersionNumber()), String.valueOf(newVersion.getVersionNumber()), currentUserId);
 
         // group.currentVersionId intentionally NOT updated here — stays on approved version until this new version is approved
-        newVersion = applySubmitForApproval(newVersion, currentUserId);
         return toAgreementResponse(newVersion);
     }
 

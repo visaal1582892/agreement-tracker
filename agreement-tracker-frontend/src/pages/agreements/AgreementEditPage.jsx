@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Box, Typography, alpha, Paper, CircularProgress, Alert } from '@mui/material';
 import { useSnackbar } from 'notistack';
@@ -32,6 +32,7 @@ export default function AgreementEditPage() {
 
   const [sourceAgreement, setSourceAgreement] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [documentErrors, setDocumentErrors] = useState({});
 
@@ -80,50 +81,67 @@ export default function AgreementEditPage() {
     }
   };
 
+  const buildPayload = useCallback(() => {
+    const agreement = state.agreements[0];
+    return {
+      vendorIds: state.vendorIds,
+      productRules: {
+        manufacturers: state.productRules.manufacturers,
+        divisionRules: state.productRules.divisionRules,
+        productRules: state.productRules.productRules,
+      },
+      details: {
+        incomeTypeId: agreement.details.incomeTypeId,
+        agreementTypeId: agreement.details.agreementTypeId,
+        startDate: agreement.details.startDate?.split('T')[0],
+        expiryDate: agreement.details.expiryDate?.split('T')[0],
+        notes: agreement.details.notes || null,
+      },
+      commercials: {
+        commercialStructure: agreement.commercials.commercialStructure,
+        commercialValue: agreement.commercials.commercialValue || null,
+        calculationFormula: agreement.commercials.calculationFormula || null,
+      },
+    };
+  }, [state]);
+
+  const createEditedVersion = async () => {
+    const { data } = await axiosInstance.post(
+      ENDPOINTS.AGREEMENT_CREATE_VERSION(agreementId),
+      buildPayload(),
+    );
+    return data;
+  };
+
   const handleNext = () => {
     if (!validate()) return;
-    if (state.step === 2) {
-      handleSubmit();
-    } else {
-      nextStep();
+    nextStep();
+  };
+
+  const handleSaveDraft = async () => {
+    setSavingDraft(true);
+    try {
+      const data = await createEditedVersion();
+      enqueueSnackbar(`Version V${data.versionNumber} saved as draft`, { variant: 'success' });
+      reset();
+      navigate(ROUTES.AGREEMENTS);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to save draft', { variant: 'error' });
+    } finally {
+      setSavingDraft(false);
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmitForApproval = async () => {
     setSubmitting(true);
-    const agreement = state.agreements[0];
     try {
-      const payload = {
-        vendorIds: state.vendorIds,
-        productRules: {
-          manufacturers: state.productRules.manufacturers,
-          divisionRules: state.productRules.divisionRules,
-          productRules: state.productRules.productRules,
-        },
-        details: {
-          incomeTypeId: agreement.details.incomeTypeId,
-          agreementTypeId: agreement.details.agreementTypeId,
-          startDate: agreement.details.startDate?.split('T')[0],
-          expiryDate: agreement.details.expiryDate?.split('T')[0],
-          notes: agreement.details.notes || null,
-        },
-        commercials: {
-          commercialStructure: agreement.commercials.commercialStructure,
-          commercialValue: agreement.commercials.commercialValue || null,
-          calculationFormula: agreement.commercials.calculationFormula || null,
-        },
-      };
-
-      const { data } = await axiosInstance.post(
-        ENDPOINTS.AGREEMENT_CREATE_VERSION(agreementId),
-        payload,
-      );
-      enqueueSnackbar('New version submitted for approval', { variant: 'success' });
+      const data = await createEditedVersion();
+      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(data.id));
+      enqueueSnackbar(`Version V${data.versionNumber} submitted for approval`, { variant: 'success' });
       reset();
       navigate(`/agreements/groups/${data.agreementGroupId}`);
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to submit edited version';
-      enqueueSnackbar(msg, { variant: 'error' });
+      enqueueSnackbar(err.response?.data?.message || 'Failed to submit edited version', { variant: 'error' });
     } finally {
       setSubmitting(false);
     }
@@ -189,7 +207,7 @@ export default function AgreementEditPage() {
           {sourceAgreement.agreementNumber}
         </Typography>
         <Typography sx={{ mt: 0.5, fontSize: '0.9rem', color: '#64748B' }}>
-          {versionLabel} — changes will create a new version pending approval
+          {versionLabel} — save as draft or submit the new version for approval
         </Typography>
       </Paper>
 
@@ -198,7 +216,10 @@ export default function AgreementEditPage() {
         onNext={handleNext}
         onBack={prevStep}
         onCancel={() => navigate(`/agreements/groups/${sourceAgreement.agreementGroupId}`)}
+        onSaveDraft={handleSaveDraft}
+        onSubmitForApproval={handleSubmitForApproval}
         isLastStep={state.step === 2}
+        isSavingDraft={savingDraft}
         isSubmitting={submitting}
       >
         {STEP_COMPONENTS[state.step]}
