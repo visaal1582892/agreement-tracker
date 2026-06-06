@@ -32,11 +32,11 @@ export const submitAgreementForApproval = createAsyncThunk(
 
 export const fetchPendingApprovals = createAsyncThunk(
   'agreements/fetchPending',
-  async ({ page = 0, size = 20 } = {}, { rejectWithValue }) => {
+  async ({ page = 0, size = 10, search = '' } = {}, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_PENDING_APPROVALS, {
-        params: { page, size },
-      });
+      const params = { page, size };
+      if (search?.trim()) params.search = search.trim();
+      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_PENDING_APPROVALS, { params });
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch pending approvals');
@@ -53,6 +53,9 @@ const agreementSlice = createSlice({
     currentPage: 0,
     pendingApprovals: [],
     pendingTotal: 0,
+    pendingTotalPages: 0,
+    pendingPage: 0,
+    pendingPageSize: 10,
     loading: false,
     error: null,
   },
@@ -78,8 +81,11 @@ const agreementSlice = createSlice({
       .addCase(fetchPendingApprovals.pending, (state) => { state.loading = true; })
       .addCase(fetchPendingApprovals.fulfilled, (state, { payload }) => {
         state.loading = false;
-        state.pendingApprovals = payload.content;
-        state.pendingTotal = payload.totalElements;
+        state.pendingApprovals = payload.content ?? [];
+        state.pendingTotal = payload.totalElements ?? 0;
+        state.pendingTotalPages = payload.totalPages ?? 0;
+        state.pendingPage = payload.number ?? 0;
+        state.pendingPageSize = payload.size ?? state.pendingPageSize;
       })
       .addCase(fetchPendingApprovals.rejected, (state, { payload }) => {
         state.loading = false;

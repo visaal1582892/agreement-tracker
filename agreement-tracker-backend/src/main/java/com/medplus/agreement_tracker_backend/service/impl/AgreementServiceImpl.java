@@ -486,8 +486,9 @@ public class AgreementServiceImpl implements AgreementService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<AgreementResponse> getPendingApprovals(Pageable pageable) {
-        return agreementRepository.findAllPendingApproval(pageable)
+    public Page<AgreementResponse> getPendingApprovals(String search, Pageable pageable) {
+        String term = (search != null && !search.isBlank()) ? search.trim() : null;
+        return agreementRepository.findAllPendingApproval(term, pageable)
                 .map(this::toAgreementResponse);
     }
 

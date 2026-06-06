@@ -44,7 +44,7 @@ public interface AgreementService {
 
     AgreementResponse toggleInProgress(Long agreementId, boolean inProgress, Long currentUserId);
 
-    Page<AgreementResponse> getPendingApprovals(Pageable pageable);
+    Page<AgreementResponse> getPendingApprovals(String search, Pageable pageable);
 
     List<ApprovalTimelineResponse> getApprovalTimeline(Long agreementId);
 

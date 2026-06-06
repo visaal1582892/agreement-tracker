@@ -170,8 +170,9 @@ public class AgreementController {
     @GetMapping("/pending-approvals")
     @PreAuthorize(AGREEMENT_APPROVE)
     public ResponseEntity<Page<AgreementResponse>> getPendingApprovals(
-            @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(agreementService.getPendingApprovals(pageable));
+            @RequestParam(required = false) String search,
+            @PageableDefault(size = 10) Pageable pageable) {
+        return ResponseEntity.ok(agreementService.getPendingApprovals(search, pageable));
     }
 
     @GetMapping("/{agreementId}/timeline")

@@ -96,8 +96,6 @@ export default function Step3Details({ state, updateFields, documentError, onCle
           <DateRangeFields
             startDate={state.startDate}
             expiryDate={state.expiryDate}
-            tenureValue={state.tenureValue}
-            tenureUnit={state.tenureUnit}
             onChange={(fields) => updateFields(fields)}
           />
         </Grid>

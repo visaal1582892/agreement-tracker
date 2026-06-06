@@ -130,8 +130,6 @@ export default function AgreementDetailsCard({
           <DateRangeFields
             startDate={details.startDate}
             expiryDate={details.expiryDate}
-            tenureValue={details.tenureValue}
-            tenureUnit={details.tenureUnit}
             onChange={(fields) => onUpdateDetails(fields)}
           />
         </Grid>

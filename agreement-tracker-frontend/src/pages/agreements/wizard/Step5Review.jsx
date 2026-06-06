@@ -1,6 +1,6 @@
 import { Box, Typography, Grid, Divider, Chip } from '@mui/material';
 import dayjs from 'dayjs';
-import { formatTenureDisplay } from '../../../components/forms/DateRangeFields';
+import { formatTenureFromDates } from '../../../components/forms/DateRangeFields';
 
 function ReviewRow({ label, value }) {
   return (
@@ -44,7 +44,7 @@ export default function Step5Review({ state }) {
                 <ReviewRow label="Agreement Type" value={agreement.details.agreementTypeId ? `ID: ${agreement.details.agreementTypeId}` : ''} />
                 <ReviewRow label="Start Date" value={agreement.details.startDate ? dayjs(agreement.details.startDate).format('DD MMM YYYY') : ''} />
                 <ReviewRow label="Expiry Date" value={agreement.details.expiryDate ? dayjs(agreement.details.expiryDate).format('DD MMM YYYY') : ''} />
-                <ReviewRow label="Tenure" value={formatTenureDisplay(agreement.details.tenureValue, agreement.details.tenureUnit)} />
+                <ReviewRow label="Tenure" value={formatTenureFromDates(agreement.details.startDate, agreement.details.expiryDate)} />
                 {agreement.details.notes && <ReviewRow label="Notes" value={agreement.details.notes} />}
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>

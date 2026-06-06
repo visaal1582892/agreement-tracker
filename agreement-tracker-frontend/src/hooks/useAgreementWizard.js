@@ -11,8 +11,6 @@ export function createBlankAgreement() {
       agreementTypeId: null,
       startDate: null,
       expiryDate: null,
-      tenureValue: '',
-      tenureUnit: 'MONTHS',
       notes: '',
       documents: [],
     },

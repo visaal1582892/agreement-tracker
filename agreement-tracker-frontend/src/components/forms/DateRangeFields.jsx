@@ -1,99 +1,151 @@
-import { Box, Grid, MenuItem, Select, TextField, Typography } from '@mui/material';
+import { useEffect, useState } from 'react';
+import { Box, FormControl, Grid, InputBase, InputLabel, Typography } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
 import { BRAND } from '../../config/theme';
 
-export const TENURE_UNITS = {
-  DAYS: 'DAYS',
-  MONTHS: 'MONTHS',
-  YEARS: 'YEARS',
-};
+dayjs.extend(customParseFormat);
 
-const UNIT_LABELS = {
-  [TENURE_UNITS.DAYS]: 'Days',
-  [TENURE_UNITS.MONTHS]: 'Months',
-  [TENURE_UNITS.YEARS]: 'Years',
-};
+const DATE_FORMAT = 'DD/MM/YYYY';
 
 const toDay = (d) => dayjs(d).startOf('day');
 
-export function isLastDayOfMonth(date) {
-  const d = toDay(date);
-  return d.isValid() && d.date() === d.endOf('month').date();
-}
+const parseTenureInput = (value) => {
+  if (value === '' || value == null) return 0;
+  const parsed = parseInt(String(value), 10);
+  return Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
+};
 
-/** Inclusive tenure: expiry is last day of the covered period. */
-export function calculateExpiryFromTenure(startDate, tenureValue, tenureUnit = TENURE_UNITS.MONTHS) {
-  const start = toDay(startDate);
-  const amount = Number(tenureValue);
-  if (!start.isValid() || !amount || amount < 1) return null;
+const hasAnyTenure = (years, months, days) =>
+  parseTenureInput(years) > 0 || parseTenureInput(months) > 0 || parseTenureInput(days) > 0;
 
-  const endOfMonthStart = isLastDayOfMonth(start);
-
-  if (tenureUnit === TENURE_UNITS.DAYS) {
-    return start.add(amount - 1, 'day');
-  }
-
-  if (tenureUnit === TENURE_UNITS.MONTHS) {
-    const target = start.add(amount, 'month');
-    if (endOfMonthStart) return target.endOf('month').startOf('day');
-    return target.subtract(1, 'day');
-  }
-
-  if (tenureUnit === TENURE_UNITS.YEARS) {
-    const target = start.add(amount, 'year');
-    if (endOfMonthStart) return target.endOf('month').startOf('day');
-    return target.subtract(1, 'day');
-  }
-
-  return null;
-}
-
+/** Decompose date span into whole years, remaining months, remaining days. */
 export function calculateTenureFromDates(startDate, expiryDate) {
   const start = toDay(startDate);
   const expiry = toDay(expiryDate);
-  if (!start.isValid() || !expiry.isValid() || expiry.isBefore(start)) {
-    return { tenureValue: '', tenureUnit: TENURE_UNITS.MONTHS };
+  if (!start.isValid() || !expiry.isValid() || !expiry.isAfter(start)) {
+    return { years: 0, months: 0, days: 0 };
   }
 
-  for (let years = expiry.add(1, 'day').diff(start, 'year'); years >= 1; years -= 1) {
-    const computed = calculateExpiryFromTenure(start, years, TENURE_UNITS.YEARS);
-    if (computed?.isSame(expiry, 'day')) {
-      return { tenureValue: String(years), tenureUnit: TENURE_UNITS.YEARS };
-    }
-  }
+  const years = expiry.diff(start, 'year');
+  let anchor = start.add(years, 'year');
 
-  const monthCount = expiry.add(1, 'day').diff(start, 'month');
-  if (monthCount >= 1 && monthCount <= 11) {
-    const computed = calculateExpiryFromTenure(start, monthCount, TENURE_UNITS.MONTHS);
-    if (computed?.isSame(expiry, 'day')) {
-      return { tenureValue: String(monthCount), tenureUnit: TENURE_UNITS.MONTHS };
-    }
-  }
+  const months = expiry.diff(anchor, 'month');
+  anchor = anchor.add(months, 'month');
 
-  const days = expiry.add(1, 'day').diff(start, 'day');
-  return { tenureValue: String(days), tenureUnit: TENURE_UNITS.DAYS };
+  const days = expiry.diff(anchor, 'day');
+
+  return { years, months, days };
 }
 
-export function formatTenureDisplay(tenureValue, tenureUnit) {
-  if (!tenureValue) return '';
-  const unit = UNIT_LABELS[tenureUnit] || UNIT_LABELS[TENURE_UNITS.MONTHS];
-  return `${tenureValue} ${unit}`;
+/** Add Y/M/D tenure to start date → expiry (exclusive span: expiry strictly after start). */
+export function calculateExpiryFromTenure(startDate, tenureYears, tenureMonths, tenureDays) {
+  const start = toDay(startDate);
+  if (!start.isValid()) return null;
+
+  const years = parseTenureInput(tenureYears);
+  const months = parseTenureInput(tenureMonths);
+  const days = parseTenureInput(tenureDays);
+
+  if (years === 0 && months === 0 && days === 0) return null;
+
+  const expiry = start.add(years, 'year').add(months, 'month').add(days, 'day');
+  return expiry.isAfter(start) ? expiry : null;
 }
 
-export default function DateRangeFields({
-  startDate,
-  expiryDate,
-  tenureValue,
-  tenureUnit = TENURE_UNITS.MONTHS,
-  onChange,
-}) {
+export function formatTenureFromDates(startDate, expiryDate) {
+  const { years, months, days } = calculateTenureFromDates(startDate, expiryDate);
+  if (years === 0 && months === 0 && days === 0) return '';
+
+  const parts = [];
+  if (years > 0) parts.push(`${years} Year${years !== 1 ? 's' : ''}`);
+  if (months > 0) parts.push(`${months} Month${months !== 1 ? 's' : ''}`);
+  if (days > 0) parts.push(`${days} Day${days !== 1 ? 's' : ''}`);
+  return parts.join(', ');
+}
+
+function tenureToFields({ years, months, days }) {
+  return {
+    tenureYears: years > 0 ? String(years) : '',
+    tenureMonths: months > 0 ? String(months) : '',
+    tenureDays: days > 0 ? String(days) : '',
+  };
+}
+
+const TENURE_SEGMENTS = [
+  { key: 'years', label: 'Years' },
+  { key: 'months', label: 'Months' },
+  { key: 'days', label: 'Days' },
+];
+
+const unifiedTenureWrapperSx = {
+  display: 'flex',
+  alignItems: 'stretch',
+  height: 40,
+  border: `1px solid ${BRAND.borderLight}`,
+  borderRadius: '4px',
+  bgcolor: BRAND.white,
+  overflow: 'hidden',
+  transition: 'border-color 0.15s ease',
+  '&:hover': {
+    borderColor: '#94A3B8',
+  },
+  '&:focus-within': {
+    borderColor: BRAND.red,
+    borderWidth: 2,
+  },
+};
+
+const tenureSegmentSx = {
+  flex: 1,
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  px: 0.5,
+  borderLeft: `1px solid ${BRAND.borderLight}`,
+  '&:first-of-type': {
+    borderLeft: 'none',
+  },
+};
+
+const tenureInputSx = {
+  width: '100%',
+  fontSize: '0.875rem',
+  fontWeight: 500,
+  textAlign: 'center',
+  lineHeight: 1.2,
+  '& input': {
+    textAlign: 'center',
+    p: 0,
+    MozAppearance: 'textfield',
+  },
+  '& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button': {
+    WebkitAppearance: 'none',
+    margin: 0,
+  },
+};
+
+const datePickerSlotProps = {
+  textField: {
+    fullWidth: true,
+    size: 'small',
+  },
+};
+
+export default function DateRangeFields({ startDate, expiryDate, onChange }) {
+  const [tenureYears, setTenureYears] = useState('');
+  const [tenureMonths, setTenureMonths] = useState('');
+  const [tenureDays, setTenureDays] = useState('');
+
+  const tenureValues = { years: tenureYears, months: tenureMonths, days: tenureDays };
+
   const emit = (patch) => {
     onChange({
       startDate: patch.startDate !== undefined ? patch.startDate : (startDate ?? null),
       expiryDate: patch.expiryDate !== undefined ? patch.expiryDate : (expiryDate ?? null),
-      tenureValue: patch.tenureValue !== undefined ? patch.tenureValue : (tenureValue ?? ''),
-      tenureUnit: patch.tenureUnit !== undefined ? patch.tenureUnit : (tenureUnit ?? TENURE_UNITS.MONTHS),
     });
   };
 
@@ -103,145 +155,159 @@ export default function DateRangeFields({
     return parsed.isValid() ? parsed.toISOString() : null;
   };
 
-  const hasTenure = tenureValue !== '' && tenureValue != null && Number(tenureValue) > 0;
+  const applyTenureFields = (fields) => {
+    setTenureYears(fields.tenureYears ?? '');
+    setTenureMonths(fields.tenureMonths ?? '');
+    setTenureDays(fields.tenureDays ?? '');
+  };
 
-  const applyTenureForward = (nextStartIso, nextValue, nextUnit) => {
-    if (!nextStartIso || !nextValue || Number(nextValue) < 1) {
-      emit({ tenureValue: nextValue, tenureUnit: nextUnit });
+  const syncTenureFromDates = (nextStart, nextExpiry) => {
+    if (nextStart && nextExpiry) {
+      applyTenureFields(tenureToFields(calculateTenureFromDates(nextStart, nextExpiry)));
       return;
     }
-    const nextExpiry = calculateExpiryFromTenure(nextStartIso, nextValue, nextUnit);
-    emit({
-      startDate: nextStartIso,
-      tenureValue: nextValue,
-      tenureUnit: nextUnit,
-      expiryDate: toIso(nextExpiry),
-    });
+    applyTenureFields({ tenureYears: '', tenureMonths: '', tenureDays: '' });
+  };
+
+  // Edit-mode rehydration + keep tenure in sync when dates change externally.
+  useEffect(() => {
+    syncTenureFromDates(startDate, expiryDate);
+  }, [startDate, expiryDate]);
+
+  const computeExpiryIso = (nextStartIso, years, months, days) => {
+    const nextExpiry = calculateExpiryFromTenure(nextStartIso, years, months, days);
+    return nextExpiry ? toIso(nextExpiry) : null;
   };
 
   const handleStartChange = (date) => {
     const nextStart = date ? date.startOf('day') : null;
     if (!nextStart?.isValid()) {
-      emit({ startDate: null, expiryDate: null, tenureValue: '', tenureUnit: TENURE_UNITS.MONTHS });
+      applyTenureFields({ tenureYears: '', tenureMonths: '', tenureDays: '' });
+      emit({ startDate: null, expiryDate: null });
       return;
     }
+
     const nextStartIso = toIso(nextStart);
-    if (hasTenure) {
-      applyTenureForward(nextStartIso, tenureValue, tenureUnit);
+
+    if (hasAnyTenure(tenureYears, tenureMonths, tenureDays)) {
+      emit({
+        startDate: nextStartIso,
+        expiryDate: computeExpiryIso(nextStartIso, tenureYears, tenureMonths, tenureDays),
+      });
       return;
     }
+
     if (expiryDate) {
-      const derived = calculateTenureFromDates(nextStart, expiryDate);
-      emit({ startDate: nextStartIso, ...derived });
+      if (!toDay(expiryDate).isAfter(nextStart)) {
+        applyTenureFields({ tenureYears: '', tenureMonths: '', tenureDays: '' });
+        emit({ startDate: nextStartIso, expiryDate: null });
+        return;
+      }
+      emit({ startDate: nextStartIso });
       return;
     }
+
     emit({ startDate: nextStartIso });
   };
 
-  const handleTenureValueChange = (e) => {
-    const nextValue = e.target.value;
-    if (nextValue === '') {
-      emit({ tenureValue: '' });
-      return;
-    }
-    if (startDate) {
-      applyTenureForward(startDate, nextValue, tenureUnit);
-      return;
-    }
-    emit({ tenureValue: nextValue });
-  };
+  const handleTenureChange = (field, rawValue) => {
+    const sanitized = rawValue === '' ? '' : String(Math.max(0, parseTenureInput(rawValue)));
 
-  const handleTenureUnitChange = (e) => {
-    const nextUnit = e.target.value;
-    if (!hasTenure) {
-      emit({ tenureUnit: nextUnit });
+    const nextYears = field === 'years' ? sanitized : tenureYears;
+    const nextMonths = field === 'months' ? sanitized : tenureMonths;
+    const nextDays = field === 'days' ? sanitized : tenureDays;
+
+    if (field === 'years') setTenureYears(sanitized);
+    if (field === 'months') setTenureMonths(sanitized);
+    if (field === 'days') setTenureDays(sanitized);
+
+    if (!startDate) return;
+
+    if (!hasAnyTenure(nextYears, nextMonths, nextDays)) {
+      emit({ expiryDate: null });
       return;
     }
-    if (startDate) {
-      applyTenureForward(startDate, tenureValue, nextUnit);
-      return;
-    }
-    emit({ tenureUnit: nextUnit });
+
+    emit({ expiryDate: computeExpiryIso(startDate, nextYears, nextMonths, nextDays) });
   };
 
   const handleExpiryChange = (date) => {
     const nextExpiry = date ? date.startOf('day') : null;
     if (!nextExpiry?.isValid()) {
-      emit({ expiryDate: null, tenureValue: '', tenureUnit: TENURE_UNITS.MONTHS });
+      applyTenureFields({ tenureYears: '', tenureMonths: '', tenureDays: '' });
+      emit({ expiryDate: null });
       return;
     }
-    if (startDate && nextExpiry.isBefore(toDay(startDate))) {
+
+    if (startDate && !nextExpiry.isAfter(toDay(startDate))) {
       return;
     }
-    if (startDate) {
-      const derived = calculateTenureFromDates(startDate, nextExpiry);
-      emit({ expiryDate: toIso(nextExpiry), ...derived });
-      return;
-    }
+
     emit({ expiryDate: toIso(nextExpiry) });
   };
 
   return (
-    <Grid container spacing={2.5}>
+    <Grid container spacing={2.5} alignItems="flex-end">
       <Grid size={{ xs: 12, md: 4 }}>
         <DatePicker
           label="Start Date *"
+          format={DATE_FORMAT}
           value={startDate ? dayjs(startDate) : null}
           onChange={handleStartChange}
-          slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+          slotProps={datePickerSlotProps}
         />
       </Grid>
 
       <Grid size={{ xs: 12, md: 4 }}>
-        <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 600, color: BRAND.textSecondary }}>
-          Tenure
-        </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'stretch' }}>
-          <TextField
-            type="number"
-            size="small"
-            value={tenureValue ?? ''}
-            onChange={handleTenureValueChange}
-            placeholder="Value"
-            inputProps={{ min: 1 }}
+        <FormControl fullWidth size="small" variant="outlined">
+          <InputLabel
+            shrink
             sx={{
-              flex: 1,
-              '& .MuiOutlinedInput-root': {
-                borderTopRightRadius: 0,
-                borderBottomRightRadius: 0,
-                '& fieldset': { borderColor: BRAND.borderLight, borderRight: 0 },
-              },
-            }}
-          />
-          <Select
-            size="small"
-            value={tenureUnit || TENURE_UNITS.MONTHS}
-            onChange={handleTenureUnitChange}
-            sx={{
-              minWidth: 112,
+              px: 0.5,
               bgcolor: BRAND.white,
-              '& .MuiOutlinedInput-root': {
-                borderTopLeftRadius: 0,
-                borderBottomLeftRadius: 0,
-                height: '100%',
-              },
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: BRAND.borderLight },
+              color: BRAND.textSecondary,
+              fontWeight: 600,
+              fontSize: '0.75rem',
             }}
           >
-            {Object.entries(UNIT_LABELS).map(([value, label]) => (
-              <MenuItem key={value} value={value}>{label}</MenuItem>
+            Tenure
+          </InputLabel>
+          <Box sx={unifiedTenureWrapperSx}>
+            {TENURE_SEGMENTS.map(({ key, label }) => (
+              <Box key={key} sx={tenureSegmentSx}>
+                <InputBase
+                  type="number"
+                  value={tenureValues[key]}
+                  onChange={(e) => handleTenureChange(key, e.target.value)}
+                  placeholder="0"
+                  inputProps={{ min: 0, 'aria-label': label }}
+                  sx={tenureInputSx}
+                />
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontSize: '0.625rem',
+                    lineHeight: 1,
+                    color: BRAND.textSecondary,
+                    userSelect: 'none',
+                  }}
+                >
+                  {label}
+                </Typography>
+              </Box>
             ))}
-          </Select>
-        </Box>
+          </Box>
+        </FormControl>
       </Grid>
 
       <Grid size={{ xs: 12, md: 4 }}>
         <DatePicker
           label="Expiry Date *"
+          format={DATE_FORMAT}
           value={expiryDate ? dayjs(expiryDate) : null}
           onChange={handleExpiryChange}
-          minDate={startDate ? dayjs(startDate) : undefined}
-          slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+          minDate={startDate ? toDay(startDate).add(1, 'day') : undefined}
+          slotProps={datePickerSlotProps}
         />
       </Grid>
     </Grid>

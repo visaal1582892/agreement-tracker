@@ -33,12 +33,16 @@ public interface AgreementRepository extends JpaRepository<Agreement, Long>, Jpa
 
     @Query("""
             SELECT a FROM Agreement a
-            JOIN FETCH a.agreementGroup
+            JOIN FETCH a.agreementGroup ag
+            JOIN FETCH ag.company
             JOIN FETCH a.owner
             LEFT JOIN FETCH a.incomeType
             WHERE a.approvalStatus = 'PENDING_APPROVAL'
+            AND (:search IS NULL OR :search = ''
+                 OR LOWER(ag.agreementNumber) LIKE LOWER(CONCAT('%', :search, '%'))
+                 OR LOWER(ag.company.companyName) LIKE LOWER(CONCAT('%', :search, '%')))
             """)
-    Page<Agreement> findAllPendingApproval(Pageable pageable);
+    Page<Agreement> findAllPendingApproval(@Param("search") String search, Pageable pageable);
 
     @Query("""
             SELECT a FROM Agreement a
