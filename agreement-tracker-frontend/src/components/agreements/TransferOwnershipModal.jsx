@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography,
+  Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
@@ -62,6 +62,9 @@ export default function TransferOwnershipModal({
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle fontWeight={700}>Transfer Ownership</DialogTitle>
       <DialogContent>
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          You will lose access to edit this agreement once transferred.
+        </Alert>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Reassign {agreementLabel || 'this agreement'} to a new Account Manager.
         </Typography>

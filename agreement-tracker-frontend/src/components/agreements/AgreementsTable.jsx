@@ -6,14 +6,15 @@ import { useDispatch } from 'react-redux';
 import { useSnackbar } from 'notistack';
 import DataTable from '../ui/DataTable';
 import StatusBadge from '../ui/StatusBadge';
-import { RIGHTS } from '../../config/rights';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
 import { submitAgreementForApproval } from '../../store/slices/agreementSlice';
-import { useAuth } from '../../hooks/useAuth';
+import { useAgreementPermissions } from '../../hooks/useAgreementPermissions';
 import { ROUTES } from '../../config/routes';
 import { fetchAgreementForClone } from '../../utils/agreementClone';
 import TransferOwnershipModal from './TransferOwnershipModal';
+import ConfirmDialog from '../ui/ConfirmDialog';
+import { useModal } from '../../hooks/useModal';
 
 const STATUS_FILTER_OPTIONS = [
   { value: 'DRAFT', label: 'Draft' },
@@ -25,21 +26,24 @@ const STATUS_FILTER_OPTIONS = [
 const formatDate = (d) =>
   d ? new Date(d).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '—';
 
-function RowActionsMenu({ row, navigate, hasRight, onSubmit, onClone, onTransfer }) {
+function rowToAgreement(row) {
+  return {
+    ownerId: row.ownerUserId,
+    ownerUserId: row.ownerUserId,
+    approvalStatus: row.approvalStatus,
+    id: row.latestVersionId,
+    latestVersionId: row.latestVersionId,
+  };
+}
+
+function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
   const [anchor, setAnchor] = useState(null);
-  const { user } = useAuth();
+  const submitModal = useModal();
+  const cloneModal = useModal();
+  const { getListRowActions } = useAgreementPermissions();
+  const actions = getListRowActions(rowToAgreement(row));
 
-  const canView = hasRight(RIGHTS.AGREEMENT_VIEW) || hasRight(RIGHTS.AGREEMENT_VIEW_ALL);
-  const isOwner = user?.id === row.ownerUserId;
-  const canEditDraft = hasRight(RIGHTS.AGREEMENT_EDIT) && row.currentStatus === 'DRAFT' && isOwner;
-  const canEditApproved = hasRight(RIGHTS.AGREEMENT_EDIT) && row.currentStatus === 'APPROVED' && isOwner;
-  const canRevise = hasRight(RIGHTS.AGREEMENT_EDIT) && row.currentStatus === 'REJECTED' && isOwner;
-  const canSubmit = canEditDraft && row.latestVersionId;
-  const canApproveReject = hasRight(RIGHTS.AGREEMENT_APPROVE) && row.currentStatus === 'PENDING_APPROVAL';
-  const canClone = hasRight(RIGHTS.AGREEMENT_CREATE) && row.latestVersionId;
-  const canTransfer = (isOwner || hasRight(RIGHTS.ADMIN_USERS)) && row.latestVersionId;
-
-  if (!canView && !canEditDraft && !canEditApproved && !canRevise && !canSubmit && !canApproveReject && !canClone && !canTransfer) return null;
+  if (!Object.values(actions).some(Boolean)) return null;
 
   const goToDetail = () => {
     setAnchor(null);
@@ -51,13 +55,23 @@ function RowActionsMenu({ row, navigate, hasRight, onSubmit, onClone, onTransfer
     navigate(`/agreements/${row.latestVersionId}/edit`);
   };
 
-  const handleSubmitClick = async () => {
+  const handleSubmitClick = () => {
     setAnchor(null);
+    submitModal.open();
+  };
+
+  const handleSubmitConfirm = async () => {
+    submitModal.close();
     await onSubmit(row.latestVersionId);
   };
 
   const handleCloneClick = () => {
     setAnchor(null);
+    cloneModal.open();
+  };
+
+  const handleCloneConfirm = () => {
+    cloneModal.close();
     onClone(row.latestVersionId);
   };
 
@@ -80,15 +94,31 @@ function RowActionsMenu({ row, navigate, hasRight, onSubmit, onClone, onTransfer
         onClose={() => setAnchor(null)}
         onClick={(e) => e.stopPropagation()}
       >
-        {canView && <MenuItem dense onClick={goToDetail}>View</MenuItem>}
-        {canEditDraft && <MenuItem dense onClick={goToEdit}>Edit Draft</MenuItem>}
-        {canEditApproved && <MenuItem dense onClick={goToEdit}>Edit</MenuItem>}
-        {canRevise && <MenuItem dense onClick={goToEdit}>Revise & Resubmit</MenuItem>}
-        {canSubmit && <MenuItem dense onClick={handleSubmitClick}>Submit for Approval</MenuItem>}
-        {canClone && <MenuItem dense onClick={handleCloneClick}>Clone (Copy Products)</MenuItem>}
-        {canTransfer && <MenuItem dense onClick={handleTransferClick}>Transfer Ownership</MenuItem>}
-        {canApproveReject && <MenuItem dense onClick={goToDetail}>Approve / Reject</MenuItem>}
+        {actions.view && <MenuItem dense onClick={goToDetail}>View</MenuItem>}
+        {actions.editDraft && <MenuItem dense onClick={goToEdit}>Edit Draft</MenuItem>}
+        {actions.editApproved && <MenuItem dense onClick={goToEdit}>Edit</MenuItem>}
+        {actions.revise && <MenuItem dense onClick={goToEdit}>Revise & Resubmit</MenuItem>}
+        {actions.submit && <MenuItem dense onClick={handleSubmitClick}>Submit for Approval</MenuItem>}
+        {actions.clone && <MenuItem dense onClick={handleCloneClick}>Clone (Copy Products)</MenuItem>}
+        {actions.transfer && <MenuItem dense onClick={handleTransferClick}>Transfer Ownership</MenuItem>}
+        {actions.approveReject && <MenuItem dense onClick={goToDetail}>Approve / Reject</MenuItem>}
       </Menu>
+      <ConfirmDialog
+        open={submitModal.isOpen}
+        onClose={submitModal.close}
+        onConfirm={handleSubmitConfirm}
+        title="Submit for Approval"
+        message="Are you sure you want to submit this agreement for approval? You will no longer be able to edit the details until it is reviewed."
+        confirmLabel="Confirm"
+      />
+      <ConfirmDialog
+        open={cloneModal.isOpen}
+        onClose={cloneModal.close}
+        onConfirm={handleCloneConfirm}
+        title="Clone Agreement"
+        message="This will copy the product scope into a new draft. Proceed?"
+        confirmLabel="Proceed"
+      />
     </>
   );
 }
@@ -159,7 +189,7 @@ const buildColumns = ({ vendorOptions, incomeTypeOptions, onVendorSearch, onInco
     render: (v) => `V${v || 1}`,
   },
   {
-    field: 'currentStatus',
+    field: 'computedStatus',
     header: 'Status',
     sortable: false,
     filterType: 'select',
@@ -279,7 +309,6 @@ export default function AgreementsTable({
         <RowActionsMenu
           row={row}
           navigate={navigate}
-          hasRight={hasRight}
           onSubmit={handleSubmit}
           onClone={handleClone}
           onTransfer={setTransferRow}

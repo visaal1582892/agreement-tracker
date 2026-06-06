@@ -1,6 +1,7 @@
 package com.medplus.agreement_tracker_backend.dto.response;
 
 import com.medplus.agreement_tracker_backend.enums.AgreementStatus;
+import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -14,7 +15,8 @@ public record AgreementGroupResponse(
         Long currentVersionId,
         Long latestVersionId,
         Integer currentVersionNumber,
-        AgreementStatus currentStatus,
+        AgreementStatus computedStatus,
+        ApprovalStatus approvalStatus,
         boolean isActive,
         LocalDateTime createdAt,
         String incomeTypeName,

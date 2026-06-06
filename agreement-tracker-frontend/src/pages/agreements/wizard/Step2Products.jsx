@@ -332,7 +332,7 @@ export default function Step2Products({ state, updateProductRules }) {
         </Box>
       )}
 
-      <Grid container spacing={2.5} alignItems="stretch">
+      <Grid container spacing={2.5} sx={{ alignItems: 'stretch' }}>
         {/* Manufacturer */}
         <Grid size={{ xs: 12, md: 4 }}>
           <Box sx={panelSx}>

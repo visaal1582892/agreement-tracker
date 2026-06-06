@@ -78,7 +78,8 @@ function applyAgreementToGroups(state, agreement) {
   const group = state.groups[idx];
   state.groups[idx] = {
     ...group,
-    currentStatus: agreement.derivedStatus ?? agreement.approvalStatus,
+    computedStatus: agreement.computedStatus ?? group.computedStatus,
+    approvalStatus: agreement.approvalStatus ?? group.approvalStatus,
     latestVersionId: agreement.id,
     currentVersionNumber: agreement.versionNumber ?? group.currentVersionNumber,
     currentVersionId: agreement.approvalStatus === 'APPROVED'
@@ -128,7 +129,7 @@ const agreementSlice = createSlice({
         (g) => g.id === groupId || g.latestVersionId === agreementId,
       );
       if (idx !== -1 && newStatus) {
-        state.groups[idx].currentStatus = newStatus;
+        state.groups[idx].computedStatus = newStatus;
       }
     },
     updateAgreementGroupFromResponse(state, { payload: agreement }) {

@@ -30,6 +30,13 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse(HttpStatus.NOT_FOUND.value(), ex.getMessage()));
     }
 
+    @ExceptionHandler(IncompleteAgreementException.class)
+    public ResponseEntity<ErrorResponse> handleIncompleteAgreement(IncompleteAgreementException ex) {
+        log.warn("Incomplete agreement submission: {}", ex.getMessage());
+        return ResponseEntity.badRequest()
+                .body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(), ex.getMessage()));
+    }
+
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException ex) {
         log.warn("Business rule violation: {}", ex.getMessage());

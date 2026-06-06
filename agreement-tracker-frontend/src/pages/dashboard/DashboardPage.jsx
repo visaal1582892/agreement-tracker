@@ -324,7 +324,7 @@ export default function DashboardPage() {
                           <Typography variant="caption" color="text.secondary" noWrap>{g.companyName}</Typography>
                         </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
-                          <StatusBadge status={g.currentStatus || 'DRAFT'} />
+                          <StatusBadge status={g.computedStatus || 'DRAFT'} />
                           <Typography variant="caption" color="text.secondary" sx={{ minWidth: 24 }}>
                             V{g.currentVersionNumber || 1}
                           </Typography>

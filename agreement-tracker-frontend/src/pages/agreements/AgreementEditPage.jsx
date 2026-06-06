@@ -8,6 +8,7 @@ import { ROUTES } from '../../config/routes';
 import { BRAND } from '../../config/theme';
 import WizardLayout from '../../layouts/WizardLayout';
 import { useAgreementWizard } from '../../hooks/useAgreementWizard';
+import { validateAgreementForSubmit } from '../../utils/agreementSubmitValidation';
 import Step1Setup from './wizard/Step1Setup';
 import Step2Agreements from './wizard/Step2Agreements';
 import Step5Review from './wizard/Step5Review';
@@ -178,7 +179,7 @@ export default function AgreementEditPage() {
   };
 
   const handleSubmitForApproval = async () => {
-    if (!validate()) return;
+    if (!validateAgreementForSubmit(state, enqueueSnackbar)) return;
     setSubmitting(true);
     try {
       const data = await persistDraft();

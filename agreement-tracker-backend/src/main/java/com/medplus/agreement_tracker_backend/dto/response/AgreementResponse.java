@@ -28,7 +28,7 @@ public record AgreementResponse(
         LocalDate startDate,
         LocalDate expiryDate,
         ApprovalStatus approvalStatus,
-        AgreementStatus derivedStatus,
+        AgreementStatus computedStatus,
         boolean inProgressFlag,
         LocalDate terminationDate,
         String terminationReason,

@@ -19,6 +19,7 @@ import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
 import com.medplus.agreement_tracker_backend.enums.CommercialStructure;
 import com.medplus.agreement_tracker_backend.enums.RuleType;
 import com.medplus.agreement_tracker_backend.exception.BusinessException;
+import com.medplus.agreement_tracker_backend.exception.IncompleteAgreementException;
 import com.medplus.agreement_tracker_backend.exception.ResourceNotFoundException;
 import com.medplus.agreement_tracker_backend.exception.UnauthorizedException;
 import com.medplus.agreement_tracker_backend.repository.*;
@@ -403,7 +404,7 @@ public class AgreementServiceImpl implements AgreementService {
         if (agreement.getApprovalStatus() != ApprovalStatus.DRAFT) {
             throw new BusinessException("Only DRAFT agreements can be submitted for approval");
         }
-        validateReadyForSubmission(agreement);
+        validateCompleteAgreement(agreement);
 
         ApprovalStatus before = agreement.getApprovalStatus();
         agreement.setApprovalStatus(ApprovalStatus.PENDING_APPROVAL);
@@ -687,31 +688,34 @@ public class AgreementServiceImpl implements AgreementService {
         }
     }
 
-    private void validateReadyForSubmission(Agreement agreement) {
+    private void validateCompleteAgreement(Agreement agreement) {
+        if (agreement.getStartDate() == null) {
+            throw new IncompleteAgreementException("Cannot submit: Start Date is missing.");
+        }
+        if (agreement.getExpiryDate() == null) {
+            throw new IncompleteAgreementException("Cannot submit: Expiry Date is missing.");
+        }
         if (agreement.getIncomeType() == null) {
-            throw new BusinessException("Income type is required before submission");
+            throw new IncompleteAgreementException("Cannot submit: Income Type is missing.");
         }
         if (agreement.getAgreementType() == null) {
-            throw new BusinessException("Agreement type is required before submission");
-        }
-        if (agreement.getStartDate() == null || agreement.getExpiryDate() == null) {
-            throw new BusinessException("Start and expiry dates are required before submission");
-        }
-        if (agreement.getExpiryDate().isBefore(agreement.getStartDate())) {
-            throw new BusinessException("Expiry date must be on or after start date");
+            throw new IncompleteAgreementException("Cannot submit: Agreement Type is missing.");
         }
         if (agreement.getCommercialStructure() == null) {
-            throw new BusinessException("Commercial structure is required before submission");
+            throw new IncompleteAgreementException("Cannot submit: Commercial Structure is missing.");
+        }
+        if (agreement.getExpiryDate().isBefore(agreement.getStartDate())) {
+            throw new IncompleteAgreementException("Cannot submit: Expiry Date must be on or after Start Date.");
         }
         if (agreement.getCommercialStructure() == CommercialStructure.FLAT
                 && agreement.getCommercialValue() == null) {
-            throw new BusinessException("Commercial value is required for FLAT structure before submission");
+            throw new IncompleteAgreementException("Cannot submit: Commercial Value is missing for FLAT structure.");
         }
         if (vendorRepository.findByAgreementId(agreement.getId()).isEmpty()) {
-            throw new BusinessException("At least one vendor is required before submission");
+            throw new IncompleteAgreementException("Cannot submit: At least one Vendor is required.");
         }
         if (productRuleRepository.findByAgreementId(agreement.getId()).isEmpty()) {
-            throw new BusinessException("At least one product rule is required before submission");
+            throw new IncompleteAgreementException("Cannot submit: At least one Product must be selected.");
         }
     }
 
@@ -973,6 +977,7 @@ public class AgreementServiceImpl implements AgreementService {
                 latest.getId(),
                 latest.getVersionNumber(),
                 statusResolver.resolve(latest),
+                latest.getApprovalStatus(),
                 g.isActive(),
                 g.getCreatedAt(),
                 latest.getIncomeType() != null ? latest.getIncomeType().getName() : null,
@@ -995,7 +1000,8 @@ public class AgreementServiceImpl implements AgreementService {
         AgreementResponse vr = toAgreementResponse(displayVersion);
         return new AgreementGroupResponse(
                 g.getId(), g.getAgreementNumber(), g.getCompany().getId(), g.getCompany().getCompanyName(),
-                g.getCurrentVersionId(), displayVersion.getId(), vr.versionNumber(), vr.derivedStatus(), g.isActive(), g.getCreatedAt(),
+                g.getCurrentVersionId(), displayVersion.getId(), vr.versionNumber(), vr.computedStatus(),
+                vr.approvalStatus(), g.isActive(), g.getCreatedAt(),
                 vr.incomeTypeName(), vr.startDate(), vr.expiryDate(), vr.ownerName(), vr.ownerId(), vr.vendors()
         );
     }
@@ -1003,7 +1009,7 @@ public class AgreementServiceImpl implements AgreementService {
     private AgreementGroupResponse toGroupResponseEmpty(AgreementGroup g) {
         return new AgreementGroupResponse(
                 g.getId(), g.getAgreementNumber(), g.getCompany().getId(), g.getCompany().getCompanyName(),
-                null, null, null, null, g.isActive(), g.getCreatedAt(),
+                null, null, null, null, null, g.isActive(), g.getCreatedAt(),
                 null, null, null, null, null, List.of()
         );
     }

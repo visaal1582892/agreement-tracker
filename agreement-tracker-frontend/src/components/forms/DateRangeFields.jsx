@@ -247,7 +247,7 @@ export default function DateRangeFields({ startDate, expiryDate, onChange }) {
   };
 
   return (
-    <Grid container spacing={2.5} alignItems="flex-end">
+    <Grid container spacing={2.5} sx={{ alignItems: 'flex-end' }}>
       <Grid size={{ xs: 12, md: 4 }}>
         <DatePicker
           label="Start Date *"
