@@ -12,6 +12,25 @@ import Step1Setup from './wizard/Step1Setup';
 import Step2Agreements from './wizard/Step2Agreements';
 import Step5Review from './wizard/Step5Review';
 
+function buildAgreementItem(agreement) {
+  if (!agreement) return null;
+  const { details, commercials } = agreement;
+  return {
+    details: {
+      incomeTypeId: details.incomeTypeId || null,
+      agreementTypeId: details.agreementTypeId || null,
+      startDate: details.startDate?.split('T')[0] || null,
+      expiryDate: details.expiryDate?.split('T')[0] || null,
+      notes: details.notes || null,
+    },
+    commercials: {
+      commercialStructure: commercials.commercialStructure || null,
+      commercialValue: commercials.commercialValue || null,
+      calculationFormula: commercials.calculationFormula || null,
+    },
+  };
+}
+
 export default function AgreementCreatePage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,6 +49,7 @@ export default function AgreementCreatePage() {
     reset,
     hydrateFromClone,
   } = useAgreementWizard();
+  const [draftAgreementId, setDraftAgreementId] = useState(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [documentErrors, setDocumentErrors] = useState({});
@@ -49,6 +69,14 @@ export default function AgreementCreatePage() {
       delete next[agreementId];
       return next;
     });
+  };
+
+  const validateDraftSave = () => {
+    if (!state.companyId) {
+      enqueueSnackbar('Select a company to save draft', { variant: 'warning' });
+      return false;
+    }
+    return true;
   };
 
   const validate = () => {
@@ -95,41 +123,38 @@ export default function AgreementCreatePage() {
     }
   };
 
-  const buildPayload = useCallback(() => ({
+  const buildCreatePayload = useCallback(() => ({
     companyId: state.companyId,
-    vendorIds: state.vendorIds,
-    productRules: {
-      manufacturers: state.productRules.manufacturers,
-      divisionRules: state.productRules.divisionRules,
-      productRules: state.productRules.productRules,
-    },
-    agreements: state.agreements.map(({ details, commercials }) => ({
-      details: {
-        incomeTypeId: details.incomeTypeId,
-        agreementTypeId: details.agreementTypeId,
-        startDate: details.startDate?.split('T')[0],
-        expiryDate: details.expiryDate?.split('T')[0],
-        notes: details.notes || null,
-      },
-      commercials: {
-        commercialStructure: commercials.commercialStructure,
-        commercialValue: commercials.commercialValue || null,
-        calculationFormula: commercials.calculationFormula || null,
-      },
-    })),
+    vendorIds: state.vendorIds ?? [],
+    productRules: state.productRules ?? {},
+    agreements: state.agreements.map(buildAgreementItem).filter(Boolean),
   }), [state]);
 
-  const createAgreements = async () => {
-    const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENTS, buildPayload());
-    return data;
-  };
+  const buildUpdatePayload = useCallback(() => {
+    const agreement = state.agreements[0];
+    return {
+      companyId: state.companyId,
+      vendorIds: state.vendorIds ?? [],
+      productRules: state.productRules ?? {},
+      details: buildAgreementItem(agreement)?.details ?? {},
+      commercials: buildAgreementItem(agreement)?.commercials ?? {},
+    };
+  }, [state]);
 
-  const submitCreatedAgreements = async (createdAgreements) => {
-    await Promise.all(
-      (createdAgreements || []).map((agreement) =>
-        axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(agreement.id)),
-      ),
-    );
+  const persistDraft = async () => {
+    if (draftAgreementId) {
+      const { data } = await axiosInstance.put(
+        ENDPOINTS.AGREEMENT_UPDATE(draftAgreementId),
+        buildUpdatePayload(),
+      );
+      return data;
+    }
+    const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENTS, buildCreatePayload());
+    const created = data.agreements?.[0];
+    if (created?.id) {
+      setDraftAgreementId(created.id);
+    }
+    return created ?? data;
   };
 
   const handleNext = () => {
@@ -138,13 +163,16 @@ export default function AgreementCreatePage() {
   };
 
   const handleSaveDraft = async () => {
+    if (!validateDraftSave()) return;
     setSavingDraft(true);
     try {
-      const data = await createAgreements();
-      const count = data.agreements?.length || 1;
-      enqueueSnackbar(`${count} agreement(s) saved as draft`, { variant: 'success' });
-      reset();
-      navigate(ROUTES.AGREEMENTS);
+      const wasNew = !draftAgreementId;
+      const saved = await persistDraft();
+      const label = saved?.versionNumber ? `V${saved.versionNumber}` : 'draft';
+      enqueueSnackbar(`Agreement ${label} saved`, { variant: 'success' });
+      if (wasNew && saved?.id) {
+        navigate(`/agreements/${saved.id}/edit`, { replace: true });
+      }
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to save draft', { variant: 'error' });
     } finally {
@@ -153,15 +181,16 @@ export default function AgreementCreatePage() {
   };
 
   const handleSubmitForApproval = async () => {
+    if (!validate()) return;
     setSubmitting(true);
     try {
-      const data = await createAgreements();
-      await submitCreatedAgreements(data.agreements);
-      const count = data.agreements?.length || 1;
-      enqueueSnackbar(`${count} agreement(s) submitted for approval`, { variant: 'success' });
+      const saved = await persistDraft();
+      const agreementId = saved?.id ?? draftAgreementId;
+      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(agreementId));
+      enqueueSnackbar('Agreement submitted for approval', { variant: 'success' });
       reset();
-      navigate(data.primaryAgreementGroupId
-        ? `/agreements/groups/${data.primaryAgreementGroupId}`
+      navigate(saved?.agreementGroupId
+        ? `/agreements/groups/${saved.agreementGroupId}`
         : ROUTES.AGREEMENTS);
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to submit agreement', { variant: 'error' });
@@ -211,7 +240,7 @@ export default function AgreementCreatePage() {
           Bulk Agreement
         </Typography>
         <Typography sx={{ mt: 0.5, fontSize: '0.9rem', color: '#64748B' }}>
-          Shared company, vendors, and products — unique details per agreement
+          Save as draft anytime — submit when ready
         </Typography>
       </Paper>
 

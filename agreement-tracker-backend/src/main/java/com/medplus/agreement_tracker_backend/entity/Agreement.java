@@ -49,7 +49,7 @@ public class Agreement extends AuditableEntity {
     private AgreementType agreementType;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "commercial_structure", nullable = false, length = 10)
+    @Column(name = "commercial_structure", length = 10)
     private CommercialStructure commercialStructure;
 
     @Column(name = "commercial_value", precision = 15, scale = 2)
@@ -58,10 +58,10 @@ public class Agreement extends AuditableEntity {
     @Column(name = "calculation_formula", length = 500)
     private String calculationFormula;
 
-    @Column(name = "start_date", nullable = false)
+    @Column(name = "start_date")
     private LocalDate startDate;
 
-    @Column(name = "expiry_date", nullable = false)
+    @Column(name = "expiry_date")
     private LocalDate expiryDate;
 
     @Enumerated(EnumType.STRING)

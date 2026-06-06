@@ -3,6 +3,7 @@ package com.medplus.agreement_tracker_backend.service;
 import com.medplus.agreement_tracker_backend.dto.request.CreateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.EditAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.TerminateAgreementRequest;
+import com.medplus.agreement_tracker_backend.dto.request.UpdateDraftRequest;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementGroupResponse;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
@@ -20,17 +21,19 @@ public interface AgreementService {
 
     AgreementResponse createVersionedEdit(Long sourceAgreementId, EditAgreementRequest request, Long currentUserId);
 
-    AgreementResponse getAgreementById(Long agreementId);
+    AgreementResponse updateDraft(Long agreementId, UpdateDraftRequest request, Long currentUserId);
 
-    AgreementGroupResponse getGroupById(Long groupId);
+    AgreementResponse getAgreementById(Long agreementId, Long currentUserId);
+
+    AgreementGroupResponse getGroupById(Long groupId, Long currentUserId);
 
     Page<AgreementGroupResponse> getAllGroups(Pageable pageable, Long currentUserId, String scope, boolean canViewAll,
                                               String agreementNumber, String companyName, String status, String ownerName,
                                               Long vendorId, Long incomeTypeId);
 
-    List<AgreementResponse> getVersionsByGroup(Long groupId);
+    List<AgreementResponse> getVersionsByGroup(Long groupId, Long currentUserId);
 
-    List<AgreementResponse> getVersionsByAgreementId(Long agreementId);
+    List<AgreementResponse> getVersionsByAgreementId(Long agreementId, Long currentUserId);
 
     AgreementResponse transferOwnership(Long agreementId, Long newOwnerUserId, Long performedByUserId, boolean isAdmin);
 

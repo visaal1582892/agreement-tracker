@@ -12,6 +12,25 @@ import Step1Setup from './wizard/Step1Setup';
 import Step2Agreements from './wizard/Step2Agreements';
 import Step5Review from './wizard/Step5Review';
 
+function buildAgreementItem(agreement) {
+  if (!agreement) return null;
+  const { details, commercials } = agreement;
+  return {
+    details: {
+      incomeTypeId: details.incomeTypeId || null,
+      agreementTypeId: details.agreementTypeId || null,
+      startDate: details.startDate?.split('T')[0] || null,
+      expiryDate: details.expiryDate?.split('T')[0] || null,
+      notes: details.notes || null,
+    },
+    commercials: {
+      commercialStructure: commercials.commercialStructure || null,
+      commercialValue: commercials.commercialValue || null,
+      calculationFormula: commercials.calculationFormula || null,
+    },
+  };
+}
+
 export default function AgreementEditPage() {
   const { agreementId } = useParams();
   const navigate = useNavigate();
@@ -31,6 +50,8 @@ export default function AgreementEditPage() {
   } = useAgreementWizard();
 
   const [sourceAgreement, setSourceAgreement] = useState(null);
+  const [draftAgreementId, setDraftAgreementId] = useState(null);
+  const [versionSourceId, setVersionSourceId] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -38,21 +59,53 @@ export default function AgreementEditPage() {
 
   useEffect(() => {
     if (!agreementId || hydratedRef.current) return;
-    axiosInstance.get(ENDPOINTS.AGREEMENT_BY_ID(agreementId))
-      .then(({ data }) => {
-        setSourceAgreement(data);
-        hydrateFromEdit(data);
+    const load = async () => {
+      try {
+        const { data: loaded } = await axiosInstance.get(ENDPOINTS.AGREEMENT_BY_ID(agreementId));
+
+        if (loaded.approvalStatus === 'DRAFT') {
+          setSourceAgreement(loaded);
+          setDraftAgreementId(loaded.id);
+          hydrateFromEdit(loaded);
+          hydratedRef.current = true;
+          return;
+        }
+
+        setSourceAgreement(loaded);
+        setVersionSourceId(loaded.id);
+
+        const { data: versions } = await axiosInstance.get(
+          ENDPOINTS.AGREEMENT_VERSIONS(loaded.agreementGroupId),
+        );
+        const existingDraft = [...versions].reverse().find((v) => v.approvalStatus === 'DRAFT');
+
+        if (existingDraft) {
+          setDraftAgreementId(existingDraft.id);
+          setSourceAgreement(existingDraft);
+          hydrateFromEdit(existingDraft);
+        } else {
+          hydrateFromEdit(loaded);
+        }
         hydratedRef.current = true;
-      })
-      .catch((err) => {
+      } catch (err) {
         const msg = err.response?.data?.message || 'Failed to load agreement for editing';
         setLoadError(msg);
         enqueueSnackbar(msg, { variant: 'error' });
-      });
+      }
+    };
+    load();
   }, [agreementId, hydrateFromEdit, enqueueSnackbar]);
 
   const clearDocumentError = (id) => {
     setDocumentErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
+  };
+
+  const validateDraftSave = () => {
+    if (!state.companyId) {
+      enqueueSnackbar('Select a company to save draft', { variant: 'warning' });
+      return false;
+    }
+    return true;
   };
 
   const validate = () => {
@@ -81,35 +134,28 @@ export default function AgreementEditPage() {
     }
   };
 
-  const buildPayload = useCallback(() => {
+  const buildUpdatePayload = useCallback(() => {
     const agreement = state.agreements[0];
+    const item = buildAgreementItem(agreement);
     return {
-      vendorIds: state.vendorIds,
-      productRules: {
-        manufacturers: state.productRules.manufacturers,
-        divisionRules: state.productRules.divisionRules,
-        productRules: state.productRules.productRules,
-      },
-      details: {
-        incomeTypeId: agreement.details.incomeTypeId,
-        agreementTypeId: agreement.details.agreementTypeId,
-        startDate: agreement.details.startDate?.split('T')[0],
-        expiryDate: agreement.details.expiryDate?.split('T')[0],
-        notes: agreement.details.notes || null,
-      },
-      commercials: {
-        commercialStructure: agreement.commercials.commercialStructure,
-        commercialValue: agreement.commercials.commercialValue || null,
-        calculationFormula: agreement.commercials.calculationFormula || null,
-      },
+      companyId: state.companyId,
+      vendorIds: state.vendorIds ?? [],
+      productRules: state.productRules ?? {},
+      details: item?.details ?? {},
+      commercials: item?.commercials ?? {},
     };
   }, [state]);
 
-  const createEditedVersion = async () => {
-    const { data } = await axiosInstance.post(
-      ENDPOINTS.AGREEMENT_CREATE_VERSION(agreementId),
-      buildPayload(),
-    );
+  const persistDraft = async () => {
+    const payload = buildUpdatePayload();
+    if (draftAgreementId) {
+      const { data } = await axiosInstance.put(ENDPOINTS.AGREEMENT_UPDATE(draftAgreementId), payload);
+      return data;
+    }
+    const sourceId = versionSourceId ?? sourceAgreement?.id;
+    const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_CREATE_VERSION(sourceId), payload);
+    setDraftAgreementId(data.id);
+    navigate(`/agreements/${data.id}/edit`, { replace: true });
     return data;
   };
 
@@ -119,12 +165,11 @@ export default function AgreementEditPage() {
   };
 
   const handleSaveDraft = async () => {
+    if (!validateDraftSave()) return;
     setSavingDraft(true);
     try {
-      const data = await createEditedVersion();
+      const data = await persistDraft();
       enqueueSnackbar(`Version V${data.versionNumber} saved as draft`, { variant: 'success' });
-      reset();
-      navigate(ROUTES.AGREEMENTS);
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to save draft', { variant: 'error' });
     } finally {
@@ -133,10 +178,12 @@ export default function AgreementEditPage() {
   };
 
   const handleSubmitForApproval = async () => {
+    if (!validate()) return;
     setSubmitting(true);
     try {
-      const data = await createEditedVersion();
-      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(data.id));
+      const data = await persistDraft();
+      const targetId = data.id ?? draftAgreementId;
+      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(targetId));
       enqueueSnackbar(`Version V${data.versionNumber} submitted for approval`, { variant: 'success' });
       reset();
       navigate(`/agreements/groups/${data.agreementGroupId}`);
@@ -147,8 +194,9 @@ export default function AgreementEditPage() {
     }
   };
 
-  const versionLabel = sourceAgreement
-    ? `V${sourceAgreement.versionNumber} — ${sourceAgreement.approvalStatus}`
+  const activeAgreement = sourceAgreement;
+  const versionLabel = activeAgreement
+    ? `V${activeAgreement.versionNumber} — ${activeAgreement.approvalStatus}`
     : '';
 
   const STEP_COMPONENTS = [
@@ -171,9 +219,7 @@ export default function AgreementEditPage() {
   ];
 
   if (loadError) {
-    return (
-      <Alert severity="error" sx={{ m: 3 }}>{loadError}</Alert>
-    );
+    return <Alert severity="error" sx={{ m: 3 }}>{loadError}</Alert>;
   }
 
   if (!sourceAgreement) {
@@ -207,7 +253,7 @@ export default function AgreementEditPage() {
           {sourceAgreement.agreementNumber}
         </Typography>
         <Typography sx={{ mt: 0.5, fontSize: '0.9rem', color: '#64748B' }}>
-          {versionLabel} — save as draft or submit the new version for approval
+          {versionLabel} — save as draft anytime or submit when ready
         </Typography>
       </Paper>
 

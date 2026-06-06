@@ -118,44 +118,45 @@ export default function WizardLayout({
             >
               Back
             </Button>
+            {onSaveDraft && (
+              <Button
+                variant="outlined"
+                onClick={onSaveDraft}
+                disabled={isSavingDraft || isSubmitting}
+                sx={{
+                  borderRadius: 2.5,
+                  px: 2.5,
+                  minWidth: 130,
+                  fontWeight: 600,
+                  borderColor: '#CBD5E1',
+                  color: '#475569',
+                }}
+              >
+                {isSavingDraft ? 'Saving…' : 'Save as Draft'}
+              </Button>
+            )}
             {isLastStep ? (
-              <>
-                <Button
-                  variant="outlined"
-                  onClick={onSaveDraft}
-                  disabled={isSavingDraft || isSubmitting}
-                  sx={{
-                    borderRadius: 2.5,
-                    px: 2.5,
-                    minWidth: 130,
-                    fontWeight: 600,
-                    borderColor: '#CBD5E1',
-                    color: '#475569',
-                  }}
-                >
-                  {isSavingDraft ? 'Saving…' : 'Save as Draft'}
-                </Button>
-                <Button
-                  variant="contained"
-                  onClick={onSubmitForApproval}
-                  disabled={isSavingDraft || isSubmitting}
-                  sx={{
-                    borderRadius: 2.5,
-                    px: 3,
-                    minWidth: 160,
-                    fontWeight: 700,
-                    background: BRAND.redGradient,
-                    boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
-                    '&:hover': { background: BRAND.redGradient },
-                  }}
-                >
-                  {isSubmitting ? 'Submitting…' : 'Submit for Approval'}
-                </Button>
-              </>
+              <Button
+                variant="contained"
+                onClick={onSubmitForApproval}
+                disabled={isSavingDraft || isSubmitting}
+                sx={{
+                  borderRadius: 2.5,
+                  px: 3,
+                  minWidth: 160,
+                  fontWeight: 700,
+                  background: BRAND.redGradient,
+                  boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
+                  '&:hover': { background: BRAND.redGradient },
+                }}
+              >
+                {isSubmitting ? 'Submitting…' : 'Submit for Approval'}
+              </Button>
             ) : (
               <Button
                 variant="contained"
                 onClick={onNext}
+                disabled={isSavingDraft || isSubmitting}
                 sx={{
                   borderRadius: 2.5,
                   px: 3,

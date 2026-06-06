@@ -31,7 +31,7 @@ public class AgreementStatusResolver {
             if (currentVersionId != null && !currentVersionId.equals(agreement.getId())) {
                 return AgreementStatus.SUPERSEDED;
             }
-            if (agreement.getExpiryDate().isBefore(LocalDate.now())) {
+            if (agreement.getExpiryDate() != null && agreement.getExpiryDate().isBefore(LocalDate.now())) {
                 return AgreementStatus.EXPIRED;
             }
             return AgreementStatus.ACTIVE;

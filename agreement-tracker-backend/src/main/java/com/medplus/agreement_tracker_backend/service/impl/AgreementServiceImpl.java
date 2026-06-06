@@ -1,10 +1,14 @@
 package com.medplus.agreement_tracker_backend.service.impl;
 
-import com.medplus.agreement_tracker_backend.dto.request.BulkAgreementItemRequest;
 import com.medplus.agreement_tracker_backend.dto.request.CreateAgreementRequest;
+import com.medplus.agreement_tracker_backend.dto.request.DraftAgreementItemRequest;
+import com.medplus.agreement_tracker_backend.dto.request.DraftCommercialsPayload;
+import com.medplus.agreement_tracker_backend.dto.request.DraftDetailsPayload;
 import com.medplus.agreement_tracker_backend.dto.request.EditAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.RuleDTO;
 import com.medplus.agreement_tracker_backend.dto.request.TerminateAgreementRequest;
+import com.medplus.agreement_tracker_backend.dto.request.UpdateDraftRequest;
+import com.medplus.agreement_tracker_backend.dto.request.ProductRulesPayload;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementGroupResponse;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
@@ -12,6 +16,7 @@ import com.medplus.agreement_tracker_backend.dto.response.BulkAgreementCreateRes
 import com.medplus.agreement_tracker_backend.entity.*;
 import com.medplus.agreement_tracker_backend.enums.ApprovalAction;
 import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
+import com.medplus.agreement_tracker_backend.enums.CommercialStructure;
 import com.medplus.agreement_tracker_backend.enums.RuleType;
 import com.medplus.agreement_tracker_backend.exception.BusinessException;
 import com.medplus.agreement_tracker_backend.exception.ResourceNotFoundException;
@@ -70,28 +75,21 @@ public class AgreementServiceImpl implements AgreementService {
         CompanyMaster company = companyRepository.findById(request.companyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Company", request.companyId()));
 
-        List<Long> manufacturerIds = request.productRules().manufacturers() != null
-                ? request.productRules().manufacturers()
-                : List.of();
-        List<RuleDTO> divisionRules = request.productRules().divisionRules();
-        List<RuleDTO> productRules = request.productRules().productRules();
+        List<Long> vendorIds = request.vendorIds() != null ? request.vendorIds() : List.of();
+        ProductRulesPayload rulesPayload = request.productRules() != null
+                ? request.productRules() : new ProductRulesPayload(null, null, null);
+        List<Long> manufacturerIds = rulesPayload.manufacturers() != null ? rulesPayload.manufacturers() : List.of();
+        List<RuleDTO> divisionRules = rulesPayload.divisionRules() != null ? rulesPayload.divisionRules() : List.of();
+        List<RuleDTO> productRules = rulesPayload.productRules() != null ? rulesPayload.productRules() : List.of();
+
+        List<DraftAgreementItemRequest> items = request.agreements() != null && !request.agreements().isEmpty()
+                ? request.agreements()
+                : List.of(new DraftAgreementItemRequest(null, null));
 
         List<AgreementResponse> created = new ArrayList<>();
         Long primaryGroupId = null;
 
-        for (BulkAgreementItemRequest item : request.agreements()) {
-            var details = item.details();
-            var commercials = item.commercials();
-
-            if (details.expiryDate().isBefore(details.startDate())) {
-                throw new BusinessException("Expiry date must be on or after start date");
-            }
-
-            IncomeType incomeType = incomeTypeRepository.findById(details.incomeTypeId())
-                    .orElseThrow(() -> new ResourceNotFoundException("IncomeType", details.incomeTypeId()));
-            AgreementType agreementType = agreementTypeRepository.findById(details.agreementTypeId())
-                    .orElseThrow(() -> new ResourceNotFoundException("AgreementType", details.agreementTypeId()));
-
+        for (DraftAgreementItemRequest item : items) {
             String agreementNumber = numberGenerator.generate();
             AgreementGroup group = AgreementGroup.builder()
                     .company(company)
@@ -101,25 +99,11 @@ public class AgreementServiceImpl implements AgreementService {
             group.setCreatedByUserId(currentUserId);
             group = groupRepository.save(group);
 
-            Agreement agreement = Agreement.builder()
-                    .agreementGroup(group)
-                    .versionNumber(1)
-                    .owner(owner)
-                    .incomeType(incomeType)
-                    .agreementType(agreementType)
-                    .commercialStructure(commercials.commercialStructure())
-                    .commercialValue(commercials.commercialValue())
-                    .calculationFormula(commercials.calculationFormula())
-                    .startDate(details.startDate())
-                    .expiryDate(details.expiryDate())
-                    .approvalStatus(ApprovalStatus.DRAFT)
-                    .notes(details.notes())
-                    .build();
-            agreement.setCreatedByUserId(currentUserId);
+            Agreement agreement = buildDraftAgreement(item, owner, group, currentUserId);
             agreement = agreementRepository.save(agreement);
 
-            saveVendors(agreement, request.vendorIds(), currentUserId);
-            saveRulesAndComputeProducts(agreement, manufacturerIds, divisionRules, productRules, currentUserId);
+            replaceVendors(agreement, vendorIds, currentUserId);
+            replaceRulesAndComputeProducts(agreement, manufacturerIds, divisionRules, productRules, currentUserId);
 
             recordAudit(group.getId(), agreement.getId(), "AGREEMENT_CREATED", null, agreementNumber, currentUserId);
 
@@ -186,46 +170,72 @@ public class AgreementServiceImpl implements AgreementService {
 
         AgreementGroup group = source.getAgreementGroup();
         Integer maxVersion = agreementRepository.findMaxVersionByGroupId(group.getId());
+        Agreement latest = agreementRepository.findByAgreementGroupIdAndVersionNumber(group.getId(), maxVersion)
+                .orElseThrow(() -> new BusinessException("No agreement version exists for this group"));
+
+        if (latest.getApprovalStatus() == ApprovalStatus.DRAFT
+                && latest.getOwner().getId().equals(currentUserId)) {
+            throw new BusinessException("A draft version already exists — update it in place");
+        }
+
         User owner = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", currentUserId));
 
-        IncomeType incomeType = incomeTypeRepository.findById(request.details().incomeTypeId())
-                .orElseThrow(() -> new ResourceNotFoundException("IncomeType", request.details().incomeTypeId()));
-        AgreementType agreementType = agreementTypeRepository.findById(request.details().agreementTypeId())
-                .orElseThrow(() -> new ResourceNotFoundException("AgreementType", request.details().agreementTypeId()));
-
-        if (request.details().expiryDate().isBefore(request.details().startDate())) {
-            throw new BusinessException("Expiry date must be on or after start date");
-        }
-
-        Agreement newVersion = Agreement.builder()
-                .agreementGroup(group)
-                .versionNumber(maxVersion + 1)
-                .owner(owner)
-                .incomeType(incomeType)
-                .agreementType(agreementType)
-                .commercialStructure(request.commercials().commercialStructure())
-                .commercialValue(request.commercials().commercialValue())
-                .calculationFormula(request.commercials().calculationFormula())
-                .startDate(request.details().startDate())
-                .expiryDate(request.details().expiryDate())
-                .approvalStatus(ApprovalStatus.DRAFT)
-                .notes(request.details().notes())
-                .build();
-        newVersion.setCreatedByUserId(currentUserId);
+        DraftAgreementItemRequest item = new DraftAgreementItemRequest(request.details(), request.commercials());
+        Agreement newVersion = buildDraftAgreement(item, owner, group, maxVersion + 1, currentUserId);
         newVersion = agreementRepository.save(newVersion);
 
-        List<Long> manufacturerIds = request.productRules().manufacturers() != null
-                ? request.productRules().manufacturers() : List.of();
-        saveVendors(newVersion, request.vendorIds(), currentUserId);
-        saveRulesAndComputeProducts(newVersion, manufacturerIds,
-                request.productRules().divisionRules(), request.productRules().productRules(), currentUserId);
+        List<Long> vendorIds = request.vendorIds() != null ? request.vendorIds() : List.of();
+        ProductRulesPayload rulesPayload = request.productRules() != null
+                ? request.productRules() : new ProductRulesPayload(null, null, null);
+        List<Long> manufacturerIds = rulesPayload.manufacturers() != null ? rulesPayload.manufacturers() : List.of();
+        List<RuleDTO> divisionRules = rulesPayload.divisionRules() != null ? rulesPayload.divisionRules() : List.of();
+        List<RuleDTO> productRules = rulesPayload.productRules() != null ? rulesPayload.productRules() : List.of();
+
+        replaceVendors(newVersion, vendorIds, currentUserId);
+        replaceRulesAndComputeProducts(newVersion, manufacturerIds, divisionRules, productRules, currentUserId);
 
         recordAudit(group.getId(), newVersion.getId(), "VERSIONED_EDIT_CREATED",
                 String.valueOf(source.getVersionNumber()), String.valueOf(newVersion.getVersionNumber()), currentUserId);
 
-        // group.currentVersionId intentionally NOT updated here — stays on approved version until this new version is approved
         return toAgreementResponse(newVersion);
+    }
+
+    @Override
+    @Transactional
+    public AgreementResponse updateDraft(Long agreementId, UpdateDraftRequest request, Long currentUserId) {
+        Agreement agreement = loadAndValidateOwnership(agreementId, currentUserId);
+        if (agreement.getApprovalStatus() != ApprovalStatus.DRAFT) {
+            throw new BusinessException("Only DRAFT agreements can be updated via draft save");
+        }
+
+        AgreementGroup group = agreement.getAgreementGroup();
+        if (request.companyId() != null) {
+            CompanyMaster company = companyRepository.findById(request.companyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Company", request.companyId()));
+            group.setCompany(company);
+            group.setUpdatedByUserId(currentUserId);
+            groupRepository.save(group);
+        }
+
+        applyDraftFields(agreement, request.details(), request.commercials());
+        agreement.setUpdatedByUserId(currentUserId);
+        agreement = agreementRepository.save(agreement);
+
+        if (request.vendorIds() != null) {
+            replaceVendors(agreement, request.vendorIds(), currentUserId);
+        }
+
+        if (request.productRules() != null) {
+            ProductRulesPayload rulesPayload = request.productRules();
+            List<Long> manufacturerIds = rulesPayload.manufacturers() != null ? rulesPayload.manufacturers() : List.of();
+            List<RuleDTO> divisionRules = rulesPayload.divisionRules() != null ? rulesPayload.divisionRules() : List.of();
+            List<RuleDTO> productRules = rulesPayload.productRules() != null ? rulesPayload.productRules() : List.of();
+            replaceRulesAndComputeProducts(agreement, manufacturerIds, divisionRules, productRules, currentUserId);
+        }
+
+        recordAudit(group.getId(), agreement.getId(), "DRAFT_UPDATED", null, null, currentUserId);
+        return toAgreementResponse(agreement);
     }
 
     /**
@@ -256,18 +266,20 @@ public class AgreementServiceImpl implements AgreementService {
 
     @Override
     @Transactional(readOnly = true)
-    public AgreementResponse getAgreementById(Long agreementId) {
+    public AgreementResponse getAgreementById(Long agreementId, Long currentUserId) {
         Agreement agreement = agreementRepository.findById(agreementId)
                 .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
+        enforceDraftVisibility(agreement, currentUserId);
         return toAgreementResponse(agreement);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public AgreementGroupResponse getGroupById(Long groupId) {
+    public AgreementGroupResponse getGroupById(Long groupId, Long currentUserId) {
         AgreementGroup group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new ResourceNotFoundException("AgreementGroup", groupId));
-        return toGroupResponse(group);
+        enforceGroupDraftVisibility(group, currentUserId);
+        return toGroupResponse(group, currentUserId);
     }
 
     @Override
@@ -277,13 +289,12 @@ public class AgreementServiceImpl implements AgreementService {
                                                      String companyName, String status, String ownerName,
                                                      Long vendorId, Long incomeTypeId) {
         Pageable mappedPageable = mapGroupPageable(pageable);
+        var filterSpec = AgreementGroupSpec.withFilters(agreementNumber, companyName, status, ownerName, vendorId, incomeTypeId)
+                .and(AgreementGroupSpec.draftVisibleTo(currentUserId));
+
         var scopeSpec = "ALL".equalsIgnoreCase(scope) && canViewAll
-                ? AgreementGroupSpec.withFilters(agreementNumber, companyName, status, ownerName, vendorId, incomeTypeId)
-                // TODO: Future Portfolio Scoping — replace ownedBy() with company-assignment filter:
-                //   AgreementGroupSpec.assignedToCompanies(companyAssignmentRepository.findCompanyIdsByUserId(currentUserId))
-                //   This joins user_company_assignments where user_id = currentUserId.
-                : AgreementGroupSpec.withFilters(agreementNumber, companyName, status, ownerName, vendorId, incomeTypeId)
-                        .and(AgreementGroupSpec.ownedBy(currentUserId));
+                ? filterSpec
+                : filterSpec.and(AgreementGroupSpec.ownedBy(currentUserId));
 
         Page<AgreementGroup> groupPage = groupRepository.findAll(scopeSpec, mappedPageable);
 
@@ -297,8 +308,17 @@ public class AgreementServiceImpl implements AgreementService {
                 .stream()
                 .collect(Collectors.toMap(a -> a.getAgreementGroup().getId(), a -> a, (a, b) -> a));
 
-        // Single batch query for all vendors in this page — eliminates N+1 vendor lookup.
-        List<Long> agreementIds = latestByGroupId.values().stream().map(Agreement::getId).toList();
+        Map<Long, Agreement> visibleByGroupId = groupPage.getContent().stream()
+                .collect(Collectors.toMap(
+                        AgreementGroup::getId,
+                        g -> resolveVisibleLatest(g, latestByGroupId.get(g.getId()), currentUserId),
+                        (a, b) -> a
+                ));
+
+        List<Long> agreementIds = visibleByGroupId.values().stream()
+                .filter(a -> a != null)
+                .map(Agreement::getId)
+                .toList();
         Map<Long, List<AgreementVendor>> vendorsByAgreementId = agreementIds.isEmpty()
                 ? Map.of()
                 : vendorRepository.findByAgreementIdIn(agreementIds)
@@ -306,19 +326,24 @@ public class AgreementServiceImpl implements AgreementService {
                         .collect(Collectors.groupingBy(v -> v.getAgreement().getId()));
 
         return groupPage.map(g -> {
-            Agreement latest = latestByGroupId.get(g.getId());
-            List<AgreementVendor> vendors = latest != null
-                    ? vendorsByAgreementId.getOrDefault(latest.getId(), List.of())
+            Agreement visible = visibleByGroupId.get(g.getId());
+            List<AgreementVendor> vendors = visible != null
+                    ? vendorsByAgreementId.getOrDefault(visible.getId(), List.of())
                     : List.of();
-            return toGroupResponseFromBatch(g, latest, vendors);
+            return toGroupResponseFromBatch(g, visible, vendors);
         });
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<AgreementResponse> getVersionsByGroup(Long groupId) {
+    public List<AgreementResponse> getVersionsByGroup(Long groupId, Long currentUserId) {
+        AgreementGroup group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementGroup", groupId));
+        enforceGroupDraftVisibility(group, currentUserId);
         return agreementRepository.findByAgreementGroupId(groupId)
                 .stream()
+                .filter(a -> a.getApprovalStatus() != ApprovalStatus.DRAFT
+                        || a.getOwner().getId().equals(currentUserId))
                 .sorted((a, b) -> Integer.compare(a.getVersionNumber(), b.getVersionNumber()))
                 .map(this::toAgreementResponse)
                 .toList();
@@ -326,10 +351,11 @@ public class AgreementServiceImpl implements AgreementService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<AgreementResponse> getVersionsByAgreementId(Long agreementId) {
+    public List<AgreementResponse> getVersionsByAgreementId(Long agreementId, Long currentUserId) {
         Agreement agreement = agreementRepository.findById(agreementId)
                 .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
-        return getVersionsByGroup(agreement.getAgreementGroup().getId());
+        enforceDraftVisibility(agreement, currentUserId);
+        return getVersionsByGroup(agreement.getAgreementGroup().getId(), currentUserId);
     }
 
     @Override
@@ -377,6 +403,7 @@ public class AgreementServiceImpl implements AgreementService {
         if (agreement.getApprovalStatus() != ApprovalStatus.DRAFT) {
             throw new BusinessException("Only DRAFT agreements can be submitted for approval");
         }
+        validateReadyForSubmission(agreement);
 
         ApprovalStatus before = agreement.getApprovalStatus();
         agreement.setApprovalStatus(ApprovalStatus.PENDING_APPROVAL);
@@ -540,6 +567,169 @@ public class AgreementServiceImpl implements AgreementService {
             throw new UnauthorizedException("You are not the owner of this agreement");
         }
         return agreement;
+    }
+
+    private void enforceDraftVisibility(Agreement agreement, Long currentUserId) {
+        if (agreement.getApprovalStatus() == ApprovalStatus.DRAFT
+                && !agreement.getOwner().getId().equals(currentUserId)) {
+            throw new ResourceNotFoundException("Agreement", agreement.getId());
+        }
+    }
+
+    private void enforceGroupDraftVisibility(AgreementGroup group, Long currentUserId) {
+        List<Agreement> latestBatch = agreementRepository.findLatestVersionsForGroupIds(List.of(group.getId()));
+        Agreement latest = latestBatch.isEmpty() ? null : latestBatch.get(0);
+        if (latest != null
+                && latest.getApprovalStatus() == ApprovalStatus.DRAFT
+                && !latest.getOwner().getId().equals(currentUserId)
+                && group.getCurrentVersionId() == null) {
+            throw new ResourceNotFoundException("AgreementGroup", group.getId());
+        }
+    }
+
+    private Agreement resolveVisibleLatest(AgreementGroup group, Agreement latest, Long currentUserId) {
+        if (latest == null) {
+            return null;
+        }
+        if (latest.getApprovalStatus() != ApprovalStatus.DRAFT
+                || latest.getOwner().getId().equals(currentUserId)) {
+            return latest;
+        }
+        if (group.getCurrentVersionId() != null) {
+            return agreementRepository.findById(group.getCurrentVersionId()).orElse(latest);
+        }
+        return agreementRepository.findByAgreementGroupId(group.getId()).stream()
+                .filter(a -> a.getApprovalStatus() != ApprovalStatus.DRAFT
+                        || a.getOwner().getId().equals(currentUserId))
+                .max((a, b) -> Integer.compare(a.getVersionNumber(), b.getVersionNumber()))
+                .orElse(null);
+    }
+
+    private Agreement buildDraftAgreement(DraftAgreementItemRequest item, User owner,
+                                            AgreementGroup group, Long userId) {
+        return buildDraftAgreement(item, owner, group, 1, userId);
+    }
+
+    private Agreement buildDraftAgreement(DraftAgreementItemRequest item, User owner,
+                                            AgreementGroup group, int versionNumber, Long userId) {
+        DraftDetailsPayload details = item != null ? item.details() : null;
+        DraftCommercialsPayload commercials = item != null ? item.commercials() : null;
+
+        if (details != null && details.startDate() != null && details.expiryDate() != null
+                && details.expiryDate().isBefore(details.startDate())) {
+            throw new BusinessException("Expiry date must be on or after start date");
+        }
+
+        IncomeType incomeType = null;
+        if (details != null && details.incomeTypeId() != null) {
+            incomeType = incomeTypeRepository.findById(details.incomeTypeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("IncomeType", details.incomeTypeId()));
+        }
+        AgreementType agreementType = null;
+        if (details != null && details.agreementTypeId() != null) {
+            agreementType = agreementTypeRepository.findById(details.agreementTypeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("AgreementType", details.agreementTypeId()));
+        }
+
+        Agreement agreement = Agreement.builder()
+                .agreementGroup(group)
+                .versionNumber(versionNumber)
+                .owner(owner)
+                .incomeType(incomeType)
+                .agreementType(agreementType)
+                .commercialStructure(commercials != null ? commercials.commercialStructure() : null)
+                .commercialValue(commercials != null ? commercials.commercialValue() : null)
+                .calculationFormula(commercials != null ? commercials.calculationFormula() : null)
+                .startDate(details != null ? details.startDate() : null)
+                .expiryDate(details != null ? details.expiryDate() : null)
+                .approvalStatus(ApprovalStatus.DRAFT)
+                .notes(details != null ? details.notes() : null)
+                .build();
+        agreement.setCreatedByUserId(userId);
+        return agreement;
+    }
+
+    private void applyDraftFields(Agreement agreement, DraftDetailsPayload details,
+                                  DraftCommercialsPayload commercials) {
+        if (details != null) {
+            if (details.startDate() != null && details.expiryDate() != null
+                    && details.expiryDate().isBefore(details.startDate())) {
+                throw new BusinessException("Expiry date must be on or after start date");
+            }
+            if (details.incomeTypeId() != null) {
+                agreement.setIncomeType(incomeTypeRepository.findById(details.incomeTypeId())
+                        .orElseThrow(() -> new ResourceNotFoundException("IncomeType", details.incomeTypeId())));
+            }
+            if (details.agreementTypeId() != null) {
+                agreement.setAgreementType(agreementTypeRepository.findById(details.agreementTypeId())
+                        .orElseThrow(() -> new ResourceNotFoundException("AgreementType", details.agreementTypeId())));
+            }
+            if (details.startDate() != null) {
+                agreement.setStartDate(details.startDate());
+            }
+            if (details.expiryDate() != null) {
+                agreement.setExpiryDate(details.expiryDate());
+            }
+            if (details.notes() != null) {
+                agreement.setNotes(details.notes());
+            }
+        }
+        if (commercials != null) {
+            if (commercials.commercialStructure() != null) {
+                agreement.setCommercialStructure(commercials.commercialStructure());
+            }
+            if (commercials.commercialValue() != null) {
+                agreement.setCommercialValue(commercials.commercialValue());
+            }
+            if (commercials.calculationFormula() != null) {
+                agreement.setCalculationFormula(commercials.calculationFormula());
+            }
+        }
+    }
+
+    private void validateReadyForSubmission(Agreement agreement) {
+        if (agreement.getIncomeType() == null) {
+            throw new BusinessException("Income type is required before submission");
+        }
+        if (agreement.getAgreementType() == null) {
+            throw new BusinessException("Agreement type is required before submission");
+        }
+        if (agreement.getStartDate() == null || agreement.getExpiryDate() == null) {
+            throw new BusinessException("Start and expiry dates are required before submission");
+        }
+        if (agreement.getExpiryDate().isBefore(agreement.getStartDate())) {
+            throw new BusinessException("Expiry date must be on or after start date");
+        }
+        if (agreement.getCommercialStructure() == null) {
+            throw new BusinessException("Commercial structure is required before submission");
+        }
+        if (agreement.getCommercialStructure() == CommercialStructure.FLAT
+                && agreement.getCommercialValue() == null) {
+            throw new BusinessException("Commercial value is required for FLAT structure before submission");
+        }
+        if (vendorRepository.findByAgreementId(agreement.getId()).isEmpty()) {
+            throw new BusinessException("At least one vendor is required before submission");
+        }
+        if (productRuleRepository.findByAgreementId(agreement.getId()).isEmpty()) {
+            throw new BusinessException("At least one product rule is required before submission");
+        }
+    }
+
+    private void replaceVendors(Agreement agreement, List<Long> vendorIds, Long userId) {
+        vendorRepository.deleteByAgreementId(agreement.getId());
+        if (vendorIds != null && !vendorIds.isEmpty()) {
+            saveVendors(agreement, vendorIds, userId);
+        }
+    }
+
+    private void replaceRulesAndComputeProducts(Agreement agreement, List<Long> manufacturerIds,
+                                                List<RuleDTO> divisionRules, List<RuleDTO> productRules,
+                                                Long userId) {
+        manufacturerRuleRepository.deleteByAgreementId(agreement.getId());
+        divisionRuleRepository.deleteByAgreementId(agreement.getId());
+        productRuleRepository.deleteByAgreementId(agreement.getId());
+        computedProductRepository.deleteByAgreementId(agreement.getId());
+        saveRulesAndComputeProducts(agreement, manufacturerIds, divisionRules, productRules, userId);
     }
 
     private void saveVendors(Agreement agreement, List<Long> vendorIds, Long userId) {
@@ -795,16 +985,10 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     /** Used for single-group detail fetch — still calls toAgreementResponse (acceptable for single record). */
-    private AgreementGroupResponse toGroupResponse(AgreementGroup g) {
-        Agreement displayVersion = null;
-        if (g.getCurrentVersionId() != null) {
-            displayVersion = agreementRepository.findById(g.getCurrentVersionId()).orElse(null);
-        }
-        if (displayVersion == null) {
-            List<Long> singleId = List.of(g.getId());
-            List<Agreement> batch = agreementRepository.findLatestVersionsForGroupIds(singleId);
-            displayVersion = batch.isEmpty() ? null : batch.get(0);
-        }
+    private AgreementGroupResponse toGroupResponse(AgreementGroup g, Long currentUserId) {
+        List<Agreement> latestBatch = agreementRepository.findLatestVersionsForGroupIds(List.of(g.getId()));
+        Agreement latest = latestBatch.isEmpty() ? null : latestBatch.get(0);
+        Agreement displayVersion = resolveVisibleLatest(g, latest, currentUserId);
         if (displayVersion == null) {
             return toGroupResponseEmpty(g);
         }

@@ -6,6 +6,7 @@ import com.medplus.agreement_tracker_backend.dto.request.CreateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.EditAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.TerminateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.TransferOwnershipRequest;
+import com.medplus.agreement_tracker_backend.dto.request.UpdateDraftRequest;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementGroupResponse;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
@@ -91,20 +92,26 @@ public class AgreementController {
 
     @GetMapping("/groups/{groupId}")
     @PreAuthorize(AGREEMENT_VIEW)
-    public ResponseEntity<AgreementGroupResponse> getGroup(@PathVariable Long groupId) {
-        return ResponseEntity.ok(agreementService.getGroupById(groupId));
+    public ResponseEntity<AgreementGroupResponse> getGroup(
+            @PathVariable Long groupId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(agreementService.getGroupById(groupId, principal.getId()));
     }
 
     @GetMapping("/groups/{groupId}/versions")
     @PreAuthorize(AGREEMENT_VIEW)
-    public ResponseEntity<List<AgreementResponse>> getVersions(@PathVariable Long groupId) {
-        return ResponseEntity.ok(agreementService.getVersionsByGroup(groupId));
+    public ResponseEntity<List<AgreementResponse>> getVersions(
+            @PathVariable Long groupId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(agreementService.getVersionsByGroup(groupId, principal.getId()));
     }
 
     @GetMapping("/{agreementId}/versions")
     @PreAuthorize(AGREEMENT_VIEW)
-    public ResponseEntity<List<AgreementResponse>> getVersionsByAgreement(@PathVariable Long agreementId) {
-        return ResponseEntity.ok(agreementService.getVersionsByAgreementId(agreementId));
+    public ResponseEntity<List<AgreementResponse>> getVersionsByAgreement(
+            @PathVariable Long agreementId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(agreementService.getVersionsByAgreementId(agreementId, principal.getId()));
     }
 
     @PostMapping("/{agreementId}/versions")
@@ -119,8 +126,19 @@ public class AgreementController {
 
     @GetMapping("/{agreementId}")
     @PreAuthorize(AGREEMENT_VIEW)
-    public ResponseEntity<AgreementResponse> getAgreement(@PathVariable Long agreementId) {
-        return ResponseEntity.ok(agreementService.getAgreementById(agreementId));
+    public ResponseEntity<AgreementResponse> getAgreement(
+            @PathVariable Long agreementId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(agreementService.getAgreementById(agreementId, principal.getId()));
+    }
+
+    @PutMapping("/{agreementId}")
+    @PreAuthorize(AGREEMENT_EDIT)
+    public ResponseEntity<AgreementResponse> updateDraft(
+            @PathVariable Long agreementId,
+            @RequestBody UpdateDraftRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(agreementService.updateDraft(agreementId, request, principal.getId()));
     }
 
     @PutMapping("/{agreementId}/submit")

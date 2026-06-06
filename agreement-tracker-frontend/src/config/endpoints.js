@@ -18,6 +18,7 @@ export const ENDPOINTS = {
   // Agreements
   AGREEMENTS: `${BASE}/agreements`,
   AGREEMENT_BY_ID: (id) => `${BASE}/agreements/${id}`,
+  AGREEMENT_UPDATE: (id) => `${BASE}/agreements/${id}`,
   AGREEMENT_GROUPS: `${BASE}/agreements/groups`,
   AGREEMENT_GROUP_BY_ID: (id) => `${BASE}/agreements/groups/${id}`,
   AGREEMENT_VERSIONS: (groupId) => `${BASE}/agreements/groups/${groupId}/versions`,

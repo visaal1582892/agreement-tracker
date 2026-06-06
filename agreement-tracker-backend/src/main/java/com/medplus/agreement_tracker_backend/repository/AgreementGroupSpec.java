@@ -57,6 +57,30 @@ public final class AgreementGroupSpec {
         };
     }
 
+    /** Hides draft-only groups owned by another user (no approved current version). */
+    public static Specification<AgreementGroup> draftVisibleTo(Long userId) {
+        return (root, query, cb) -> {
+            Subquery<Long> hidden = query.subquery(Long.class);
+            Root<Agreement> a = hidden.from(Agreement.class);
+
+            Subquery<Integer> maxVer = query.subquery(Integer.class);
+            Root<Agreement> aMax = maxVer.from(Agreement.class);
+            maxVer.select(cb.max(aMax.get("versionNumber")))
+                    .where(cb.equal(aMax.get("agreementGroup").get("id"), root.get("id")));
+
+            hidden.select(a.get("agreementGroup").get("id"))
+                    .where(
+                            cb.equal(a.get("agreementGroup").get("id"), root.get("id")),
+                            cb.equal(a.get("versionNumber"), maxVer),
+                            cb.equal(a.get("approvalStatus"), ApprovalStatus.DRAFT),
+                            cb.notEqual(a.get("owner").get("id"), userId),
+                            cb.isNull(root.get("currentVersionId"))
+                    );
+
+            return cb.not(root.get("id").in(hidden));
+        };
+    }
+
     /** Matches all groups — used when no column filters are active. */
     public static Specification<AgreementGroup> unrestricted() {
         return (root, query, cb) -> cb.conjunction();

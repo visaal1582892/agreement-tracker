@@ -81,7 +81,7 @@ function RowActionsMenu({ row, navigate, hasRight, onSubmit, onClone, onTransfer
         onClick={(e) => e.stopPropagation()}
       >
         {canView && <MenuItem dense onClick={goToDetail}>View</MenuItem>}
-        {canEditDraft && <MenuItem dense onClick={goToDetail}>Edit Draft</MenuItem>}
+        {canEditDraft && <MenuItem dense onClick={goToEdit}>Edit Draft</MenuItem>}
         {canEditApproved && <MenuItem dense onClick={goToEdit}>Edit</MenuItem>}
         {canRevise && <MenuItem dense onClick={goToEdit}>Revise & Resubmit</MenuItem>}
         {canSubmit && <MenuItem dense onClick={handleSubmitClick}>Submit for Approval</MenuItem>}
