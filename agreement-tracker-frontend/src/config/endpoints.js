@@ -12,6 +12,7 @@ export const ENDPOINTS = {
   USER_BY_ID: (id) => `${BASE}/users/${id}`,
   USER_ME: `${BASE}/users/me`,
   USER_SEARCH: `${BASE}/users/search`,
+  USER_LOOKUP: `${BASE}/users/lookup`,
   USER_ROLES: (id) => `${BASE}/users/${id}/roles`,
 
   // Agreements
@@ -20,18 +21,22 @@ export const ENDPOINTS = {
   AGREEMENT_GROUPS: `${BASE}/agreements/groups`,
   AGREEMENT_GROUP_BY_ID: (id) => `${BASE}/agreements/groups/${id}`,
   AGREEMENT_VERSIONS: (groupId) => `${BASE}/agreements/groups/${groupId}/versions`,
+  AGREEMENT_VERSIONS_BY_ID: (id) => `${BASE}/agreements/${id}/versions`,
   AGREEMENT_NEW_VERSION: (groupId) => `${BASE}/agreements/groups/${groupId}/new-version`,
   AGREEMENT_SUBMIT: (id) => `${BASE}/agreements/${id}/submit`,
+  AGREEMENT_TRANSFER: (id) => `${BASE}/agreements/${id}/transfer`,
   AGREEMENT_APPROVE: (id) => `${BASE}/agreements/${id}/approve`,
   AGREEMENT_REJECT: (id) => `${BASE}/agreements/${id}/reject`,
   AGREEMENT_TERMINATE: (id) => `${BASE}/agreements/${id}/terminate`,
   AGREEMENT_IN_PROGRESS: (id) => `${BASE}/agreements/${id}/in-progress`,
   AGREEMENT_TIMELINE: (id) => `${BASE}/agreements/${id}/timeline`,
+  AGREEMENT_CREATE_VERSION: (id) => `${BASE}/agreements/${id}/versions`,
   AGREEMENT_PENDING_APPROVALS: `${BASE}/agreements/pending-approvals`,
   AGREEMENT_BULK_TRANSFER: `${BASE}/agreements/bulk-transfer`,
 
   // Dashboard
   DASHBOARD_STATS: `${BASE}/dashboard/stats`,
+  DASHBOARD_EXPIRING: `${BASE}/dashboard/expiring`,
 
   // Master Data — simple dropdowns (backward compat with wizard)
   COMPANIES: `${BASE}/master/companies`,

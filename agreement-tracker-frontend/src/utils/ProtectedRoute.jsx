@@ -8,7 +8,7 @@ import {
   logout,
 } from '../store/slices/authSlice';
 import { ROUTES } from '../config/routes';
-import { hasAnyRequiredRight } from '../config/rights';
+import { defaultRouteForRights, hasAnyRequiredRight } from '../config/rights';
 
 export function ProtectedRoute() {
   const dispatch = useDispatch();
@@ -31,10 +31,11 @@ export function ProtectedRoute() {
  * Guards routes by user rights from login (CAS-ready).
  * Pass `rights` as an array; user needs any one of them.
  */
-export function RightRoute({ rights = [], redirectTo = ROUTES.DASHBOARD }) {
+export function RightRoute({ rights = [], redirectTo }) {
   const userRights = useSelector(selectUserRights);
   const allowed = hasAnyRequiredRight(userRights, rights);
-  return allowed ? <Outlet /> : <Navigate to={redirectTo} replace />;
+  const fallback = redirectTo ?? defaultRouteForRights(userRights);
+  return allowed ? <Outlet /> : <Navigate to={fallback} replace />;
 }
 
 /** @deprecated Use RightRoute with MASTER_VIEW / MASTER_MANAGE instead */

@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import {
-  AppBar, Box, CssBaseline, List, ListItem,
+  AppBar, Box, List, ListItem,
   ListItemButton, Toolbar, Typography,
   Badge, Avatar, Menu, MenuItem, Divider, InputBase,
   IconButton, Tooltip,
 } from '@mui/material';
 import {
   SpaceDashboardOutlined, DescriptionOutlined, CheckCircleOutlined, Search,
-  NotificationsNone, Logout, Person, ExpandMore, StorageOutlined,
+  NotificationsNone, Logout, Person, ExpandMore, StorageOutlined, ManageAccountsOutlined,
 } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import { useDispatch } from 'react-redux';
@@ -22,10 +22,11 @@ const DRAWER_WIDTH = 240;
 const DRAWER_COLLAPSED = 72;
 
 const NAV_ITEMS = [
-  { label: 'Dashboard',   icon: SpaceDashboardOutlined, path: ROUTES.DASHBOARD,  rights: [RIGHTS.DASHBOARD_VIEW] },
-  { label: 'Agreements',  icon: DescriptionOutlined,  path: ROUTES.AGREEMENTS, rights: [RIGHTS.AGREEMENT_VIEW], badge: 2, badgeColor: 'error' },
-  { label: 'Approvals',   icon: CheckCircleOutlined,    path: ROUTES.APPROVALS,  rights: [RIGHTS.AGREEMENT_APPROVE] },
-  { label: 'Master Data', icon: StorageOutlined,        path: ROUTES.MASTER,     rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Dashboard', icon: SpaceDashboardOutlined, path: ROUTES.DASHBOARD, rights: [RIGHTS.DASHBOARD_VIEW] },
+  { label: 'Agreements', icon: DescriptionOutlined, path: ROUTES.AGREEMENTS, rights: [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL] },
+  { label: 'Approvals', icon: CheckCircleOutlined, path: ROUTES.APPROVALS, rights: [RIGHTS.AGREEMENT_APPROVE] },
+  { label: 'Users', icon: ManageAccountsOutlined, path: ROUTES.ADMIN_USERS, rights: [RIGHTS.ADMIN_USERS] },
+  { label: 'Master Data', icon: StorageOutlined, path: ROUTES.MASTER, rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
 ];
 
 function NavIcon({ Icon, active, badge, collapsed }) {
@@ -101,8 +102,7 @@ export default function DashboardLayout() {
   const userRole = user?.roles?.[0]?.toUpperCase() || 'ADMIN';
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: '#F5F7FA' }}>
-      <CssBaseline />
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', bgcolor: '#F5F7FA' }}>
 
       {/* Full-width header */}
       <AppBar
@@ -315,10 +315,12 @@ export default function DashboardLayout() {
           component="main"
           sx={{
             flex: 1,
-            p: { xs: 2, md: 3 },
-            position: 'relative',
-            overflow: 'auto',
+            minHeight: 0,
             minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            position: 'relative',
             background: `
               radial-gradient(ellipse 80% 50% at 100% 0%, rgba(194,24,29,0.04) 0%, transparent 60%),
               radial-gradient(ellipse 60% 40% at 0% 100%, rgba(50,169,76,0.03) 0%, transparent 50%),
@@ -326,7 +328,17 @@ export default function DashboardLayout() {
             `,
           }}
         >
-          <Outlet />
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              overflow: 'auto',
+              overflowX: 'hidden',
+              p: { xs: 2, md: 3 },
+            }}
+          >
+            <Outlet />
+          </Box>
         </Box>
       </Box>
     </Box>

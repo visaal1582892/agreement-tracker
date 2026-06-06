@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Grid, Typography, Paper, Divider, Chip, Button, Select, MenuItem,
   FormControl, Stepper, Step, StepLabel, StepContent, TextField,
-  Dialog, DialogTitle, DialogContent, DialogActions, Tooltip, IconButton,
-  Accordion, AccordionSummary, AccordionDetails, Alert,
+  Dialog, DialogTitle, DialogContent, DialogActions, Alert, Tabs, Tab,
+  List, ListItemButton, ListItemText, Accordion, AccordionSummary, AccordionDetails,
 } from '@mui/material';
-import { Edit, ExpandMore, SwapHoriz, PowerSettingsNew } from '@mui/icons-material';
+import { Edit, ExpandMore, PowerSettingsNew, ContentCopy, SwapHoriz, History } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
@@ -16,10 +16,14 @@ import LoadingOverlay from '../../components/ui/LoadingOverlay';
 import { useAuth } from '../../hooks/useAuth';
 import { RIGHTS } from '../../config/rights';
 import { useModal } from '../../hooks/useModal';
+import { ROUTES } from '../../config/routes';
+import { fetchAgreementForClone } from '../../utils/agreementClone';
+import TransferOwnershipModal from '../../components/agreements/TransferOwnershipModal';
 import dayjs from 'dayjs';
 
-export default function AgreementDetailPage() {
-  const { groupId } = useParams();
+export default function AgreementDetailPage({ embeddedGroupId, onActionComplete } = {}) {
+  const { groupId: routeGroupId } = useParams();
+  const groupId = embeddedGroupId ?? routeGroupId;
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const { user, hasRight } = useAuth();
@@ -31,12 +35,16 @@ export default function AgreementDetailPage() {
   const [timeline, setTimeline] = useState([]);
   const [loading, setLoading] = useState(true);
   const [rejectRemarks, setRejectRemarks] = useState('');
+  const [activeTab, setActiveTab] = useState('details');
+  const [transferOpen, setTransferOpen] = useState(false);
 
   const rejectModal = useModal();
   const terminateModal = useModal();
   const [terminateData, setTerminateData] = useState({ terminationDate: '', terminationReason: '' });
 
   const load = async () => {
+    if (!groupId || groupId === 'undefined') return;
+    setLoading(true);
     try {
       const [groupRes, versionsRes] = await Promise.all([
         axiosInstance.get(ENDPOINTS.AGREEMENT_GROUP_BY_ID(groupId)),
@@ -44,7 +52,10 @@ export default function AgreementDetailPage() {
       ]);
       setGroup(groupRes.data);
       setVersions(versionsRes.data);
-      const currentId = groupRes.data.currentVersionId || versionsRes.data[0]?.id;
+      const pendingVersion = versionsRes.data.find((v) => v.approvalStatus === 'PENDING_APPROVAL');
+      const currentId = pendingVersion?.id
+        || groupRes.data.currentVersionId
+        || versionsRes.data[versionsRes.data.length - 1]?.id;
       setSelectedVersionId(currentId);
     } catch {
       enqueueSnackbar('Failed to load agreement', { variant: 'error' });
@@ -53,7 +64,15 @@ export default function AgreementDetailPage() {
     }
   };
 
-  useEffect(() => { load(); }, [groupId]);
+  useEffect(() => {
+    if (!groupId || groupId === 'undefined') return;
+    setGroup(null);
+    setVersions([]);
+    setAgreement(null);
+    setTimeline([]);
+    setSelectedVersionId(null);
+    load();
+  }, [groupId]);
 
   useEffect(() => {
     if (!selectedVersionId) return;
@@ -74,7 +93,7 @@ export default function AgreementDetailPage() {
 
   const handleSubmit = async () => {
     try {
-      await axiosInstance.post(ENDPOINTS.AGREEMENT_SUBMIT(selectedVersionId));
+      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(selectedVersionId));
       enqueueSnackbar('Submitted for approval', { variant: 'success' });
       load();
     } catch (err) {
@@ -87,6 +106,7 @@ export default function AgreementDetailPage() {
       await axiosInstance.post(ENDPOINTS.AGREEMENT_APPROVE(selectedVersionId), { remarks: 'Approved' });
       enqueueSnackbar('Agreement approved', { variant: 'success' });
       load();
+      onActionComplete?.();
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Approval failed', { variant: 'error' });
     }
@@ -99,6 +119,7 @@ export default function AgreementDetailPage() {
       rejectModal.close();
       setRejectRemarks('');
       load();
+      onActionComplete?.();
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Rejection failed', { variant: 'error' });
     }
@@ -107,9 +128,13 @@ export default function AgreementDetailPage() {
   const handleNewVersion = async () => {
     try {
       const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_NEW_VERSION(groupId));
-      enqueueSnackbar(`New draft V${data.versionNumber} created`, { variant: 'success' });
-      setVersions((prev) => [...prev, data]);
+      const msg = agreement?.approvalStatus === 'REJECTED'
+        ? `Revision V${data.versionNumber} submitted for approval`
+        : `New version V${data.versionNumber} submitted for approval`;
+      enqueueSnackbar(msg, { variant: 'success' });
+      await load();
       setSelectedVersionId(data.id);
+      onActionComplete?.();
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed', { variant: 'error' });
     }
@@ -130,9 +155,39 @@ export default function AgreementDetailPage() {
   const canSubmit = isOwner && agreement?.approvalStatus === 'DRAFT' && hasRight(RIGHTS.AGREEMENT_EDIT);
   const canApprove = hasRight(RIGHTS.AGREEMENT_APPROVE) && agreement?.approvalStatus === 'PENDING_APPROVAL' && agreement?.ownerId !== user?.id;
   const canNewVersion = (isOwner || hasRight(RIGHTS.AGREEMENT_EDIT)) && agreement?.approvalStatus === 'APPROVED';
+  const canRevise = isOwner && agreement?.approvalStatus === 'REJECTED' && hasRight(RIGHTS.AGREEMENT_EDIT);
   const canTerminate = hasRight(RIGHTS.AGREEMENT_EDIT) && agreement?.approvalStatus === 'APPROVED' && !agreement?.terminationDate;
+  const canClone = hasRight(RIGHTS.AGREEMENT_CREATE) && agreement;
+  const canTransfer = (isOwner || hasRight(RIGHTS.ADMIN_USERS)) && selectedVersionId;
+
+  const latestVersion = versions.reduce(
+    (max, v) => (!max || v.versionNumber > max.versionNumber ? v : max),
+    null,
+  );
+  const isReadOnlyView = agreement && latestVersion && selectedVersionId !== latestVersion.id;
+
+  const handleClone = async () => {
+    if (!selectedVersionId) return;
+    try {
+      const clonedData = await fetchAgreementForClone(axiosInstance, ENDPOINTS, selectedVersionId);
+      navigate(ROUTES.AGREEMENT_CREATE, { state: { clonedData } });
+    } catch {
+      enqueueSnackbar('Failed to prepare clone data', { variant: 'error' });
+    }
+  };
+
+  const handleSelectVersion = (versionId) => {
+    setSelectedVersionId(versionId);
+    setActiveTab('details');
+  };
 
   const ACTION_COLOR = { SUBMITTED: '#2196F3', APPROVED: BRAND.green, REJECTED: BRAND.red };
+
+  if (!groupId || groupId === 'undefined') {
+    return (
+      <Typography color="text.secondary">Select an agreement to review</Typography>
+    );
+  }
 
   if (loading) return <LoadingOverlay open />;
 
@@ -159,6 +214,44 @@ export default function AgreementDetailPage() {
         </Box>
       </Box>
 
+      <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Details" value="details" />
+        <Tab label="Version History" value="history" icon={<History sx={{ fontSize: 18 }} />} iconPosition="start" />
+      </Tabs>
+
+      {isReadOnlyView && (
+        <Alert severity="info" sx={{ mb: 2 }}>Viewing historical version — read-only.</Alert>
+      )}
+
+      {activeTab === 'history' ? (
+        <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+          <List disablePadding>
+            {versions.map((v) => (
+              <Box key={v.id}>
+                <ListItemButton
+                  selected={selectedVersionId === v.id}
+                  onClick={() => handleSelectVersion(v.id)}
+                  sx={{ borderRadius: 1 }}
+                >
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography fontWeight={600}>V{v.versionNumber}</Typography>
+                        <StatusBadge status={v.derivedStatus || v.approvalStatus} />
+                        {group?.currentVersionId === v.id && (
+                          <Chip label="Current" size="small" color="success" variant="outlined" />
+                        )}
+                      </Box>
+                    }
+                    secondary={`${v.startDate ? dayjs(v.startDate).format('DD MMM YYYY') : '—'} – ${v.expiryDate ? dayjs(v.expiryDate).format('DD MMM YYYY') : '—'} · ${v.ownerName || '—'}`}
+                  />
+                </ListItemButton>
+                <Divider />
+              </Box>
+            ))}
+          </List>
+        </Paper>
+      ) : (
       <Grid container spacing={3}>
         {/* Left: Data */}
         <Grid size={{ xs: 12, md: 8 }}>
@@ -230,12 +323,12 @@ export default function AgreementDetailPage() {
             <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
               <Typography variant="subtitle2" fontWeight={600} mb={1.5}>Actions</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {canSubmit && (
+                {!isReadOnlyView && canSubmit && (
                   <Button variant="contained" fullWidth onClick={handleSubmit} sx={{ bgcolor: BRAND.red }}>
                     Submit for Approval
                   </Button>
                 )}
-                {canApprove && (
+                {!isReadOnlyView && canApprove && (
                   <>
                     <Button variant="contained" fullWidth onClick={handleApprove} sx={{ bgcolor: BRAND.green }}>
                       ✓ Approve
@@ -245,14 +338,32 @@ export default function AgreementDetailPage() {
                     </Button>
                   </>
                 )}
-                {canNewVersion && (
-                  <Button variant="outlined" fullWidth startIcon={<Edit />} onClick={handleNewVersion}>
-                    Create New Version
+                {!isReadOnlyView && canNewVersion && (
+                  <Button variant="outlined" fullWidth startIcon={<Edit />}
+                    onClick={() => navigate(`/agreements/${selectedVersionId}/edit`)}>
+                    Edit (New Version)
                   </Button>
                 )}
-                {canTerminate && (
+                {!isReadOnlyView && canRevise && (
+                  <Button variant="contained" fullWidth startIcon={<Edit />}
+                    onClick={() => navigate(`/agreements/${selectedVersionId}/edit`)}
+                    sx={{ bgcolor: BRAND.red }}>
+                    Revise & Resubmit
+                  </Button>
+                )}
+                {!isReadOnlyView && canTerminate && (
                   <Button variant="outlined" color="error" fullWidth startIcon={<PowerSettingsNew />} onClick={terminateModal.open}>
                     Terminate
+                  </Button>
+                )}
+                {canClone && (
+                  <Button variant="outlined" fullWidth startIcon={<ContentCopy />} onClick={handleClone}>
+                    Clone (Copy Products)
+                  </Button>
+                )}
+                {canTransfer && !isReadOnlyView && (
+                  <Button variant="outlined" fullWidth startIcon={<SwapHoriz />} onClick={() => setTransferOpen(true)}>
+                    Transfer Ownership
                   </Button>
                 )}
               </Box>
@@ -290,6 +401,19 @@ export default function AgreementDetailPage() {
           </Paper>
         </Grid>
       </Grid>
+      )}
+
+      <TransferOwnershipModal
+        open={transferOpen}
+        onClose={() => setTransferOpen(false)}
+        agreementId={selectedVersionId}
+        agreementLabel={group?.agreementNumber}
+        onSuccess={() => {
+          enqueueSnackbar('Ownership transferred', { variant: 'success' });
+          load();
+          onActionComplete?.();
+        }}
+      />
 
       {/* Reject Modal */}
       <Dialog open={rejectModal.isOpen} onClose={rejectModal.close} maxWidth="sm" fullWidth>

@@ -4,7 +4,6 @@ import com.medplus.agreement_tracker_backend.dto.request.MasterPageRequest;
 import com.medplus.agreement_tracker_backend.dto.request.master.ProductMasterRequest;
 import com.medplus.agreement_tracker_backend.dto.response.PagedResponse;
 import com.medplus.agreement_tracker_backend.dto.response.master.ProductMasterResponse;
-import com.medplus.agreement_tracker_backend.entity.ProductMaster;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;
 import com.medplus.agreement_tracker_backend.service.master.ProductMasterService;
 import jakarta.validation.Valid;
@@ -35,10 +34,17 @@ public class ProductMasterController {
     /** Wizard backward-compat endpoint. */
     @GetMapping
     @PreAuthorize(MASTER_OR_AGREEMENT_READ)
-    public ResponseEntity<List<ProductMaster>> list(
-            @RequestParam List<Long> vendorIds,
+    public ResponseEntity<List<ProductMasterResponse>> list(
+            @RequestParam(value = "vendorIds[]", required = false) List<Long> vendorIdsBracket,
+            @RequestParam(value = "vendorIds", required = false) List<Long> vendorIdsPlain,
             @RequestParam(required = false) Long manufacturerId,
             @RequestParam(required = false) List<Long> divisionIds) {
+        List<Long> vendorIds = vendorIdsBracket != null && !vendorIdsBracket.isEmpty()
+                ? vendorIdsBracket
+                : vendorIdsPlain;
+        if (vendorIds == null || vendorIds.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
         if (divisionIds != null && !divisionIds.isEmpty()) {
             return ResponseEntity.ok(service.findByVendorIdsAndDivisions(vendorIds, divisionIds));
         }

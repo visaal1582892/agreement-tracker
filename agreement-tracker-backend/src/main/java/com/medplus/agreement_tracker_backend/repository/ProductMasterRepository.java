@@ -8,9 +8,12 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ProductMasterRepository extends JpaRepository<ProductMaster, Long>, JpaSpecificationExecutor<ProductMaster> {
+
+    Optional<ProductMaster> findByProductCode(String productCode);
 
     List<ProductMaster> findByManufacturerIdAndIsActiveTrue(Long manufacturerId);
 
@@ -18,14 +21,18 @@ public interface ProductMasterRepository extends JpaRepository<ProductMaster, Lo
 
     @Query("""
             SELECT DISTINCT p FROM ProductMaster p
-            JOIN VendorProductMapping vpm ON vpm.product.id = p.id
+            JOIN FETCH p.manufacturer
+            JOIN FETCH p.division
+            JOIN VendorProductMapping vpm ON vpm.product = p
             WHERE vpm.vendor.id IN :vendorIds AND p.isActive = true
             """)
     List<ProductMaster> findByVendorIds(@Param("vendorIds") List<Long> vendorIds);
 
     @Query("""
             SELECT DISTINCT p FROM ProductMaster p
-            JOIN VendorProductMapping vpm ON vpm.product.id = p.id
+            JOIN FETCH p.manufacturer
+            JOIN FETCH p.division
+            JOIN VendorProductMapping vpm ON vpm.product = p
             WHERE vpm.vendor.id IN :vendorIds
             AND p.manufacturer.id = :manufacturerId
             AND p.isActive = true
@@ -34,7 +41,20 @@ public interface ProductMasterRepository extends JpaRepository<ProductMaster, Lo
 
     @Query("""
             SELECT DISTINCT p FROM ProductMaster p
-            JOIN VendorProductMapping vpm ON vpm.product.id = p.id
+            JOIN FETCH p.manufacturer
+            JOIN FETCH p.division
+            JOIN VendorProductMapping vpm ON vpm.product = p
+            WHERE vpm.vendor.id IN :vendorIds
+            AND p.manufacturer.id IN :manufacturerIds
+            AND p.isActive = true
+            """)
+    List<ProductMaster> findByVendorIdsAndManufacturerIds(@Param("vendorIds") List<Long> vendorIds, @Param("manufacturerIds") List<Long> manufacturerIds);
+
+    @Query("""
+            SELECT DISTINCT p FROM ProductMaster p
+            JOIN FETCH p.manufacturer
+            JOIN FETCH p.division
+            JOIN VendorProductMapping vpm ON vpm.product = p
             WHERE vpm.vendor.id IN :vendorIds
             AND p.division.id IN :divisionIds
             AND p.isActive = true

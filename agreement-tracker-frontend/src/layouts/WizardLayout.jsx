@@ -2,10 +2,8 @@ import { Box, Step, StepLabel, Stepper, Typography, Paper, Button, alpha } from 
 import { BRAND } from '../config/theme';
 
 const STEPS = [
-  'Company & Vendors',
-  'Products',
+  'Company, Vendors & Products',
   'Agreement Details',
-  'Commercials',
   'Review & Submit',
 ];
 
@@ -13,7 +11,6 @@ const cardSx = {
   borderRadius: 3.5,
   border: '1px solid rgba(226, 232, 240, 0.8)',
   boxShadow: '0 4px 24px rgba(15, 23, 42, 0.05)',
-  overflow: 'hidden',
   bgcolor: '#fff',
 };
 
@@ -27,7 +24,7 @@ export default function WizardLayout({ activeStep, children, onNext, onBack, onC
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          minHeight: { md: 'calc(100vh - 220px)' },
+          minHeight: 0,
         }}
       >
         {/* Stepper */}

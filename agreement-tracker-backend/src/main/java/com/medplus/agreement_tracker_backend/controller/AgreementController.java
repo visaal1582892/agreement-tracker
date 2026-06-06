@@ -3,10 +3,13 @@ package com.medplus.agreement_tracker_backend.controller;
 import com.medplus.agreement_tracker_backend.dto.request.ApprovalActionRequest;
 import com.medplus.agreement_tracker_backend.dto.request.BulkTransferRequest;
 import com.medplus.agreement_tracker_backend.dto.request.CreateAgreementRequest;
+import com.medplus.agreement_tracker_backend.dto.request.EditAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.TerminateAgreementRequest;
+import com.medplus.agreement_tracker_backend.dto.request.TransferOwnershipRequest;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementGroupResponse;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
+import com.medplus.agreement_tracker_backend.dto.response.BulkAgreementCreateResponse;
 import com.medplus.agreement_tracker_backend.enums.RightCode;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;
 import com.medplus.agreement_tracker_backend.service.AgreementService;
@@ -14,9 +17,11 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -34,7 +39,7 @@ public class AgreementController {
 
     @PostMapping
     @PreAuthorize(AGREEMENT_CREATE)
-    public ResponseEntity<AgreementResponse> createDraft(
+    public ResponseEntity<BulkAgreementCreateResponse> createDraft(
             @Valid @RequestBody CreateAgreementRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -53,10 +58,34 @@ public class AgreementController {
     @GetMapping("/groups")
     @PreAuthorize(AGREEMENT_VIEW)
     public ResponseEntity<Page<AgreementGroupResponse>> getAllGroups(
-            @PageableDefault(size = 20) Pageable pageable,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+            @RequestParam(defaultValue = "MY") String scope,
+            @RequestParam(required = false) String agreementNumber,
+            @RequestParam(required = false) String companyName,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String ownerName,
+            @RequestParam(required = false) Long vendorId,
+            @RequestParam(required = false) Long incomeTypeId,
             @AuthenticationPrincipal UserPrincipal principal) {
-        boolean viewAll = principal.hasRight(RightCode.AGREEMENT_VIEW_ALL.name());
-        return ResponseEntity.ok(agreementService.getAllGroups(pageable, principal.getId(), viewAll));
+        boolean canViewAll = principal.hasRight(RightCode.AGREEMENT_VIEW_ALL.name());
+        boolean canViewMy = principal.hasRight(RightCode.AGREEMENT_VIEW.name());
+
+        String effectiveScope = scope.toUpperCase();
+        if ("ALL".equals(effectiveScope) && !canViewAll) {
+            throw new AccessDeniedException("Missing AGREEMENT_VIEW_ALL right");
+        }
+        if ("MY".equals(effectiveScope) && !canViewMy) {
+            throw new AccessDeniedException("Missing AGREEMENT_VIEW right");
+        }
+        if (!canViewMy && canViewAll) {
+            effectiveScope = "ALL";
+        } else if (canViewMy && !canViewAll) {
+            effectiveScope = "MY";
+        }
+
+        return ResponseEntity.ok(agreementService.getAllGroups(
+                pageable, principal.getId(), effectiveScope, canViewAll,
+                agreementNumber, companyName, status, ownerName, vendorId, incomeTypeId));
     }
 
     @GetMapping("/groups/{groupId}")
@@ -71,13 +100,29 @@ public class AgreementController {
         return ResponseEntity.ok(agreementService.getVersionsByGroup(groupId));
     }
 
+    @GetMapping("/{agreementId}/versions")
+    @PreAuthorize(AGREEMENT_VIEW)
+    public ResponseEntity<List<AgreementResponse>> getVersionsByAgreement(@PathVariable Long agreementId) {
+        return ResponseEntity.ok(agreementService.getVersionsByAgreementId(agreementId));
+    }
+
+    @PostMapping("/{agreementId}/versions")
+    @PreAuthorize(AGREEMENT_EDIT)
+    public ResponseEntity<AgreementResponse> createVersionedEdit(
+            @PathVariable Long agreementId,
+            @Valid @RequestBody EditAgreementRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(agreementService.createVersionedEdit(agreementId, request, principal.getId()));
+    }
+
     @GetMapping("/{agreementId}")
     @PreAuthorize(AGREEMENT_VIEW)
     public ResponseEntity<AgreementResponse> getAgreement(@PathVariable Long agreementId) {
         return ResponseEntity.ok(agreementService.getAgreementById(agreementId));
     }
 
-    @PostMapping("/{agreementId}/submit")
+    @PutMapping("/{agreementId}/submit")
     @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<AgreementResponse> submitForApproval(
             @PathVariable Long agreementId,
@@ -135,7 +180,18 @@ public class AgreementController {
         return ResponseEntity.ok(agreementService.getApprovalTimeline(agreementId));
     }
 
-    @PostMapping("/bulk-transfer")
+    @PutMapping("/{agreementId}/transfer")
+    @PreAuthorize("hasAnyAuthority('ADMIN_USERS', 'AGREEMENT_EDIT')")
+    public ResponseEntity<AgreementResponse> transferOwnership(
+            @PathVariable Long agreementId,
+            @Valid @RequestBody TransferOwnershipRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        boolean isAdmin = principal.hasRight(RightCode.ADMIN_USERS.name());
+        return ResponseEntity.ok(agreementService.transferOwnership(
+                agreementId, request.newOwnerUserId(), principal.getId(), isAdmin));
+    }
+
+    @PutMapping("/bulk-transfer")
     @PreAuthorize(ADMIN_USERS)
     public ResponseEntity<Void> bulkTransfer(
             @Valid @RequestBody BulkTransferRequest request,

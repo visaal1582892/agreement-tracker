@@ -34,10 +34,14 @@ public record AgreementResponse(
         String terminationReason,
         String notes,
         List<VendorSummary> vendors,
+        List<Long> manufacturerIds,
+        List<RuleSummary> divisionRules,
+        List<RuleSummary> productRules,
         List<ProductSummary> products,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
     public record VendorSummary(Long vendorId, String vendorName) {}
     public record ProductSummary(Long productId, String productName, String manufacturerName, String divisionName) {}
+    public record RuleSummary(Long id, String ruleType) {}
 }

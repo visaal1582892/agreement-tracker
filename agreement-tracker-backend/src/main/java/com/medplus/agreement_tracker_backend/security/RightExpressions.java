@@ -9,7 +9,7 @@ public final class RightExpressions {
     private RightExpressions() {}
 
     public static final String DASHBOARD_VIEW = "hasAuthority('DASHBOARD_VIEW')";
-    public static final String AGREEMENT_VIEW = "hasAuthority('AGREEMENT_VIEW')";
+    public static final String AGREEMENT_VIEW = "hasAnyAuthority('AGREEMENT_VIEW', 'AGREEMENT_VIEW_ALL')";
     public static final String AGREEMENT_VIEW_ALL = "hasAuthority('AGREEMENT_VIEW_ALL')";
     public static final String AGREEMENT_CREATE = "hasAuthority('AGREEMENT_CREATE')";
     public static final String AGREEMENT_EDIT = "hasAuthority('AGREEMENT_EDIT')";

@@ -41,6 +41,23 @@ public class UserController {
         return ResponseEntity.ok(userService.getAllUsers(pageable));
     }
 
+    @GetMapping("/me")
+    public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(userService.getUserById(principal.getId()));
+    }
+
+    @GetMapping("/search")
+    @PreAuthorize(ADMIN_USERS)
+    public ResponseEntity<List<UserResponse>> search(@RequestParam String q) {
+        return ResponseEntity.ok(userService.searchUsers(q));
+    }
+
+    @GetMapping("/lookup")
+    @PreAuthorize("hasAnyAuthority('ADMIN_USERS', 'AGREEMENT_EDIT')")
+    public ResponseEntity<List<UserResponse>> lookup(@RequestParam(required = false, defaultValue = "") String q) {
+        return ResponseEntity.ok(userService.searchUsers(q));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('ADMIN_USERS') or #id == authentication.principal.id")
     public ResponseEntity<UserResponse> getUser(@PathVariable Long id) {
@@ -63,16 +80,5 @@ public class UserController {
             @AuthenticationPrincipal UserPrincipal principal) {
         userService.deactivateUser(id, principal.getId());
         return ResponseEntity.noContent().build();
-    }
-
-    @GetMapping("/search")
-    @PreAuthorize(ADMIN_USERS)
-    public ResponseEntity<List<UserResponse>> search(@RequestParam String q) {
-        return ResponseEntity.ok(userService.searchUsers(q));
-    }
-
-    @GetMapping("/me")
-    public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(userService.getUserById(principal.getId()));
     }
 }

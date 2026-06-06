@@ -16,9 +16,10 @@ export const RIGHTS = {
 /** Minimum right(s) required to access a route (any match grants access). */
 export const ROUTE_RIGHTS = {
   '/': [RIGHTS.DASHBOARD_VIEW],
-  '/agreements': [RIGHTS.AGREEMENT_VIEW],
+  '/agreements': [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL],
   '/agreements/new': [RIGHTS.AGREEMENT_CREATE],
   '/approvals': [RIGHTS.AGREEMENT_APPROVE],
+  '/admin/users': [RIGHTS.ADMIN_USERS],
   '/master': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/companies': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/vendors': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
@@ -33,7 +34,9 @@ export const ROUTE_RIGHTS = {
 
 export function rightsForPath(pathname) {
   if (ROUTE_RIGHTS[pathname]) return ROUTE_RIGHTS[pathname];
-  if (pathname.startsWith('/agreements/groups/')) return [RIGHTS.AGREEMENT_VIEW];
+  if (pathname.startsWith('/agreements/groups/')) {
+    return [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL];
+  }
   const prefix = Object.keys(ROUTE_RIGHTS)
     .filter((p) => p !== '/')
     .sort((a, b) => b.length - a.length)

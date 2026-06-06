@@ -12,7 +12,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -32,19 +31,23 @@ public class DataSeeder implements CommandLineRunner {
     private final DivisionMasterRepository divisionRepository;
     private final ProductMasterRepository productRepository;
     private final VendorMasterRepository vendorRepository;
+    private final VendorProductMappingRepository vendorProductMappingRepository;
     private final RightRepository rightRepository;
     private final RoleRightRepository roleRightRepository;
     private final PasswordEncoder passwordEncoder;
+
+    private static final String TEST_PASSWORD = "Test@123";
 
     @Override
     @Transactional
     public void run(String... args) {
         seedRoles();
-        seedAdminUser();
+        seedTestUsers();
         seedLookups();
         seedRights();
         seedRoleRights();
         seedMockMasterData();
+        seedVendorProductMappings();
         log.info("Data seeding complete");
     }
 
@@ -57,24 +60,39 @@ public class DataSeeder implements CommandLineRunner {
         }
     }
 
-    private void seedAdminUser() {
-        if (userRepository.findByUsername("admin").isEmpty()) {
-            User admin = User.builder()
-                    .username("admin")
-                    .fullName("System Administrator")
-                    .email("admin@medplus.com")
-                    .employeeId("EMP001")
-                    .passwordHash(passwordEncoder.encode("Admin@123"))
-                    .isActive(true)
-                    .build();
-            admin = userRepository.save(admin);
+    private void seedTestUsers() {
+        seedUserWithRole("admin", "System Administrator", "admin@medplus.com", "EMP001", "Admin@123", RoleName.ADMIN);
+        seedUserWithRole("amgr", "Ravi Kumar", "ravi.kumar@medplus.com", "EMP002", TEST_PASSWORD, RoleName.ACCOUNT_MANAGER);
+        seedUserWithRole("approver", "Priya Sharma", "priya.sharma@medplus.com", "EMP003", TEST_PASSWORD, RoleName.APPROVER);
+        seedUserWithRole("leader", "Anil Mehta", "anil.mehta@medplus.com", "EMP004", TEST_PASSWORD, RoleName.LEADERSHIP);
+        seedUserWithRole("finance", "Sneha Patel", "sneha.patel@medplus.com", "EMP005", TEST_PASSWORD, RoleName.FINANCE);
+    }
 
-            Role adminRole = roleRepository.findByName(RoleName.ADMIN).orElseThrow();
-            UserRole userRole = UserRole.builder().user(admin).role(adminRole).build();
-            userRoleRepository.save(userRole);
-
-            log.info("Admin user created: admin / Admin@123");
+    private void seedUserWithRole(
+            String username,
+            String fullName,
+            String email,
+            String employeeId,
+            String rawPassword,
+            RoleName roleName) {
+        if (userRepository.findByUsername(username).isPresent()) {
+            return;
         }
+
+        User user = User.builder()
+                .username(username)
+                .fullName(fullName)
+                .email(email)
+                .employeeId(employeeId)
+                .passwordHash(passwordEncoder.encode(rawPassword))
+                .isActive(true)
+                .build();
+        user = userRepository.save(user);
+
+        Role role = roleRepository.findByName(roleName).orElseThrow();
+        userRoleRepository.save(UserRole.builder().user(user).role(role).build());
+
+        log.info("Test user created: {} / {} ({})", username, rawPassword, roleName);
     }
 
     private void seedLookups() {
@@ -117,30 +135,26 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedRoleRights() {
-        List<String> allRights = Arrays.stream(RightCode.values()).map(Enum::name).toList();
+        roleRightRepository.deleteAllInBatch();
 
         Map<RoleName, List<String>> mappings = Map.of(
-                RoleName.ADMIN, allRights,
+                RoleName.ADMIN, List.of(
+                        RightCode.MASTER_MANAGE.name(),
+                        RightCode.MASTER_VIEW.name(),
+                        RightCode.ADMIN_USERS.name()
+                ),
                 RoleName.ACCOUNT_MANAGER, List.of(
-                        RightCode.DASHBOARD_VIEW.name(),
                         RightCode.AGREEMENT_VIEW.name(),
                         RightCode.AGREEMENT_CREATE.name(),
-                        RightCode.AGREEMENT_EDIT.name()
+                        RightCode.AGREEMENT_EDIT.name(),
+                        RightCode.MASTER_VIEW.name(),
+                        RightCode.DASHBOARD_VIEW.name()
                 ),
                 RoleName.APPROVER, List.of(
-                        RightCode.DASHBOARD_VIEW.name(),
-                        RightCode.AGREEMENT_VIEW.name(),
-                        RightCode.AGREEMENT_APPROVE.name()
-                ),
-                RoleName.LEADERSHIP, List.of(
-                        RightCode.DASHBOARD_VIEW.name(),
-                        RightCode.AGREEMENT_VIEW.name(),
-                        RightCode.AGREEMENT_VIEW_ALL.name()
-                ),
-                RoleName.FINANCE, List.of(
-                        RightCode.DASHBOARD_VIEW.name(),
-                        RightCode.AGREEMENT_VIEW.name(),
-                        RightCode.AGREEMENT_VIEW_ALL.name()
+                        RightCode.AGREEMENT_VIEW_ALL.name(),
+                        RightCode.AGREEMENT_APPROVE.name(),
+                        RightCode.MASTER_VIEW.name(),
+                        RightCode.DASHBOARD_VIEW.name()
                 )
         );
 
@@ -148,11 +162,11 @@ public class DataSeeder implements CommandLineRunner {
             Role role = roleRepository.findByName(roleName).orElseThrow();
             for (String code : rightCodes) {
                 Right right = rightRepository.findByCode(code).orElseThrow();
-                if (!roleRightRepository.existsByRoleIdAndRightId(role.getId(), right.getId())) {
-                    roleRightRepository.save(RoleRight.builder().role(role).right(right).build());
-                }
+                roleRightRepository.save(RoleRight.builder().role(role).right(right).build());
             }
         });
+
+        log.info("Role-rights seeded: ADMIN(3), ACCOUNT_MANAGER(5), APPROVER(4)");
     }
 
     private void seedMockMasterData() {
@@ -186,6 +200,35 @@ public class DataSeeder implements CommandLineRunner {
             vendorRepository.save(VendorMaster.builder().vendorCode("V002").vendorName("MedPlus Pharmacy - Delhi").build());
             vendorRepository.save(VendorMaster.builder().vendorCode("V003").vendorName("MedPlus Pharmacy - Hyderabad").build());
             vendorRepository.save(VendorMaster.builder().vendorCode("V004").vendorName("MedPlus Pharmacy - Chennai").build());
+        }
+    }
+
+    private void seedVendorProductMappings() {
+        List<String[]> mappings = List.of(
+                new String[]{"V001", "IBR001"},
+                new String[]{"V001", "XTD001"},
+                new String[]{"V001", "CVX001"},
+                new String[]{"V001", "TLM001"},
+                new String[]{"V002", "IBR001"},
+                new String[]{"V002", "XTD001"},
+                new String[]{"V003", "CVX001"},
+                new String[]{"V003", "TLM001"},
+                new String[]{"V004", "IBR001"},
+                new String[]{"V004", "TLM001"}
+        );
+
+        for (String[] mapping : mappings) {
+            VendorMaster vendor = vendorRepository.findByVendorCode(mapping[0]).orElse(null);
+            ProductMaster product = productRepository.findByProductCode(mapping[1]).orElse(null);
+            if (vendor == null || product == null) {
+                log.warn("Skipping vendor-product mapping {} -> {}: master data not found", mapping[0], mapping[1]);
+                continue;
+            }
+            if (vendorProductMappingRepository.existsByVendorIdAndProductId(vendor.getId(), product.getId())) {
+                continue;
+            }
+            vendorProductMappingRepository.save(
+                    VendorProductMapping.builder().vendor(vendor).product(product).build());
         }
     }
 }

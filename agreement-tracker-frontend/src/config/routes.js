@@ -10,6 +10,8 @@ export const ROUTES = {
 
   APPROVALS: '/approvals',
 
+  ADMIN_USERS: '/admin/users',
+
   // Master Data Configuration
   MASTER: '/master',
   MASTER_COMPANIES: '/master/companies',

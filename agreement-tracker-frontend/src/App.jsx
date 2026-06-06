@@ -15,7 +15,9 @@ import DashboardPage from './pages/dashboard/DashboardPage';
 import AgreementListPage from './pages/agreements/AgreementListPage';
 import AgreementCreatePage from './pages/agreements/AgreementCreatePage';
 import AgreementDetailPage from './pages/agreements/AgreementDetailPage';
+import AgreementEditPage from './pages/agreements/AgreementEditPage';
 import ApprovalsPage from './pages/approvals/ApprovalsPage';
+import UserManagementPage from './pages/admin/UserManagementPage';
 import MasterDataLayout from './pages/master/MasterDataLayout';
 import CompanyMasterPage from './pages/master/CompanyMasterPage';
 import VendorMasterPage from './pages/master/VendorMasterPage';
@@ -47,7 +49,7 @@ export default function App() {
                       <Route index element={<DashboardPage />} />
                     </Route>
 
-                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_VIEW]} />}>
+                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL]} />}>
                       <Route path={ROUTES.AGREEMENTS} element={<AgreementListPage />} />
                       <Route path="/agreements/groups/:groupId" element={<AgreementDetailPage />} />
                     </Route>
@@ -56,8 +58,16 @@ export default function App() {
                       <Route path={ROUTES.AGREEMENT_CREATE} element={<AgreementCreatePage />} />
                     </Route>
 
+                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_EDIT]} />}>
+                      <Route path={ROUTES.AGREEMENT_EDIT} element={<AgreementEditPage />} />
+                    </Route>
+
                     <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_APPROVE]} />}>
                       <Route path={ROUTES.APPROVALS} element={<ApprovalsPage />} />
+                    </Route>
+
+                    <Route element={<RightRoute rights={[RIGHTS.ADMIN_USERS]} />}>
+                      <Route path={ROUTES.ADMIN_USERS} element={<UserManagementPage />} />
                     </Route>
 
                     <Route element={<RightRoute rights={[RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE]} />}>

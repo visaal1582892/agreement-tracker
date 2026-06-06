@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Box, Typography, alpha, Paper } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
@@ -8,44 +8,95 @@ import { ROUTES } from '../../config/routes';
 import { BRAND } from '../../config/theme';
 import WizardLayout from '../../layouts/WizardLayout';
 import { useAgreementWizard } from '../../hooks/useAgreementWizard';
-import Step1CompanyVendors from './wizard/Step1CompanyVendors';
-import Step2Products from './wizard/Step2Products';
-import Step3Details from './wizard/Step3Details';
-import Step4Commercials from './wizard/Step4Commercials';
+import Step1Setup from './wizard/Step1Setup';
+import Step2Agreements from './wizard/Step2Agreements';
 import Step5Review from './wizard/Step5Review';
 
 export default function AgreementCreatePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { enqueueSnackbar } = useSnackbar();
-  const { state, updateFields, nextStep, prevStep, reset } = useAgreementWizard();
+  const clonedRef = useRef(false);
+  const {
+    state,
+    updateFields,
+    updateProductRules,
+    addAgreement,
+    removeAgreement,
+    updateAgreementDetails,
+    updateAgreementCommercials,
+    nextStep,
+    prevStep,
+    reset,
+    hydrateFromClone,
+  } = useAgreementWizard();
   const [submitting, setSubmitting] = useState(false);
+  const [documentErrors, setDocumentErrors] = useState({});
+
+  useEffect(() => {
+    if (location.state?.clonedData && !clonedRef.current) {
+      hydrateFromClone(location.state.clonedData);
+      clonedRef.current = true;
+      enqueueSnackbar('Product scope copied — complete remaining details', { variant: 'info' });
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, hydrateFromClone, enqueueSnackbar, navigate]);
+
+  const clearDocumentError = (agreementId) => {
+    setDocumentErrors((prev) => {
+      const next = { ...prev };
+      delete next[agreementId];
+      return next;
+    });
+  };
 
   const validate = () => {
     switch (state.step) {
       case 0:
         if (!state.companyId) { enqueueSnackbar('Select a company', { variant: 'warning' }); return false; }
         if (!state.vendorIds?.length) { enqueueSnackbar('Select at least one vendor', { variant: 'warning' }); return false; }
-        return true;
-      case 1:
-        if (!state.productIds?.length) { enqueueSnackbar('Select at least one product', { variant: 'warning' }); return false; }
-        return true;
-      case 2:
-        if (!state.incomeTypeId) { enqueueSnackbar('Select income type', { variant: 'warning' }); return false; }
-        if (!state.agreementTypeId) { enqueueSnackbar('Select agreement type', { variant: 'warning' }); return false; }
-        if (!state.startDate || !state.expiryDate) { enqueueSnackbar('Dates are required', { variant: 'warning' }); return false; }
-        return true;
-      case 3:
-        if (state.commercialStructure === 'FLAT' && !state.commercialValue) {
-          enqueueSnackbar('Enter commercial value', { variant: 'warning' }); return false;
+        if (!state.productRules?.productRules?.length) {
+          enqueueSnackbar('Select at least one product', { variant: 'warning' }); return false;
         }
         return true;
-      default: return true;
+      case 1: {
+        if (!state.agreements?.length) {
+          enqueueSnackbar('Add at least one agreement', { variant: 'warning' }); return false;
+        }
+
+        const errors = {};
+        let hasError = false;
+        state.agreements.forEach((agreement, index) => {
+          const { details, commercials } = agreement;
+          if (!details.incomeTypeId) {
+            enqueueSnackbar(`Agreement ${index + 1}: select income type`, { variant: 'warning' });
+            hasError = true;
+          } else if (!details.agreementTypeId) {
+            enqueueSnackbar(`Agreement ${index + 1}: select agreement type`, { variant: 'warning' });
+            hasError = true;
+          } else if (!details.startDate || !details.expiryDate) {
+            enqueueSnackbar(`Agreement ${index + 1}: dates are required`, { variant: 'warning' });
+            hasError = true;
+          } else if (commercials.commercialStructure === 'FLAT' && !commercials.commercialValue) {
+            enqueueSnackbar(`Agreement ${index + 1}: enter commercial value`, { variant: 'warning' });
+            hasError = true;
+          } else if (!details.documents?.length) {
+            errors[agreement.id] = 'Upload at least one document before continuing.';
+            enqueueSnackbar(`Agreement ${index + 1}: upload at least one document`, { variant: 'warning' });
+            hasError = true;
+          }
+        });
+        setDocumentErrors(errors);
+        return !hasError;
+      }
+      default:
+        return true;
     }
   };
 
   const handleNext = () => {
     if (!validate()) return;
-    if (state.step === 4) {
+    if (state.step === 2) {
       handleSubmit();
     } else {
       nextStep();
@@ -58,21 +109,34 @@ export default function AgreementCreatePage() {
       const payload = {
         companyId: state.companyId,
         vendorIds: state.vendorIds,
-        productIds: state.productIds,
-        incomeTypeId: state.incomeTypeId,
-        agreementTypeId: state.agreementTypeId,
-        commercialStructure: state.commercialStructure,
-        commercialValue: state.commercialValue || null,
-        calculationFormula: state.calculationFormula || null,
-        startDate: state.startDate?.split('T')[0],
-        expiryDate: state.expiryDate?.split('T')[0],
-        notes: state.notes || null,
+        productRules: {
+          manufacturers: state.productRules.manufacturers,
+          divisionRules: state.productRules.divisionRules,
+          productRules: state.productRules.productRules,
+        },
+        agreements: state.agreements.map(({ details, commercials }) => ({
+          details: {
+            incomeTypeId: details.incomeTypeId,
+            agreementTypeId: details.agreementTypeId,
+            startDate: details.startDate?.split('T')[0],
+            expiryDate: details.expiryDate?.split('T')[0],
+            notes: details.notes || null,
+          },
+          commercials: {
+            commercialStructure: commercials.commercialStructure,
+            commercialValue: commercials.commercialValue || null,
+            calculationFormula: commercials.calculationFormula || null,
+          },
+        })),
       };
 
       const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENTS, payload);
-      enqueueSnackbar(`Agreement ${data.agreementNumber} created as DRAFT`, { variant: 'success' });
+      const count = data.agreements?.length || 1;
+      enqueueSnackbar(`${count} agreement(s) submitted for approval`, { variant: 'success' });
       reset();
-      navigate(`/agreements/groups/${data.agreementGroupId}`);
+      navigate(data.primaryAgreementGroupId
+        ? `/agreements/groups/${data.primaryAgreementGroupId}`
+        : ROUTES.AGREEMENTS);
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to create agreement';
       enqueueSnackbar(msg, { variant: 'error' });
@@ -82,15 +146,25 @@ export default function AgreementCreatePage() {
   };
 
   const STEP_COMPONENTS = [
-    <Step1CompanyVendors state={state} updateFields={updateFields} />,
-    <Step2Products state={state} updateFields={updateFields} />,
-    <Step3Details state={state} updateFields={updateFields} />,
-    <Step4Commercials state={state} updateFields={updateFields} />,
+    <Step1Setup
+      state={state}
+      updateFields={updateFields}
+      updateProductRules={updateProductRules}
+    />,
+    <Step2Agreements
+      state={state}
+      addAgreement={addAgreement}
+      removeAgreement={removeAgreement}
+      updateAgreementDetails={updateAgreementDetails}
+      updateAgreementCommercials={updateAgreementCommercials}
+      documentErrors={documentErrors}
+      onClearDocumentError={clearDocumentError}
+    />,
     <Step5Review state={state} />,
   ];
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', height: '100%' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
       <Paper
         elevation={0}
         sx={{
@@ -109,10 +183,10 @@ export default function AgreementCreatePage() {
           New Draft
         </Typography>
         <Typography sx={{ fontSize: { xs: '1.35rem', md: '1.6rem' }, fontWeight: 800, color: BRAND.textPrimary, letterSpacing: '-0.5px' }}>
-          New Agreement
+          Bulk Agreement
         </Typography>
         <Typography sx={{ mt: 0.5, fontSize: '0.9rem', color: '#64748B' }}>
-          Complete all steps to create a new commercial agreement draft
+          Shared company, vendors, and products — unique details per agreement
         </Typography>
       </Paper>
 
@@ -121,7 +195,7 @@ export default function AgreementCreatePage() {
         onNext={handleNext}
         onBack={prevStep}
         onCancel={() => navigate(ROUTES.AGREEMENTS)}
-        isLastStep={state.step === 4}
+        isLastStep={state.step === 2}
         isSubmitting={submitting}
       >
         {STEP_COMPONENTS[state.step]}

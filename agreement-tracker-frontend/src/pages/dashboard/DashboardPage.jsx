@@ -94,17 +94,26 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [recentGroups, setRecentGroups] = useState([]);
+  const [expiring, setExpiring] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const urgencyStyle = (urgency) => {
+    if (urgency === 'RED') return { color: '#DC2626', bg: '#FEF2F2', label: '< 30 days' };
+    if (urgency === 'YELLOW') return { color: '#D97706', bg: '#FFFBEB', label: '< 60 days' };
+    return { color: '#2563EB', bg: '#EFF6FF', label: '61–90 days' };
+  };
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [statsRes, groupsRes] = await Promise.all([
+        const [statsRes, groupsRes, expiringRes] = await Promise.all([
           axiosInstance.get(ENDPOINTS.DASHBOARD_STATS),
           axiosInstance.get(ENDPOINTS.AGREEMENT_GROUPS, { params: { page: 0, size: 6 } }),
+          axiosInstance.get(ENDPOINTS.DASHBOARD_EXPIRING),
         ]);
         setStats(statsRes.data);
         setRecentGroups(groupsRes.data.content || []);
+        setExpiring(expiringRes.data || []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -177,6 +186,49 @@ export default function DashboardPage() {
           )}
         </Grid>
       </Grid>
+
+      {/* Expiring contracts */}
+      <Paper elevation={0} sx={{ ...cardSx, mb: 3, p: 3 }}>
+        <SectionHeader icon={<Warning sx={{ fontSize: 18 }} />} title="Renewal Watch — Expiring in 90 Days" />
+        {loading ? (
+          <Skeleton variant="rounded" height={120} sx={{ borderRadius: 2 }} />
+        ) : expiring.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">No approved agreements expiring within 90 days.</Typography>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {expiring.map((item) => {
+              const u = urgencyStyle(item.urgency);
+              return (
+                <Box
+                  key={item.agreementId}
+                  onClick={() => navigate(`/agreements/groups/${item.agreementGroupId}`)}
+                  sx={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    px: 2, py: 1.5, borderRadius: 2, cursor: 'pointer',
+                    bgcolor: u.bg, border: `1px solid ${alpha(u.color, 0.15)}`,
+                    '&:hover': { transform: 'translateX(4px)' }, transition: 'transform 0.15s',
+                  }}
+                >
+                  <Box>
+                    <Typography variant="body2" fontWeight={700}>{item.agreementNumber}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {item.companyName} · {item.ownerName}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="body2" fontWeight={700} sx={{ color: u.color }}>
+                      {item.daysUntilExpiry} days left
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: u.color }}>
+                      Expires {new Date(item.expiryDate).toLocaleDateString('en-IN')} · {u.label}
+                    </Typography>
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+      </Paper>
 
       <Grid container spacing={2.5} alignItems="stretch">
         <Grid size={{ xs: 12, lg: 8 }} sx={{ display: 'flex' }}>

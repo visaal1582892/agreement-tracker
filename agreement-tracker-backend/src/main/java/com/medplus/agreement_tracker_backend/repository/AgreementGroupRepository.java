@@ -29,4 +29,17 @@ public interface AgreementGroupRepository extends JpaRepository<AgreementGroup, 
 
     @Query("SELECT ag FROM AgreementGroup ag WHERE ag.company.id IN :companyIds AND ag.isActive = true")
     Page<AgreementGroup> findByCompanyIds(@Param("companyIds") List<Long> companyIds, Pageable pageable);
+
+    @Query("""
+            SELECT ag FROM AgreementGroup ag
+            WHERE ag.id IN (
+                SELECT a.agreementGroup.id FROM Agreement a
+                WHERE a.owner.id = :ownerId
+                AND a.versionNumber = (
+                    SELECT MAX(a2.versionNumber) FROM Agreement a2
+                    WHERE a2.agreementGroup.id = a.agreementGroup.id
+                )
+            )
+            """)
+    Page<AgreementGroup> findByLatestVersionOwnerId(@Param("ownerId") Long ownerId, Pageable pageable);
 }

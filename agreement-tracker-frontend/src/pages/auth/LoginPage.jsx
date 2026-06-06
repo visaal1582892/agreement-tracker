@@ -56,7 +56,8 @@ export default function LoginPage() {
 
   return (
     <Box sx={{
-      minHeight: '100vh',
+      minHeight: '100%',
+      height: '100%',
       display: 'flex',
       bgcolor: '#F8FAFC',
     }}>

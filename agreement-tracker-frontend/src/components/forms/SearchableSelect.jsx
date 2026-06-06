@@ -7,6 +7,7 @@ import {
   InputBase,
   Paper,
   Popover,
+  Popper,
   Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -39,12 +40,15 @@ export default function SearchableSelect({
   const multi = multiple ?? isMulti;
   const listboxId = useId();
   const containerRef = useRef(null);
+  const anchorRef = useRef(null);
+  const dropdownRef = useRef(null);
   const inputRef = useRef(null);
 
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [moreAnchor, setMoreAnchor] = useState(null);
+  const [anchorWidth, setAnchorWidth] = useState(0);
 
   const debouncedQuery = useDebounce(searchQuery, SEARCH_DEBOUNCE_MS);
 
@@ -83,8 +87,21 @@ export default function SearchableSelect({
   }, [disabled]);
 
   useEffect(() => {
+    if (!isOpen || !anchorRef.current) return undefined;
+
+    const updateWidth = () => {
+      if (anchorRef.current) setAnchorWidth(anchorRef.current.offsetWidth);
+    };
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, [isOpen]);
+
+  useEffect(() => {
     const handleClickOutside = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+      const inField = containerRef.current?.contains(e.target);
+      const inDropdown = dropdownRef.current?.contains(e.target);
+      if (!inField && !inDropdown) {
         closeDropdown();
         if (!multi && value) setSearchQuery('');
       }
@@ -187,6 +204,7 @@ export default function SearchableSelect({
       )}
 
       <Box
+        ref={anchorRef}
         onClick={() => inputRef.current?.focus()}
         sx={{
           display: 'flex',
@@ -291,17 +309,24 @@ export default function SearchableSelect({
         </FormHelperText>
       )}
 
-      {isOpen && (
-        <Paper
+      <Popper
+        open={isOpen}
+        anchorEl={anchorRef.current}
+        placement="bottom-start"
+        modifiers={[
+          { name: 'offset', options: { offset: [0, 4] } },
+          { name: 'flip', enabled: true },
+          { name: 'preventOverflow', options: { padding: 8 } },
+        ]}
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 1 }}
+      >
+        <Box ref={dropdownRef}>
+          <Paper
           id={listboxId}
           role="listbox"
           elevation={3}
           sx={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            right: 0,
-            zIndex: 1300,
+            width: anchorWidth || anchorRef.current?.offsetWidth || 'auto',
             maxHeight: 240,
             overflowY: 'auto',
             borderRadius: '8px',
@@ -339,8 +364,9 @@ export default function SearchableSelect({
               );
             })
           )}
-        </Paper>
-      )}
+          </Paper>
+        </Box>
+      </Popper>
 
       <Popover
         open={Boolean(moreAnchor)}

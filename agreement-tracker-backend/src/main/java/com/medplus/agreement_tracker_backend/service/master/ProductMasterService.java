@@ -47,18 +47,20 @@ public class ProductMasterService {
 
     /** Wizard backward-compat: products filtered by vendor + optional manufacturer/division. */
     @Transactional(readOnly = true)
-    public List<ProductMaster> findByVendorIds(List<Long> vendorIds) {
-        return productRepository.findByVendorIds(vendorIds);
+    public List<ProductMasterResponse> findByVendorIds(List<Long> vendorIds) {
+        return productRepository.findByVendorIds(vendorIds).stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
-    public List<ProductMaster> findByVendorIdsAndManufacturer(List<Long> vendorIds, Long manufacturerId) {
-        return productRepository.findByVendorIdsAndManufacturer(vendorIds, manufacturerId);
+    public List<ProductMasterResponse> findByVendorIdsAndManufacturer(List<Long> vendorIds, Long manufacturerId) {
+        return productRepository.findByVendorIdsAndManufacturer(vendorIds, manufacturerId).stream()
+                .map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
-    public List<ProductMaster> findByVendorIdsAndDivisions(List<Long> vendorIds, List<Long> divisionIds) {
-        return productRepository.findByVendorIdsAndDivisions(vendorIds, divisionIds);
+    public List<ProductMasterResponse> findByVendorIdsAndDivisions(List<Long> vendorIds, List<Long> divisionIds) {
+        return productRepository.findByVendorIdsAndDivisions(vendorIds, divisionIds).stream()
+                .map(this::toResponse).toList();
     }
 
     public ProductMasterResponse create(ProductMasterRequest req, Long userId) {

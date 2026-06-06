@@ -31,7 +31,13 @@ public interface AgreementRepository extends JpaRepository<Agreement, Long>, Jpa
     @Query("SELECT a FROM Agreement a WHERE a.owner.id = :ownerId")
     Page<Agreement> findByOwnerId(@Param("ownerId") Long ownerId, Pageable pageable);
 
-    @Query("SELECT a FROM Agreement a WHERE a.approvalStatus = 'PENDING_APPROVAL'")
+    @Query("""
+            SELECT a FROM Agreement a
+            JOIN FETCH a.agreementGroup
+            JOIN FETCH a.owner
+            LEFT JOIN FETCH a.incomeType
+            WHERE a.approvalStatus = 'PENDING_APPROVAL'
+            """)
     Page<Agreement> findAllPendingApproval(Pageable pageable);
 
     @Query("""
@@ -41,6 +47,19 @@ public interface AgreementRepository extends JpaRepository<Agreement, Long>, Jpa
             AND a.expiryDate BETWEEN :from AND :to
             """)
     List<Agreement> findApprovedExpiringSoon(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    @Query("""
+            SELECT a FROM Agreement a
+            JOIN FETCH a.agreementGroup ag
+            JOIN FETCH ag.company
+            JOIN FETCH a.owner
+            WHERE a.approvalStatus = 'APPROVED'
+            AND a.terminationDate IS NULL
+            AND a.expiryDate BETWEEN :today AND :limit
+            AND a.id = ag.currentVersionId
+            ORDER BY a.expiryDate ASC
+            """)
+    List<Agreement> findApprovedExpiringWithinDays(@Param("today") LocalDate today, @Param("limit") LocalDate limit);
 
     @Query("""
             SELECT a FROM Agreement a
@@ -66,4 +85,21 @@ public interface AgreementRepository extends JpaRepository<Agreement, Long>, Jpa
             AND a.owner.id = :userId
             """)
     long countPendingByOwner(@Param("userId") Long userId);
+
+    /**
+     * Batch-fetches the highest-version Agreement for each group in the supplied ID list.
+     * Uses a single correlated subquery to pick the max versionNumber, eagerly loading
+     * owner and incomeType to prevent N+1 queries in the list view.
+     */
+    @Query("""
+            SELECT a FROM Agreement a
+            JOIN FETCH a.owner
+            LEFT JOIN FETCH a.incomeType
+            WHERE a.agreementGroup.id IN :groupIds
+            AND a.versionNumber = (
+                SELECT MAX(a2.versionNumber) FROM Agreement a2
+                WHERE a2.agreementGroup.id = a.agreementGroup.id
+            )
+            """)
+    List<Agreement> findLatestVersionsForGroupIds(@Param("groupIds") List<Long> groupIds);
 }

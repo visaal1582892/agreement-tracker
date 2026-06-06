@@ -1,52 +1,122 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { Box, Button, Chip } from '@mui/material';
+import { Box, Tab, Tabs } from '@mui/material';
 import { fetchAgreementGroups } from '../../store/slices/agreementSlice';
 import { ROUTES } from '../../config/routes';
 import { BRAND } from '../../config/theme';
 import PageHeader from '../../components/ui/PageHeader';
-import DataTable from '../../components/ui/DataTable';
-import StatusBadge from '../../components/ui/StatusBadge';
+import AgreementsTable from '../../components/agreements/AgreementsTable';
 import { useDataTable } from '../../hooks/useDataTable';
+import { useDebounce } from '../../hooks/useDebounce';
 import { useAuth } from '../../hooks/useAuth';
 import { RIGHTS } from '../../config/rights';
 
-const COLUMNS = [
-  { field: 'agreementNumber', header: 'Agreement No.', sortable: true },
-  { field: 'companyName', header: 'Company', sortable: true },
-  { field: 'currentVersionNumber', header: 'Version', sortable: false, render: (v) => `V${v || 1}` },
-  {
-    field: 'currentStatus', header: 'Status', sortable: false,
-    render: (v) => <StatusBadge status={v || 'DRAFT'} />,
-  },
-  { field: 'createdAt', header: 'Created', sortable: true, render: (v) => v ? new Date(v).toLocaleDateString('en-IN') : '—' },
-];
+const FETCH_MODE = { MY: 'MY', ALL: 'ALL' };
+
+const EMPTY_FILTERS = {};
 
 export default function AgreementListPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { hasRight } = useAuth();
 
+  const canViewMy = hasRight(RIGHTS.AGREEMENT_VIEW);
+  const canViewAll = hasRight(RIGHTS.AGREEMENT_VIEW_ALL);
+  const showTabs = canViewMy && canViewAll;
+  const defaultMode = canViewMy ? FETCH_MODE.MY : FETCH_MODE.ALL;
+
+  const [fetchMode, setFetchMode] = useState(defaultMode);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+
   const { groups, totalElements, loading } = useSelector((s) => s.agreements);
-  const { page, rowsPerPage, search, sortBy, sortDir, handlePageChange, handleRowsPerPageChange, handleSearch, handleSort } = useDataTable();
+  const {
+    page, rowsPerPage, sortBy, sortDir,
+    handlePageChange, handleRowsPerPageChange, handleSort,
+  } = useDataTable();
+
+  const debouncedFilters = useDebounce(filters, 600);
+  const activeMode = showTabs ? fetchMode : defaultMode;
+
+  const pageMeta = useMemo(() => {
+    if (activeMode === FETCH_MODE.MY) {
+      return {
+        title: 'My Agreements',
+        subtitle: 'Agreements you own and manage',
+        emptyMessage: 'No agreements found. Create your first agreement.',
+      };
+    }
+    return {
+      title: 'All Agreements',
+      subtitle: 'All commercial agreements across companies',
+      emptyMessage: 'No agreements found.',
+    };
+  }, [activeMode]);
 
   const loadData = useCallback(() => {
-    dispatch(fetchAgreementGroups({ page, size: rowsPerPage, search }));
-  }, [dispatch, page, rowsPerPage, search]);
+    const { agreementNumber, companyName, status, ownerName, vendorId, incomeTypeId } = debouncedFilters;
+    dispatch(fetchAgreementGroups({
+      page,
+      size: rowsPerPage,
+      scope: activeMode,
+      sortBy,
+      sortDir,
+      ...(agreementNumber && { agreementNumber }),
+      ...(companyName && { companyName }),
+      ...(status && { status }),
+      ...(ownerName && { ownerName }),
+      ...(vendorId && { vendorId }),
+      ...(incomeTypeId && { incomeTypeId }),
+    }));
+  }, [dispatch, page, rowsPerPage, sortBy, sortDir, activeMode, debouncedFilters]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const handleTabChange = (_, value) => {
+    setFetchMode(value);
+    handlePageChange(null, 0);
+  };
+
+  const handleFilterChange = useCallback((key, value) => {
+    setFilters((prev) => {
+      const next = { ...prev };
+      if (value) {
+        next[key] = value;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
+    handlePageChange(null, 0);
+  }, [handlePageChange]);
+
   return (
     <Box>
+      {showTabs && (
+        <Tabs
+          value={fetchMode}
+          onChange={handleTabChange}
+          sx={{
+            mb: 2,
+            minHeight: 40,
+            '& .MuiTab-root': { minHeight: 40, textTransform: 'none', fontWeight: 600, fontSize: '0.875rem' },
+            '& .Mui-selected': { color: BRAND.red },
+            '& .MuiTabs-indicator': { bgcolor: BRAND.red },
+          }}
+        >
+          <Tab label="My Agreements" value={FETCH_MODE.MY} />
+          <Tab label="All Agreements" value={FETCH_MODE.ALL} />
+        </Tabs>
+      )}
+
       <PageHeader
-        title="Agreements"
-        subtitle="All commercial agreements across companies"
+        title={pageMeta.title}
+        subtitle={pageMeta.subtitle}
         actionLabel="New Agreement"
         onAction={hasRight(RIGHTS.AGREEMENT_CREATE) ? () => navigate(ROUTES.AGREEMENT_CREATE) : undefined}
       />
-      <DataTable
-        columns={COLUMNS}
+
+      <AgreementsTable
         rows={groups}
         loading={loading}
         totalCount={totalElements}
@@ -55,12 +125,14 @@ export default function AgreementListPage() {
         onPageChange={handlePageChange}
         onRowsPerPageChange={handleRowsPerPageChange}
         onRowClick={(row) => navigate(`/agreements/groups/${row.id}`)}
-        searchValue={search}
-        onSearch={handleSearch}
         sortBy={sortBy}
         sortDir={sortDir}
         onSort={handleSort}
-        emptyMessage="No agreements found. Create your first agreement."
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        emptyMessage={pageMeta.emptyMessage}
+        hasRight={hasRight}
+        onRefresh={loadData}
       />
     </Box>
   );

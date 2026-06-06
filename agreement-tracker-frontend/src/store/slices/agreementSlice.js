@@ -4,14 +4,28 @@ import { ENDPOINTS } from '../../config/endpoints';
 
 export const fetchAgreementGroups = createAsyncThunk(
   'agreements/fetchGroups',
-  async ({ page = 0, size = 20, ...params } = {}, { rejectWithValue }) => {
+  async ({ page = 0, size = 20, scope = 'MY', sortBy, sortDir, ...params } = {}, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_GROUPS, {
-        params: { page, size, ...params },
-      });
+      const query = { page, size, scope, ...params };
+      if (sortBy) {
+        query.sort = `${sortBy},${sortDir || 'asc'}`;
+      }
+      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_GROUPS, { params: query });
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch agreements');
+    }
+  }
+);
+
+export const submitAgreementForApproval = createAsyncThunk(
+  'agreements/submit',
+  async (agreementId, { rejectWithValue }) => {
+    try {
+      const { data } = await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(agreementId));
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to submit agreement');
     }
   }
 );

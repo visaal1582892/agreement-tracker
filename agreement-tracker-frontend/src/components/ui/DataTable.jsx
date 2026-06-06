@@ -6,12 +6,13 @@ import {
 } from '@mui/material';
 import { Search } from '@mui/icons-material';
 import { BRAND } from '../../config/theme';
+import SearchableSelect from '../forms/SearchableSelect';
 
 /**
  * Reusable DataTable with:
  *  - Server-side pagination  (page / rowsPerPage / totalCount / onPageChange)
  *  - Server-side sorting     (sortBy / sortDir / onSort)
- *  - Column-level filter row (column.filterType: 'text' | 'select' | none)
+ *  - Column-level filter row (column.filterType: 'text' | 'select' | 'searchable-select' | none)
  *  - Top global search       (optional)
  *
  * Column definition shape:
@@ -20,8 +21,11 @@ import { BRAND } from '../../config/theme';
  *     header: string,          // display label
  *     width?: string | number,
  *     sortable?: boolean,       // default true
- *     filterType?: 'text' | 'select' | null,
- *     filterOptions?: [{ value, label }],  // for 'select' type
+ *     filterType?: 'text' | 'select' | 'searchable-select' | null,
+ *     filterOptions?: [{ value, label } | object],  // for 'select' / 'searchable-select'
+ *     onFilterSearch?: (query: string) => void,
+ *     filterLoading?: boolean,
+ *     getOptionLabel?: (option) => string,
  *     filterKey?: string,       // override filter key (default = field)
  *     render?: (value, row) => ReactNode,
  *   }
@@ -48,6 +52,13 @@ export default function DataTable({
   stickyHeader = true,
 }) {
   const hasFilters = columns.some((c) => c.filterType);
+
+  const resolveSearchableValue = (col, key) => {
+    const raw = filters[key];
+    if (!raw) return null;
+    const options = col.filterOptions || [];
+    return options.find((o) => String(o.id) === String(raw)) ?? { id: raw };
+  };
 
   return (
     <Box>
@@ -144,6 +155,18 @@ export default function DataTable({
                             ))}
                           </Select>
                         </FormControl>
+                      )}
+                      {col.filterType === 'searchable-select' && (
+                        <SearchableSelect
+                          value={resolveSearchableValue(col, key)}
+                          onChange={(opt) => onFilterChange(key, opt?.id ?? '')}
+                          options={col.filterOptions || []}
+                          onSearch={col.onFilterSearch}
+                          loading={col.filterLoading}
+                          getOptionLabel={col.getOptionLabel}
+                          placeholder={`Filter ${col.header}`}
+                          disabled={false}
+                        />
                       )}
                     </TableCell>
                   );
