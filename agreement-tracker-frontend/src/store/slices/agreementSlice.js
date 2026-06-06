@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
+import { normalizePageResponse } from '../../utils/pageResponse';
 
 export const fetchAgreementGroups = createAsyncThunk(
   'agreements/fetchGroups',
@@ -11,7 +12,7 @@ export const fetchAgreementGroups = createAsyncThunk(
         query.sort = `${sortBy},${sortDir || 'asc'}`;
       }
       const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_GROUPS, { params: query });
-      return data;
+      return normalizePageResponse(data);
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch agreements');
     }
@@ -37,7 +38,7 @@ export const fetchPendingApprovals = createAsyncThunk(
       const params = { page, size };
       if (search?.trim()) params.search = search.trim();
       const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_PENDING_APPROVALS, { params });
-      return data;
+      return normalizePageResponse(data);
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch pending approvals');
     }

@@ -9,7 +9,7 @@ import com.medplus.agreement_tracker_backend.dto.request.TransferOwnershipReques
 import com.medplus.agreement_tracker_backend.dto.response.AgreementGroupResponse;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
-import com.medplus.agreement_tracker_backend.dto.response.BulkAgreementCreateResponse;
+import com.medplus.agreement_tracker_backend.dto.response.PagedResponse;
 import com.medplus.agreement_tracker_backend.enums.RightCode;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;
 import com.medplus.agreement_tracker_backend.service.AgreementService;
@@ -169,10 +169,10 @@ public class AgreementController {
 
     @GetMapping("/pending-approvals")
     @PreAuthorize(AGREEMENT_APPROVE)
-    public ResponseEntity<Page<AgreementResponse>> getPendingApprovals(
+    public ResponseEntity<PagedResponse<AgreementResponse>> getPendingApprovals(
             @RequestParam(required = false) String search,
             @PageableDefault(size = 10) Pageable pageable) {
-        return ResponseEntity.ok(agreementService.getPendingApprovals(search, pageable));
+        return ResponseEntity.ok(PagedResponse.from(agreementService.getPendingApprovals(search, pageable)));
     }
 
     @GetMapping("/{agreementId}/timeline")
