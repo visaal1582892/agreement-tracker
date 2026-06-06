@@ -132,6 +132,14 @@ const buildColumns = ({ vendorOptions, incomeTypeOptions, onVendorSearch, onInco
     filterKey: 'agreementNumber',
   },
   {
+    field: 'agreementName',
+    header: 'Agreement Name',
+    sortable: false,
+    filterType: 'text',
+    filterKey: 'agreementName',
+    render: (v) => v || '—',
+  },
+  {
     field: 'companyName',
     header: 'Company',
     sortable: true,

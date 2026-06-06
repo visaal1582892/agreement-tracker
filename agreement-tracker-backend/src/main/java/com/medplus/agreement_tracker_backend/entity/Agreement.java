@@ -36,6 +36,9 @@ public class Agreement extends AuditableEntity {
     @Column(name = "version_number", nullable = false)
     private Integer versionNumber;
 
+    @Column(name = "agreement_name", nullable = false, length = 255)
+    private String agreementName;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_user_id", nullable = false)
     private User owner;

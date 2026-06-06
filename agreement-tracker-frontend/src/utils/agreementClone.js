@@ -6,6 +6,9 @@ export function buildClonedWizardData(agreement) {
   if (!agreement) return null;
 
   return {
+    agreementName: agreement.agreementName
+      ? `${agreement.agreementName} (Copy)`
+      : '',
     companyId: agreement.companyId,
     companyName: agreement.companyName,
     vendorIds: (agreement.vendors || []).map((v) => v.vendorId),

@@ -95,7 +95,7 @@ public final class AgreementGroupSpec {
     private static Specification<AgreementGroup> hasCompanyName(String value) {
         if (!StringUtils.hasText(value)) return null;
         return (root, query, cb) -> {
-            Join<Object, Object> company = root.join("company", JoinType.INNER);
+            Join<Object, Object> company = root.join("company", JoinType.LEFT);
             return cb.like(cb.lower(company.get("companyName")), "%" + value.toLowerCase() + "%");
         };
     }

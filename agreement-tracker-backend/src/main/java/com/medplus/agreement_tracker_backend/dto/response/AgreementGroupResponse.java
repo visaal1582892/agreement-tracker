@@ -10,6 +10,7 @@ import java.util.List;
 public record AgreementGroupResponse(
         Long id,
         String agreementNumber,
+        String agreementName,
         Long companyId,
         String companyName,
         Long currentVersionId,

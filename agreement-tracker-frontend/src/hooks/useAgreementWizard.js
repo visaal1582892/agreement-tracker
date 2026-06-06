@@ -26,6 +26,7 @@ export function createBlankAgreement() {
 
 const INITIAL_STATE = {
   step: 0,
+  agreementName: '',
   companyId: null,
   companyName: '',
   vendorIds: [],
@@ -104,6 +105,7 @@ export function useAgreementWizard() {
 
   const reset = useCallback(() => setState({
     step: 0,
+    agreementName: '',
     companyId: null,
     companyName: '',
     vendorIds: [],
@@ -115,6 +117,7 @@ export function useAgreementWizard() {
     if (!agreement) return;
     setState({
       step: 0,
+      agreementName: agreement.agreementName ?? '',
       companyId: agreement.companyId ?? null,
       companyName: agreement.companyName ?? '',
       vendorIds: agreement.vendors?.map((v) => v.vendorId) ?? [],
@@ -149,6 +152,7 @@ export function useAgreementWizard() {
     setState((prev) => ({
       ...prev,
       step: 0,
+      agreementName: clonedData.agreementName ?? '',
       companyId: clonedData.companyId ?? null,
       companyName: clonedData.companyName ?? '',
       vendorIds: clonedData.vendorIds ?? [],

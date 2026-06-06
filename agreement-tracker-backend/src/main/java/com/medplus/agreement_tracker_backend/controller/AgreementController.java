@@ -15,6 +15,7 @@ import com.medplus.agreement_tracker_backend.dto.response.PagedResponse;
 import com.medplus.agreement_tracker_backend.enums.RightCode;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;
 import com.medplus.agreement_tracker_backend.service.AgreementService;
+import com.medplus.agreement_tracker_backend.validation.DraftValidation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -26,6 +27,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -42,7 +44,7 @@ public class AgreementController {
     @PostMapping
     @PreAuthorize(AGREEMENT_CREATE)
     public ResponseEntity<BulkAgreementCreateResponse> createDraft(
-            @Valid @RequestBody CreateAgreementRequest request,
+            @Validated(DraftValidation.class) @RequestBody CreateAgreementRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(agreementService.createDraft(request, principal.getId()));
@@ -136,9 +138,10 @@ public class AgreementController {
     @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<AgreementResponse> updateDraft(
             @PathVariable Long agreementId,
-            @RequestBody UpdateDraftRequest request,
+            @Validated(DraftValidation.class) @RequestBody UpdateDraftRequest request,
+            @RequestParam(defaultValue = "false") boolean validateStep1,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(agreementService.updateDraft(agreementId, request, principal.getId()));
+        return ResponseEntity.ok(agreementService.updateDraft(agreementId, request, principal.getId(), validateStep1));
     }
 
     @PutMapping("/{agreementId}/submit")

@@ -13,6 +13,7 @@ public record AgreementResponse(
         Long id,
         Long agreementGroupId,
         String agreementNumber,
+        String agreementName,
         Integer versionNumber,
         Long companyId,
         String companyName,

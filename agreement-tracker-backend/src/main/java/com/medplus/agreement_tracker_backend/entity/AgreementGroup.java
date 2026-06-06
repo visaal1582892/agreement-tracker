@@ -21,7 +21,7 @@ public class AgreementGroup extends AuditableEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id", nullable = false)
+    @JoinColumn(name = "company_id")
     private CompanyMaster company;
 
     @Column(name = "agreement_number", nullable = false, unique = true, length = 50)

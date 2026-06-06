@@ -6,8 +6,9 @@ import {
   FormControl, Stepper, Step, StepLabel, StepContent, TextField,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Tabs, Tab,
   List, ListItemButton, ListItemText, Accordion, AccordionSummary, AccordionDetails,
+  Breadcrumbs, Link as MuiLink,
 } from '@mui/material';
-import { ArrowBack, Edit, ExpandMore, PowerSettingsNew, ContentCopy, SwapHoriz, History } from '@mui/icons-material';
+import { ArrowBack, Edit, ExpandMore, PowerSettingsNew, ContentCopy, SwapHoriz, History, NavigateNext } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
@@ -225,6 +226,8 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
 
   const ACTION_COLOR = { SUBMITTED: '#2196F3', APPROVED: BRAND.green, REJECTED: BRAND.red };
 
+  const displayName = agreement?.agreementName || group?.agreementName || group?.agreementNumber;
+
   if (!groupId || groupId === 'undefined') {
     return (
       <Typography color="text.secondary">Select an agreement to review</Typography>
@@ -235,6 +238,22 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
 
   return (
     <Box>
+      {!embeddedGroupId && (
+        <Breadcrumbs separator={<NavigateNext fontSize="small" />} sx={{ mb: 1 }}>
+          <MuiLink
+            component="button"
+            variant="body2"
+            underline="hover"
+            color="inherit"
+            onClick={() => navigate(ROUTES.AGREEMENTS)}
+            sx={{ border: 'none', background: 'none', cursor: 'pointer', p: 0 }}
+          >
+            Agreements
+          </MuiLink>
+          <Typography variant="body2" color="text.primary">{displayName}</Typography>
+        </Breadcrumbs>
+      )}
+
       {!embeddedGroupId && (
         <Button
           variant="text"
@@ -250,8 +269,10 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>
-          <Typography variant="h5" fontWeight={700}>{group?.agreementNumber}</Typography>
-          <Typography variant="body2" color="text.secondary">{group?.companyName}</Typography>
+          <Typography variant="h5" fontWeight={700}>{displayName}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {group?.agreementNumber}{group?.companyName ? ` · ${group.companyName}` : ''}
+          </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
           {/* Version Switcher */}
@@ -289,8 +310,11 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
                 >
                   <ListItemText
                     primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography fontWeight={600}>V{v.versionNumber}</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography fontWeight={600}>
+                          {v.agreementName || group?.agreementName || `V${v.versionNumber}`}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">V{v.versionNumber}</Typography>
                         <StatusBadge status={v.computedStatus} />
                         {group?.currentVersionId === v.id && (
                           <Chip label="Current" size="small" color="success" variant="outlined" />
@@ -317,7 +341,7 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
                 </AccordionSummary>
                 <AccordionDetails>
                   <Grid container spacing={1}>
-                    <Grid size={4}><Typography variant="caption" color="text.secondary">Company</Typography><Typography variant="body2">{agreement.companyName}</Typography></Grid>
+                    <Grid size={4}><Typography variant="caption" color="text.secondary">Company</Typography><Typography variant="body2">{agreement.companyName || '—'}</Typography></Grid>
                     <Grid size={4}><Typography variant="caption" color="text.secondary">Owner</Typography><Typography variant="body2">{agreement.ownerName}</Typography></Grid>
                     <Grid size={12}><Divider sx={{ my: 1 }} />
                       {agreement.vendors?.map((v) => <Chip key={v.vendorId} label={v.vendorName} size="small" sx={{ mr: 0.5, mb: 0.5 }} />)}
@@ -332,6 +356,8 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
                 </AccordionSummary>
                 <AccordionDetails>
                   <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, sm: 6 }}><Typography variant="caption" color="text.secondary">Agreement Name</Typography><Typography variant="body2" fontWeight={600}>{agreement.agreementName || '—'}</Typography></Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}><Typography variant="caption" color="text.secondary">Agreement No.</Typography><Typography variant="body2">{agreement.agreementNumber || '—'}</Typography></Grid>
                     <Grid size={{ xs: 6, sm: 3 }}><Typography variant="caption" color="text.secondary">Income Type</Typography><Typography variant="body2">{agreement.incomeTypeName || '—'}</Typography></Grid>
                     <Grid size={{ xs: 6, sm: 3 }}><Typography variant="caption" color="text.secondary">Agreement Type</Typography><Typography variant="body2">{agreement.agreementTypeName || '—'}</Typography></Grid>
                     <Grid size={{ xs: 6, sm: 3 }}><Typography variant="caption" color="text.secondary">Start Date</Typography><Typography variant="body2">{agreement.startDate ? dayjs(agreement.startDate).format('DD MMM YYYY') : '—'}</Typography></Grid>
@@ -525,7 +551,7 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
       <Dialog open={terminateModal.isOpen} onClose={terminateModal.close} maxWidth="sm" fullWidth>
         <DialogTitle fontWeight={700} color="error">Terminate Agreement</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid size={12}>
               <TextField
                 label="Termination Date *" type="date"

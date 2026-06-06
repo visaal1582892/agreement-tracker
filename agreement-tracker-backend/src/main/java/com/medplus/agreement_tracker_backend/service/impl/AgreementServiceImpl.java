@@ -24,10 +24,14 @@ import com.medplus.agreement_tracker_backend.exception.ResourceNotFoundException
 import com.medplus.agreement_tracker_backend.exception.UnauthorizedException;
 import com.medplus.agreement_tracker_backend.repository.*;
 import com.medplus.agreement_tracker_backend.repository.AgreementGroupSpec;
+import com.medplus.agreement_tracker_backend.validation.Step1Validation;
 import org.springframework.security.access.AccessDeniedException;
 import com.medplus.agreement_tracker_backend.service.AgreementService;
 import com.medplus.agreement_tracker_backend.util.AgreementNumberGenerator;
 import com.medplus.agreement_tracker_backend.util.AgreementStatusResolver;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -67,14 +71,16 @@ public class AgreementServiceImpl implements AgreementService {
     private final UserCompanyAssignmentRepository companyAssignmentRepository;
     private final AgreementNumberGenerator numberGenerator;
     private final AgreementStatusResolver statusResolver;
+    private final Validator validator;
 
     @Override
     @Transactional
     public BulkAgreementCreateResponse createDraft(CreateAgreementRequest request, Long currentUserId) {
+        validateAgreementName(request.agreementName());
+
         User owner = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", currentUserId));
-        CompanyMaster company = companyRepository.findById(request.companyId())
-                .orElseThrow(() -> new ResourceNotFoundException("Company", request.companyId()));
+        CompanyMaster company = resolveCompany(request.companyId());
 
         List<Long> vendorIds = request.vendorIds() != null ? request.vendorIds() : List.of();
         ProductRulesPayload rulesPayload = request.productRules() != null
@@ -100,7 +106,8 @@ public class AgreementServiceImpl implements AgreementService {
             group.setCreatedByUserId(currentUserId);
             group = groupRepository.save(group);
 
-            Agreement agreement = buildDraftAgreement(item, owner, group, currentUserId);
+            Agreement agreement = buildDraftAgreement(
+                    item, owner, group, currentUserId, request.agreementName());
             agreement = agreementRepository.save(agreement);
 
             replaceVendors(agreement, vendorIds, currentUserId);
@@ -133,6 +140,7 @@ public class AgreementServiceImpl implements AgreementService {
         Agreement newVersion = Agreement.builder()
                 .agreementGroup(group)
                 .versionNumber(maxVersion + 1)
+                .agreementName(source.getAgreementName())
                 .owner(owner)
                 .incomeType(source.getIncomeType())
                 .agreementType(source.getAgreementType())
@@ -183,7 +191,8 @@ public class AgreementServiceImpl implements AgreementService {
                 .orElseThrow(() -> new ResourceNotFoundException("User", currentUserId));
 
         DraftAgreementItemRequest item = new DraftAgreementItemRequest(request.details(), request.commercials());
-        Agreement newVersion = buildDraftAgreement(item, owner, group, maxVersion + 1, currentUserId);
+        Agreement newVersion = buildDraftAgreement(
+                item, owner, group, maxVersion + 1, currentUserId, resolveDraftAgreementName(request.agreementName(), source));
         newVersion = agreementRepository.save(newVersion);
 
         List<Long> vendorIds = request.vendorIds() != null ? request.vendorIds() : List.of();
@@ -204,7 +213,15 @@ public class AgreementServiceImpl implements AgreementService {
 
     @Override
     @Transactional
-    public AgreementResponse updateDraft(Long agreementId, UpdateDraftRequest request, Long currentUserId) {
+    public AgreementResponse updateDraft(Long agreementId, UpdateDraftRequest request, Long currentUserId,
+                                         boolean validateStep1) {
+        if (validateStep1) {
+            var violations = validator.validate(request, Step1Validation.class);
+            if (!violations.isEmpty()) {
+                throw new ConstraintViolationException(violations);
+            }
+        }
+
         Agreement agreement = loadAndValidateOwnership(agreementId, currentUserId);
         if (agreement.getApprovalStatus() != ApprovalStatus.DRAFT) {
             throw new BusinessException("Only DRAFT agreements can be updated via draft save");
@@ -212,11 +229,14 @@ public class AgreementServiceImpl implements AgreementService {
 
         AgreementGroup group = agreement.getAgreementGroup();
         if (request.companyId() != null) {
-            CompanyMaster company = companyRepository.findById(request.companyId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Company", request.companyId()));
+            CompanyMaster company = resolveCompany(request.companyId());
             group.setCompany(company);
             group.setUpdatedByUserId(currentUserId);
             groupRepository.save(group);
+        }
+
+        if (request.agreementName() != null) {
+            agreement.setAgreementName(request.agreementName().trim());
         }
 
         applyDraftFields(agreement, request.details(), request.commercials());
@@ -607,12 +627,13 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     private Agreement buildDraftAgreement(DraftAgreementItemRequest item, User owner,
-                                            AgreementGroup group, Long userId) {
-        return buildDraftAgreement(item, owner, group, 1, userId);
+                                            AgreementGroup group, Long userId, String agreementName) {
+        return buildDraftAgreement(item, owner, group, 1, userId, agreementName);
     }
 
     private Agreement buildDraftAgreement(DraftAgreementItemRequest item, User owner,
-                                            AgreementGroup group, int versionNumber, Long userId) {
+                                            AgreementGroup group, int versionNumber, Long userId,
+                                            String agreementName) {
         DraftDetailsPayload details = item != null ? item.details() : null;
         DraftCommercialsPayload commercials = item != null ? item.commercials() : null;
 
@@ -635,6 +656,7 @@ public class AgreementServiceImpl implements AgreementService {
         Agreement agreement = Agreement.builder()
                 .agreementGroup(group)
                 .versionNumber(versionNumber)
+                .agreementName(agreementName.trim())
                 .owner(owner)
                 .incomeType(incomeType)
                 .agreementType(agreementType)
@@ -689,6 +711,12 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     private void validateCompleteAgreement(Agreement agreement) {
+        if (agreement.getAgreementName() == null || agreement.getAgreementName().isBlank()) {
+            throw new IncompleteAgreementException("Cannot submit: Agreement Name is missing.");
+        }
+        if (agreement.getAgreementGroup().getCompany() == null) {
+            throw new IncompleteAgreementException("Cannot submit: Company is missing.");
+        }
         if (agreement.getStartDate() == null) {
             throw new IncompleteAgreementException("Cannot submit: Start Date is missing.");
         }
@@ -926,9 +954,10 @@ public class AgreementServiceImpl implements AgreementService {
                 a.getId(),
                 a.getAgreementGroup().getId(),
                 a.getAgreementGroup().getAgreementNumber(),
+                a.getAgreementName(),
                 a.getVersionNumber(),
-                a.getAgreementGroup().getCompany().getId(),
-                a.getAgreementGroup().getCompany().getCompanyName(),
+                companyIdOf(a.getAgreementGroup()),
+                companyNameOf(a.getAgreementGroup()),
                 a.getOwner().getId(),
                 a.getOwner().getFullName(),
                 a.getIncomeType() != null ? a.getIncomeType().getId() : null,
@@ -971,8 +1000,9 @@ public class AgreementServiceImpl implements AgreementService {
         return new AgreementGroupResponse(
                 g.getId(),
                 g.getAgreementNumber(),
-                g.getCompany().getId(),
-                g.getCompany().getCompanyName(),
+                latest.getAgreementName(),
+                companyIdOf(g),
+                companyNameOf(g),
                 g.getCurrentVersionId(),
                 latest.getId(),
                 latest.getVersionNumber(),
@@ -999,7 +1029,7 @@ public class AgreementServiceImpl implements AgreementService {
         }
         AgreementResponse vr = toAgreementResponse(displayVersion);
         return new AgreementGroupResponse(
-                g.getId(), g.getAgreementNumber(), g.getCompany().getId(), g.getCompany().getCompanyName(),
+                g.getId(), g.getAgreementNumber(), vr.agreementName(), companyIdOf(g), companyNameOf(g),
                 g.getCurrentVersionId(), displayVersion.getId(), vr.versionNumber(), vr.computedStatus(),
                 vr.approvalStatus(), g.isActive(), g.getCreatedAt(),
                 vr.incomeTypeName(), vr.startDate(), vr.expiryDate(), vr.ownerName(), vr.ownerId(), vr.vendors()
@@ -1008,7 +1038,7 @@ public class AgreementServiceImpl implements AgreementService {
 
     private AgreementGroupResponse toGroupResponseEmpty(AgreementGroup g) {
         return new AgreementGroupResponse(
-                g.getId(), g.getAgreementNumber(), g.getCompany().getId(), g.getCompany().getCompanyName(),
+                g.getId(), g.getAgreementNumber(), null, companyIdOf(g), companyNameOf(g),
                 null, null, null, null, null, g.isActive(), g.getCreatedAt(),
                 null, null, null, null, null, List.of()
         );
@@ -1030,5 +1060,35 @@ public class AgreementServiceImpl implements AgreementService {
                 })
                 .toList();
         return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(orders));
+    }
+
+    private void validateAgreementName(String agreementName) {
+        if (agreementName == null || agreementName.isBlank()) {
+            throw new BusinessException("Agreement name is required");
+        }
+    }
+
+    private CompanyMaster resolveCompany(Long companyId) {
+        if (companyId == null) {
+            return null;
+        }
+        return companyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
+    }
+
+    private String resolveDraftAgreementName(String requestedName, Agreement source) {
+        if (requestedName != null) {
+            validateAgreementName(requestedName);
+            return requestedName.trim();
+        }
+        return source.getAgreementName();
+    }
+
+    private Long companyIdOf(AgreementGroup group) {
+        return group.getCompany() != null ? group.getCompany().getId() : null;
+    }
+
+    private String companyNameOf(AgreementGroup group) {
+        return group.getCompany() != null ? group.getCompany().getCompanyName() : null;
     }
 }

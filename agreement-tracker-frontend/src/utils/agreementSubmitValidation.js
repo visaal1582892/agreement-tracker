@@ -3,6 +3,10 @@
  * Save-as-draft bypasses this entirely.
  */
 export function validateAgreementForSubmit(state, enqueueSnackbar) {
+  if (!state.agreementName?.trim()) {
+    enqueueSnackbar('Cannot submit: Agreement Name is missing.', { variant: 'warning' });
+    return false;
+  }
   if (!state.companyId) {
     enqueueSnackbar('Cannot submit: Company is missing.', { variant: 'warning' });
     return false;

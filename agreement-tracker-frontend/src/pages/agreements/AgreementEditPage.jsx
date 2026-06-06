@@ -102,8 +102,8 @@ export default function AgreementEditPage() {
   };
 
   const validateDraftSave = () => {
-    if (!state.companyId) {
-      enqueueSnackbar('Select a company to save draft', { variant: 'warning' });
+    if (!state.agreementName?.trim()) {
+      enqueueSnackbar('Agreement name is required to save draft', { variant: 'warning' });
       return false;
     }
     return true;
@@ -112,7 +112,6 @@ export default function AgreementEditPage() {
   const validate = () => {
     switch (state.step) {
       case 0:
-        if (!state.companyId) { enqueueSnackbar('Select a company', { variant: 'warning' }); return false; }
         if (!state.vendorIds?.length) { enqueueSnackbar('Select at least one vendor', { variant: 'warning' }); return false; }
         if (!state.productRules?.productRules?.length) {
           enqueueSnackbar('Select at least one product', { variant: 'warning' }); return false;
@@ -139,6 +138,7 @@ export default function AgreementEditPage() {
     const agreement = state.agreements[0];
     const item = buildAgreementItem(agreement);
     return {
+      agreementName: state.agreementName?.trim() || '',
       companyId: state.companyId,
       vendorIds: state.vendorIds ?? [],
       productRules: state.productRules ?? {},
@@ -147,20 +147,46 @@ export default function AgreementEditPage() {
     };
   }, [state]);
 
-  const persistDraft = async () => {
+  const persistDraft = async ({ validateStep1 = false } = {}) => {
     const payload = buildUpdatePayload();
     if (draftAgreementId) {
-      const { data } = await axiosInstance.put(ENDPOINTS.AGREEMENT_UPDATE(draftAgreementId), payload);
+      const { data } = await axiosInstance.put(
+        ENDPOINTS.AGREEMENT_UPDATE(draftAgreementId),
+        payload,
+        { params: { validateStep1 } },
+      );
       return data;
     }
     const sourceId = versionSourceId ?? sourceAgreement?.id;
     const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_CREATE_VERSION(sourceId), payload);
     setDraftAgreementId(data.id);
     navigate(`/agreements/${data.id}/edit`, { replace: true });
+    if (validateStep1) {
+      const { data: updated } = await axiosInstance.put(
+        ENDPOINTS.AGREEMENT_UPDATE(data.id),
+        payload,
+        { params: { validateStep1: true } },
+      );
+      return updated;
+    }
     return data;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    if (state.step === 0) {
+      if (!state.vendorIds?.length) { enqueueSnackbar('Select at least one vendor', { variant: 'warning' }); return; }
+      if (!state.productRules?.productRules?.length) {
+        enqueueSnackbar('Select at least one product', { variant: 'warning' }); return;
+      }
+      try {
+        await persistDraft({ validateStep1: true });
+      } catch (err) {
+        enqueueSnackbar(err.response?.data?.message || 'Complete required step 1 fields', { variant: 'error' });
+        return;
+      }
+      nextStep();
+      return;
+    }
     if (!validate()) return;
     nextStep();
   };
@@ -251,10 +277,10 @@ export default function AgreementEditPage() {
           Edit Agreement
         </Typography>
         <Typography sx={{ fontSize: { xs: '1.35rem', md: '1.6rem' }, fontWeight: 800, color: BRAND.textPrimary, letterSpacing: '-0.5px' }}>
-          {sourceAgreement.agreementNumber}
+          {state.agreementName || sourceAgreement.agreementName || sourceAgreement.agreementNumber}
         </Typography>
         <Typography sx={{ mt: 0.5, fontSize: '0.9rem', color: '#64748B' }}>
-          {versionLabel} — save as draft anytime or submit when ready
+          {sourceAgreement.agreementNumber} · {versionLabel} — save as draft anytime or submit when ready
         </Typography>
       </Paper>
 

@@ -61,7 +61,9 @@ public class DashboardController {
                 a.getId(),
                 a.getAgreementGroup().getId(),
                 a.getAgreementGroup().getAgreementNumber(),
-                a.getAgreementGroup().getCompany().getCompanyName(),
+                a.getAgreementGroup().getCompany() != null
+                        ? a.getAgreementGroup().getCompany().getCompanyName()
+                        : null,
                 a.getOwner().getFullName(),
                 a.getExpiryDate(),
                 days,

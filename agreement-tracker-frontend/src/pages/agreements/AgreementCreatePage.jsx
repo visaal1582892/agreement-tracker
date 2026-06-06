@@ -73,8 +73,8 @@ export default function AgreementCreatePage() {
   };
 
   const validateDraftSave = () => {
-    if (!state.companyId) {
-      enqueueSnackbar('Select a company to save draft', { variant: 'warning' });
+    if (!state.agreementName?.trim()) {
+      enqueueSnackbar('Agreement name is required to save draft', { variant: 'warning' });
       return false;
     }
     return true;
@@ -83,7 +83,6 @@ export default function AgreementCreatePage() {
   const validate = () => {
     switch (state.step) {
       case 0:
-        if (!state.companyId) { enqueueSnackbar('Select a company', { variant: 'warning' }); return false; }
         if (!state.vendorIds?.length) { enqueueSnackbar('Select at least one vendor', { variant: 'warning' }); return false; }
         if (!state.productRules?.productRules?.length) {
           enqueueSnackbar('Select at least one product', { variant: 'warning' }); return false;
@@ -125,6 +124,7 @@ export default function AgreementCreatePage() {
   };
 
   const buildCreatePayload = useCallback(() => ({
+    agreementName: state.agreementName?.trim() || '',
     companyId: state.companyId,
     vendorIds: state.vendorIds ?? [],
     productRules: state.productRules ?? {},
@@ -134,6 +134,7 @@ export default function AgreementCreatePage() {
   const buildUpdatePayload = useCallback(() => {
     const agreement = state.agreements[0];
     return {
+      agreementName: state.agreementName?.trim() || '',
       companyId: state.companyId,
       vendorIds: state.vendorIds ?? [],
       productRules: state.productRules ?? {},
@@ -142,11 +143,13 @@ export default function AgreementCreatePage() {
     };
   }, [state]);
 
-  const persistDraft = async () => {
+  const persistDraft = async ({ validateStep1 = false } = {}) => {
+    const updatePayload = buildUpdatePayload();
     if (draftAgreementId) {
       const { data } = await axiosInstance.put(
         ENDPOINTS.AGREEMENT_UPDATE(draftAgreementId),
-        buildUpdatePayload(),
+        updatePayload,
+        { params: { validateStep1 } },
       );
       return data;
     }
@@ -154,11 +157,33 @@ export default function AgreementCreatePage() {
     const created = data.agreements?.[0];
     if (created?.id) {
       setDraftAgreementId(created.id);
+      if (validateStep1) {
+        const { data: updated } = await axiosInstance.put(
+          ENDPOINTS.AGREEMENT_UPDATE(created.id),
+          updatePayload,
+          { params: { validateStep1: true } },
+        );
+        return updated;
+      }
     }
     return created ?? data;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    if (state.step === 0) {
+      if (!state.vendorIds?.length) { enqueueSnackbar('Select at least one vendor', { variant: 'warning' }); return; }
+      if (!state.productRules?.productRules?.length) {
+        enqueueSnackbar('Select at least one product', { variant: 'warning' }); return;
+      }
+      try {
+        await persistDraft({ validateStep1: true });
+      } catch (err) {
+        enqueueSnackbar(err.response?.data?.message || 'Complete required step 1 fields', { variant: 'error' });
+        return;
+      }
+      nextStep();
+      return;
+    }
     if (!validate()) return;
     nextStep();
   };

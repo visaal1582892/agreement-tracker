@@ -24,6 +24,7 @@ export default function Step5Review({ state }) {
       <Grid container spacing={3}>
         <Grid size={12}>
           <Typography variant="subtitle2" fontWeight={700} mb={1} color="primary">Shared Setup</Typography>
+          <ReviewRow label="Agreement Name" value={state.agreementName} />
           <ReviewRow label="Company" value={state.companyName} />
           <ReviewRow label="Vendors" value={`${state.vendorIds?.length || 0} selected`} />
           <ReviewRow label="Manufacturers" value={`${sharedRules.manufacturers?.length || 0} selected`} />
