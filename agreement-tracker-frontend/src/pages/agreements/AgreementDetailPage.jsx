@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
 import {
   Box, Grid, Typography, Paper, Divider, Chip, Button, Select, MenuItem,
   FormControl, Stepper, Step, StepLabel, StepContent, TextField,
@@ -18,6 +19,7 @@ import { RIGHTS } from '../../config/rights';
 import { useModal } from '../../hooks/useModal';
 import { ROUTES } from '../../config/routes';
 import { fetchAgreementForClone } from '../../utils/agreementClone';
+import { submitAgreementForApproval, approveAgreement, rejectAgreement } from '../../store/slices/agreementSlice';
 import TransferOwnershipModal from '../../components/agreements/TransferOwnershipModal';
 import dayjs from 'dayjs';
 
@@ -25,6 +27,7 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
   const { groupId: routeGroupId } = useParams();
   const groupId = embeddedGroupId ?? routeGroupId;
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const { enqueueSnackbar } = useSnackbar();
   const { user, hasRight } = useAuth();
 
@@ -93,35 +96,35 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
 
   const handleSubmit = async () => {
     try {
-      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(selectedVersionId));
+      await dispatch(submitAgreementForApproval(selectedVersionId)).unwrap();
       enqueueSnackbar('Submitted for approval', { variant: 'success' });
       load();
     } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Submit failed', { variant: 'error' });
+      enqueueSnackbar(typeof err === 'string' ? err : 'Submit failed', { variant: 'error' });
     }
   };
 
   const handleApprove = async () => {
     try {
-      await axiosInstance.post(ENDPOINTS.AGREEMENT_APPROVE(selectedVersionId), { remarks: 'Approved' });
+      await dispatch(approveAgreement({ agreementId: selectedVersionId })).unwrap();
       enqueueSnackbar('Agreement approved', { variant: 'success' });
       load();
       onActionComplete?.();
     } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Approval failed', { variant: 'error' });
+      enqueueSnackbar(typeof err === 'string' ? err : 'Approval failed', { variant: 'error' });
     }
   };
 
   const handleReject = async () => {
     try {
-      await axiosInstance.post(ENDPOINTS.AGREEMENT_REJECT(selectedVersionId), { remarks: rejectRemarks });
+      await dispatch(rejectAgreement({ agreementId: selectedVersionId, remarks: rejectRemarks })).unwrap();
       enqueueSnackbar('Agreement rejected', { variant: 'success' });
       rejectModal.close();
       setRejectRemarks('');
       load();
       onActionComplete?.();
     } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Rejection failed', { variant: 'error' });
+      enqueueSnackbar(typeof err === 'string' ? err : 'Rejection failed', { variant: 'error' });
     }
   };
 
