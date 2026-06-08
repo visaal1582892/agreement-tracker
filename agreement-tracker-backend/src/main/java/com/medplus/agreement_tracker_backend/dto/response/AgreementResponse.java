@@ -39,6 +39,7 @@ public record AgreementResponse(
         List<RuleSummary> divisionRules,
         List<RuleSummary> productRules,
         List<ProductSummary> products,
+        PendingActionRequestInfo pendingActionRequest,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

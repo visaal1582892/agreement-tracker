@@ -106,4 +106,13 @@ public interface AgreementRepository extends JpaRepository<Agreement, Long>, Jpa
             )
             """)
     List<Agreement> findLatestVersionsForGroupIds(@Param("groupIds") List<Long> groupIds);
+
+    @Query("""
+            SELECT a FROM Agreement a
+            JOIN FETCH a.owner
+            LEFT JOIN FETCH a.incomeType
+            JOIN FETCH a.agreementGroup
+            WHERE a.id IN :ids
+            """)
+    List<Agreement> findByIdInWithDetails(@Param("ids") List<Long> ids);
 }

@@ -35,9 +35,10 @@ public interface AgreementService {
 
     List<AgreementResponse> getVersionsByAgreementId(Long agreementId, Long currentUserId);
 
-    AgreementResponse transferOwnership(Long agreementId, Long newOwnerUserId, Long performedByUserId, boolean isAdmin);
+    AgreementResponse transferOwnership(Long agreementId, Long newOwnerUserId, Long performedByUserId,
+                                        boolean isAdmin, String comments);
 
-    AgreementResponse submitForApproval(Long agreementId, Long currentUserId);
+    AgreementResponse submitForApproval(Long agreementId, String comments, Long currentUserId);
 
     AgreementResponse approve(Long agreementId, String remarks, Long approverId);
 

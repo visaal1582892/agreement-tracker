@@ -21,9 +21,10 @@ export const fetchAgreementGroups = createAsyncThunk(
 
 export const submitAgreementForApproval = createAsyncThunk(
   'agreements/submit',
-  async (agreementId, { rejectWithValue }) => {
+  async ({ agreementId, comments }, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(agreementId));
+      const body = comments?.trim() ? { comments: comments.trim() } : {};
+      const { data } = await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(agreementId), body);
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to submit agreement');
@@ -65,6 +66,35 @@ export const fetchPendingApprovals = createAsyncThunk(
       return normalizePageResponse(data);
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch pending approvals');
+    }
+  }
+);
+
+export const fetchPendingActionRequests = createAsyncThunk(
+  'agreements/fetchPendingActionRequests',
+  async ({ page = 0, size = 10, search = '' } = {}, { rejectWithValue }) => {
+    try {
+      const params = { page, size };
+      if (search?.trim()) params.search = search.trim();
+      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_PENDING_ACTION_REQUESTS, { params });
+      return normalizePageResponse(data);
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to fetch operational requests');
+    }
+  }
+);
+
+export const resolveActionRequest = createAsyncThunk(
+  'agreements/resolveActionRequest',
+  async ({ requestId, approved, approverComments = '' }, { rejectWithValue }) => {
+    try {
+      const { data } = await axiosInstance.put(ENDPOINTS.AGREEMENT_REQUEST_RESOLVE(requestId), {
+        approved,
+        approverComments: approverComments || undefined,
+      });
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to resolve request');
     }
   }
 );
@@ -116,6 +146,11 @@ const agreementSlice = createSlice({
     pendingTotalPages: 0,
     pendingPage: 0,
     pendingPageSize: 10,
+    pendingActionRequests: [],
+    pendingActionRequestsTotal: 0,
+    pendingActionRequestsTotalPages: 0,
+    pendingActionRequestsPage: 0,
+    pendingActionRequestsPageSize: 10,
     loading: false,
     error: null,
   },
@@ -176,6 +211,25 @@ const agreementSlice = createSlice({
       .addCase(fetchPendingApprovals.rejected, (state, { payload }) => {
         state.loading = false;
         state.error = payload;
+      })
+      .addCase(fetchPendingActionRequests.pending, (state) => { state.loading = true; })
+      .addCase(fetchPendingActionRequests.fulfilled, (state, { payload }) => {
+        state.loading = false;
+        state.pendingActionRequests = payload.content ?? [];
+        state.pendingActionRequestsTotal = payload.totalElements ?? 0;
+        state.pendingActionRequestsTotalPages = payload.totalPages ?? 0;
+        state.pendingActionRequestsPage = payload.number ?? 0;
+        state.pendingActionRequestsPageSize = payload.size ?? state.pendingActionRequestsPageSize;
+      })
+      .addCase(fetchPendingActionRequests.rejected, (state, { payload }) => {
+        state.loading = false;
+        state.error = payload;
+      })
+      .addCase(resolveActionRequest.fulfilled, (state, { payload }) => {
+        state.pendingActionRequests = state.pendingActionRequests.filter((r) => r.id !== payload.id);
+        if (state.pendingActionRequestsTotal > 0) {
+          state.pendingActionRequestsTotal -= 1;
+        }
       });
   },
 });

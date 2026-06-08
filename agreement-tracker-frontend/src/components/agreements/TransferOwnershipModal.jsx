@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography,
+  Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, TextField,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
+import { RIGHTS } from '../../config/rights';
+import { useAuth } from '../../hooks/useAuth';
 import SearchableSelect from '../forms/SearchableSelect';
 
 export default function TransferOwnershipModal({
@@ -15,9 +17,11 @@ export default function TransferOwnershipModal({
   onSuccess,
 }) {
   const { enqueueSnackbar } = useSnackbar();
+  const { hasRight } = useAuth();
+  const isAdmin = hasRight(RIGHTS.ADMIN_USERS);
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [comments, setComments] = useState('');
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -38,32 +42,41 @@ export default function TransferOwnershipModal({
   useEffect(() => {
     if (open) {
       setSelectedUser(null);
+      setComments('');
       searchUsers('');
     }
   }, [open, searchUsers]);
 
-  const handleTransfer = async () => {
-    if (!agreementId || !selectedUser?.id) return;
+  const handleSubmit = async () => {
+    if (!agreementId || !selectedUser?.id || !comments.trim()) return;
     setSubmitting(true);
     try {
-      await axiosInstance.put(ENDPOINTS.AGREEMENT_TRANSFER(agreementId), {
-        newOwnerUserId: selectedUser.id,
+      await axiosInstance.post(ENDPOINTS.AGREEMENT_REQUEST_TRANSFER(agreementId), {
+        newOwnerId: selectedUser.id,
+        comments: comments.trim(),
       });
-      onSuccess?.();
+      onSuccess?.({ immediate: isAdmin });
       onClose();
     } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Transfer failed', { variant: 'error' });
+      enqueueSnackbar(
+        err.response?.data?.message || (isAdmin ? 'Transfer failed' : 'Transfer request failed'),
+        { variant: 'error' },
+      );
     } finally {
       setSubmitting(false);
     }
   };
+
+  const canSubmit = Boolean(selectedUser?.id && comments.trim());
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle fontWeight={700}>Transfer Ownership</DialogTitle>
       <DialogContent>
         <Alert severity="warning" sx={{ mb: 2 }}>
-          You will lose access to edit this agreement once transferred.
+          {isAdmin
+            ? 'Admin override — ownership will transfer immediately without approval.'
+            : 'Request will be sent to an Approver. Agreement ownership will not change until approved.'}
         </Alert>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Reassign {agreementLabel || 'this agreement'} to a new Account Manager.
@@ -79,16 +92,28 @@ export default function TransferOwnershipModal({
           getOptionLabel={(u) => u?.fullName || u?.username || ''}
           isOptionEqualToValue={(a, b) => a?.id === b?.id}
           required
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          label="Reason / Comments *"
+          multiline
+          rows={4}
+          fullWidth
+          value={comments}
+          onChange={(e) => setComments(e.target.value)}
+          placeholder="Explain why ownership should be transferred…"
         />
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} variant="outlined">Cancel</Button>
         <Button
-          onClick={handleTransfer}
+          onClick={handleSubmit}
           variant="contained"
-          disabled={!selectedUser?.id || submitting}
+          disabled={!canSubmit || submitting}
         >
-          {submitting ? 'Transferring…' : 'Transfer'}
+          {submitting
+            ? (isAdmin ? 'Transferring…' : 'Submitting…')
+            : (isAdmin ? 'Transfer Now' : 'Submit Transfer Request')}
         </Button>
       </DialogActions>
     </Dialog>

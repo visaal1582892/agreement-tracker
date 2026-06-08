@@ -2,18 +2,26 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box, Grid, Paper, Typography, Divider, List, ListItemButton, ListItemText,
-  TextField, InputAdornment, TablePagination, CircularProgress, alpha,
+  TextField, InputAdornment, TablePagination, CircularProgress, alpha, Tabs, Tab,
+  Button, Alert, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
-import { Search, TaskAlt, InboxOutlined } from '@mui/icons-material';
-import { fetchPendingApprovals } from '../../store/slices/agreementSlice';
+import { Search, TaskAlt, InboxOutlined, SwapHoriz, PowerSettingsNew } from '@mui/icons-material';
+import { useSnackbar } from 'notistack';
+import {
+  fetchPendingApprovals,
+  fetchPendingActionRequests,
+  resolveActionRequest,
+} from '../../store/slices/agreementSlice';
 import PageHeader from '../../components/ui/PageHeader';
 import StatusBadge from '../../components/ui/StatusBadge';
 import AgreementDetailPage from '../agreements/AgreementDetailPage';
 import { BRAND } from '../../config/theme';
+import dayjs from 'dayjs';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
-function PendingEmptyState({ hasSearch }) {
+function PendingEmptyState({ hasSearch, variant = 'approvals' }) {
+  const isOperational = variant === 'operational';
   return (
     <Box
       sx={{
@@ -46,18 +54,22 @@ function PendingEmptyState({ hasSearch }) {
         )}
       </Box>
       <Typography variant="subtitle1" fontWeight={700} gutterBottom>
-        {hasSearch ? 'No matching approvals' : 'All caught up!'}
+        {hasSearch
+          ? (isOperational ? 'No matching requests' : 'No matching approvals')
+          : 'All caught up!'}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 260, lineHeight: 1.6 }}>
         {hasSearch
           ? 'Try a different agreement number or company name.'
-          : 'No agreements are waiting for your review right now.'}
+          : (isOperational
+            ? 'No transfer or termination requests are waiting for your review.'
+            : 'No agreements are waiting for your review right now.')}
       </Typography>
     </Box>
   );
 }
 
-function DetailEmptyState() {
+function DetailEmptyState({ variant = 'approvals' }) {
   return (
     <Box
       sx={{
@@ -86,12 +98,257 @@ function DetailEmptyState() {
         <Search sx={{ fontSize: 30, color: BRAND.red }} />
       </Box>
       <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-        Select an agreement to review
+        {variant === 'operational' ? 'Select a request to review' : 'Select an agreement to review'}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 320 }}>
-        Choose a pending agreement from the list to view details, version history, and approval actions.
+        {variant === 'operational'
+          ? 'Choose a pending transfer or termination request to view details and approve or reject.'
+          : 'Choose a pending agreement from the list to view details, version history, and approval actions.'}
       </Typography>
     </Box>
+  );
+}
+
+function OperationalRequestDetail({ request, onResolved }) {
+  const dispatch = useDispatch();
+  const { enqueueSnackbar } = useSnackbar();
+  const [approverComments, setApproverComments] = useState('');
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setApproverComments('');
+    setRejectOpen(false);
+  }, [request?.id]);
+
+  if (!request) return null;
+
+  const actionLabel = request.actionType === 'TRANSFER' ? 'Transfer' : 'Terminate';
+  const ActionIcon = request.actionType === 'TRANSFER' ? SwapHoriz : PowerSettingsNew;
+
+  const handleResolve = async (approved) => {
+    setSubmitting(true);
+    try {
+      await dispatch(resolveActionRequest({
+        requestId: request.id,
+        approved,
+        approverComments: approverComments.trim(),
+      })).unwrap();
+      enqueueSnackbar(
+        approved ? `${actionLabel} request approved` : `${actionLabel} request rejected`,
+        { variant: 'success' },
+      );
+      setRejectOpen(false);
+      setApproverComments('');
+      onResolved?.();
+    } catch (err) {
+      enqueueSnackbar(typeof err === 'string' ? err : 'Resolution failed', { variant: 'error' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Box>
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          mb: 2,
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: alpha(BRAND.red, 0.03),
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <ActionIcon color="primary" />
+          <Typography variant="subtitle1" fontWeight={700}>
+            {actionLabel} Request
+          </Typography>
+          <Chip label="Pending" size="small" color="warning" />
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Requested by <strong>{request.requestedByName}</strong>
+        </Typography>
+        {request.targetUserName && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            New owner: <strong>{request.targetUserName}</strong>
+          </Typography>
+        )}
+        {request.requestedTerminationDate && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Requested termination date:{' '}
+            <strong>{dayjs(request.requestedTerminationDate).format('DD MMM YYYY')}</strong>
+          </Typography>
+        )}
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {request.reasonComments}
+        </Alert>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: BRAND.green }}
+            disabled={submitting}
+            onClick={() => handleResolve(true)}
+          >
+            Approve {actionLabel}
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            disabled={submitting}
+            onClick={() => setRejectOpen(true)}
+          >
+            Reject
+          </Button>
+        </Box>
+      </Paper>
+
+      <AgreementDetailPage
+        key={request.agreementGroupId}
+        embeddedGroupId={request.agreementGroupId}
+      />
+
+      <Dialog open={rejectOpen} onClose={() => setRejectOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle fontWeight={700}>Reject {actionLabel} Request</DialogTitle>
+        <DialogContent>
+          <TextField
+            label="Approver Comments *"
+            multiline
+            rows={3}
+            fullWidth
+            sx={{ mt: 1 }}
+            value={approverComments}
+            onChange={(e) => setApproverComments(e.target.value)}
+            placeholder="Explain why this request is being rejected…"
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setRejectOpen(false)} variant="outlined">Cancel</Button>
+          <Button
+            onClick={() => handleResolve(false)}
+            variant="contained"
+            color="error"
+            disabled={submitting || !approverComments.trim()}
+          >
+            Confirm Reject
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+function PendingListPanel({
+  title,
+  totalCount,
+  searchInput,
+  onSearchChange,
+  loading,
+  items,
+  emptyVariant,
+  hasSearch,
+  selectedKey,
+  onSelect,
+  renderItem,
+  page,
+  rowsPerPage,
+  onPageChange,
+  onRowsPerPageChange,
+}) {
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: 'divider',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <Box
+        sx={{
+          px: 2,
+          py: 1.5,
+          bgcolor: BRAND.bgGray,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1.5,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Typography variant="subtitle2" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
+          {title} ({totalCount})
+        </Typography>
+        <TextField
+          size="small"
+          placeholder="Search…"
+          value={searchInput}
+          onChange={(e) => onSearchChange(e.target.value)}
+          sx={{ minWidth: 140, flex: 1, maxWidth: 200 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search fontSize="small" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+      </Box>
+
+      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+        {loading ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 6 }}>
+            <CircularProgress size={28} />
+          </Box>
+        ) : items.length === 0 ? (
+          <PendingEmptyState hasSearch={hasSearch} variant={emptyVariant} />
+        ) : (
+          <List disablePadding>
+            {items.map((item) => (
+              <Box key={renderItem.key(item)}>
+                <ListItemButton
+                  selected={selectedKey === renderItem.key(item)}
+                  onClick={() => onSelect(item)}
+                  sx={{ '&.Mui-selected': { bgcolor: '#FFF0F0', borderLeft: `3px solid ${BRAND.red}` } }}
+                >
+                  {renderItem.content(item)}
+                </ListItemButton>
+                <Divider />
+              </Box>
+            ))}
+          </List>
+        )}
+      </Box>
+
+      <TablePagination
+        component="div"
+        count={totalCount}
+        page={page}
+        onPageChange={onPageChange}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={onRowsPerPageChange}
+        rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+        labelRowsPerPage="Rows:"
+        sx={{
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          '.MuiTablePagination-toolbar': { minHeight: 48, px: 1 },
+          '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+            fontSize: '0.8rem',
+          },
+        }}
+      />
+    </Paper>
   );
 }
 
@@ -100,21 +357,31 @@ export default function ApprovalsPage() {
   const {
     pendingApprovals,
     pendingTotal,
+    pendingActionRequests,
+    pendingActionRequestsTotal,
     loading,
   } = useSelector((s) => s.agreements);
 
+  const [activeTab, setActiveTab] = useState('approvals');
   const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [selectedRequestId, setSelectedRequestId] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const prevSearchRef = useRef('');
 
-  const totalCount = pendingTotal ?? 0;
+  const totalCount = activeTab === 'approvals'
+    ? (pendingTotal ?? 0)
+    : (pendingActionRequestsTotal ?? 0);
 
   const loadPending = useCallback(() => {
-    dispatch(fetchPendingApprovals({ page, size: rowsPerPage, search: searchQuery }));
-  }, [dispatch, page, rowsPerPage, searchQuery]);
+    if (activeTab === 'approvals') {
+      dispatch(fetchPendingApprovals({ page, size: rowsPerPage, search: searchQuery }));
+    } else {
+      dispatch(fetchPendingActionRequests({ page, size: rowsPerPage, search: searchQuery }));
+    }
+  }, [dispatch, page, rowsPerPage, searchQuery, activeTab]);
 
   useEffect(() => {
     loadPending();
@@ -133,6 +400,16 @@ export default function ApprovalsPage() {
   }, [searchInput]);
 
   useEffect(() => {
+    setPage(0);
+    setSearchInput('');
+    setSearchQuery('');
+    prevSearchRef.current = '';
+    setSelectedGroupId(null);
+    setSelectedRequestId(null);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'approvals') return;
     if (pendingApprovals.length === 0) {
       setSelectedGroupId(null);
       return;
@@ -141,135 +418,115 @@ export default function ApprovalsPage() {
     if (!selectedGroupId || !stillVisible) {
       setSelectedGroupId(pendingApprovals[0].agreementGroupId ?? null);
     }
-  }, [pendingApprovals, selectedGroupId]);
+  }, [pendingApprovals, selectedGroupId, activeTab]);
 
-  const handleActionComplete = () => {
-    loadPending();
-  };
+  useEffect(() => {
+    if (activeTab !== 'operational') return;
+    if (pendingActionRequests.length === 0) {
+      setSelectedRequestId(null);
+      return;
+    }
+    const stillVisible = pendingActionRequests.some((r) => r.id === selectedRequestId);
+    if (!selectedRequestId || !stillVisible) {
+      setSelectedRequestId(pendingActionRequests[0]?.id ?? null);
+    }
+  }, [pendingActionRequests, selectedRequestId, activeTab]);
 
-  const handlePageChange = (_, newPage) => {
-    setPage(newPage);
-  };
-
-  const handleRowsPerPageChange = (e) => {
-    setRowsPerPage(parseInt(e.target.value, 10));
-    setPage(0);
-  };
-
+  const selectedRequest = pendingActionRequests.find((r) => r.id === selectedRequestId) ?? null;
   const hasSearch = Boolean(searchQuery);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       <PageHeader
         title="Approvals Workspace"
-        subtitle={`${totalCount} agreement${totalCount === 1 ? '' : 's'} pending your approval`}
+        subtitle={`${totalCount} item${totalCount === 1 ? '' : 's'} pending your review`}
       />
+
+      <Tabs
+        value={activeTab}
+        onChange={(_, v) => setActiveTab(v)}
+        sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab label={`Agreement Approvals (${pendingTotal ?? 0})`} value="approvals" />
+        <Tab label={`Operational Requests (${pendingActionRequestsTotal ?? 0})`} value="operational" />
+      </Tabs>
 
       <Grid container spacing={2} sx={{ flex: 1, minHeight: 480 }}>
         <Grid size={{ xs: 12, md: 4 }}>
-          <Paper
-            elevation={0}
-            sx={{
-              borderRadius: 2,
-              border: '1px solid',
-              borderColor: 'divider',
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-            }}
-          >
-            <Box
-              sx={{
-                px: 2,
-                py: 1.5,
-                bgcolor: BRAND.bgGray,
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 1.5,
-                flexWrap: 'wrap',
-              }}
-            >
-              <Typography variant="subtitle2" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
-                Pending Approvals ({totalCount})
-              </Typography>
-              <TextField
-                size="small"
-                placeholder="Search…"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                sx={{ minWidth: 140, flex: 1, maxWidth: 200 }}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Search fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-            </Box>
-
-            <Box sx={{ flex: 1, overflowY: 'auto' }}>
-              {loading ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 6 }}>
-                  <CircularProgress size={28} />
-                </Box>
-              ) : pendingApprovals.length === 0 ? (
-                <PendingEmptyState hasSearch={hasSearch} />
-              ) : (
-                <List disablePadding>
-                  {pendingApprovals.map((a) => {
-                    const groupId = a.agreementGroupId;
-                    if (!groupId) return null;
-                    return (
-                      <Box key={a.id}>
-                        <ListItemButton
-                          selected={selectedGroupId === groupId}
-                          onClick={() => setSelectedGroupId(groupId)}
-                          sx={{ '&.Mui-selected': { bgcolor: '#FFF0F0', borderLeft: `3px solid ${BRAND.red}` } }}
-                        >
-                          <ListItemText
-                            primary={(
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-                                <Typography variant="body2" fontWeight={600} noWrap>{a.agreementNumber}</Typography>
-                                <StatusBadge status="PENDING_APPROVAL" />
-                              </Box>
-                            )}
-                            secondary={a.companyName}
-                          />
-                        </ListItemButton>
-                        <Divider />
-                      </Box>
-                    );
-                  })}
-                </List>
-              )}
-            </Box>
-
-            <TablePagination
-              component="div"
-              count={totalCount}
+          {activeTab === 'approvals' ? (
+            <PendingListPanel
+              title="Pending Approvals"
+              totalCount={pendingTotal ?? 0}
+              searchInput={searchInput}
+              onSearchChange={setSearchInput}
+              loading={loading}
+              items={pendingApprovals}
+              emptyVariant="approvals"
+              hasSearch={hasSearch}
+              selectedKey={selectedGroupId}
+              onSelect={(a) => setSelectedGroupId(a.agreementGroupId)}
               page={page}
-              onPageChange={handlePageChange}
               rowsPerPage={rowsPerPage}
-              onRowsPerPageChange={handleRowsPerPageChange}
-              rowsPerPageOptions={PAGE_SIZE_OPTIONS}
-              labelRowsPerPage="Rows:"
-              sx={{
-                borderTop: '1px solid',
-                borderColor: 'divider',
-                '.MuiTablePagination-toolbar': { minHeight: 48, px: 1 },
-                '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
-                  fontSize: '0.8rem',
-                },
+              onPageChange={(_, newPage) => setPage(newPage)}
+              onRowsPerPageChange={(e) => {
+                setRowsPerPage(parseInt(e.target.value, 10));
+                setPage(0);
+              }}
+              renderItem={{
+                key: (a) => a.agreementGroupId,
+                content: (a) => (
+                  <ListItemText
+                    primary={(
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" fontWeight={600} noWrap>{a.agreementNumber}</Typography>
+                        <StatusBadge status="PENDING_APPROVAL" />
+                      </Box>
+                    )}
+                    secondary={a.companyName}
+                  />
+                ),
               }}
             />
-          </Paper>
+          ) : (
+            <PendingListPanel
+              title="Operational Requests"
+              totalCount={pendingActionRequestsTotal ?? 0}
+              searchInput={searchInput}
+              onSearchChange={setSearchInput}
+              loading={loading}
+              items={pendingActionRequests}
+              emptyVariant="operational"
+              hasSearch={hasSearch}
+              selectedKey={selectedRequestId}
+              onSelect={(r) => setSelectedRequestId(r.id)}
+              page={page}
+              rowsPerPage={rowsPerPage}
+              onPageChange={(_, newPage) => setPage(newPage)}
+              onRowsPerPageChange={(e) => {
+                setRowsPerPage(parseInt(e.target.value, 10));
+                setPage(0);
+              }}
+              renderItem={{
+                key: (r) => r.id,
+                content: (r) => (
+                  <ListItemText
+                    primary={(
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" fontWeight={600} noWrap>{r.agreementNumber}</Typography>
+                        <Chip
+                          label={r.actionType === 'TRANSFER' ? 'Transfer' : 'Terminate'}
+                          size="small"
+                          color={r.actionType === 'TRANSFER' ? 'primary' : 'error'}
+                          variant="outlined"
+                        />
+                      </Box>
+                    )}
+                    secondary={`${r.companyName || '—'} · ${r.requestedByName}`}
+                  />
+                ),
+              }}
+            />
+          )}
         </Grid>
 
         <Grid size={{ xs: 12, md: 8 }}>
@@ -281,17 +538,29 @@ export default function ApprovalsPage() {
               borderColor: 'divider',
               height: '100%',
               overflowY: 'auto',
-              p: selectedGroupId ? 3 : 0,
+              p: (activeTab === 'approvals' ? selectedGroupId : selectedRequestId) ? 3 : 0,
             }}
           >
-            {selectedGroupId ? (
-              <AgreementDetailPage
-                key={selectedGroupId}
-                embeddedGroupId={selectedGroupId}
-                onActionComplete={handleActionComplete}
-              />
+            {activeTab === 'approvals' ? (
+              selectedGroupId ? (
+                <AgreementDetailPage
+                  key={selectedGroupId}
+                  embeddedGroupId={selectedGroupId}
+                  onActionComplete={loadPending}
+                />
+              ) : (
+                <DetailEmptyState variant="approvals" />
+              )
             ) : (
-              <DetailEmptyState />
+              selectedRequest ? (
+                <OperationalRequestDetail
+                  key={selectedRequest.id}
+                  request={selectedRequest}
+                  onResolved={loadPending}
+                />
+              ) : (
+                <DetailEmptyState variant="operational" />
+              )
             )}
           </Paper>
         </Grid>

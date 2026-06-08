@@ -4,6 +4,7 @@ import com.medplus.agreement_tracker_backend.dto.request.ApprovalActionRequest;
 import com.medplus.agreement_tracker_backend.dto.request.BulkTransferRequest;
 import com.medplus.agreement_tracker_backend.dto.request.CreateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.EditAgreementRequest;
+import com.medplus.agreement_tracker_backend.dto.request.SubmitForApprovalRequest;
 import com.medplus.agreement_tracker_backend.dto.request.TerminateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.TransferOwnershipRequest;
 import com.medplus.agreement_tracker_backend.dto.request.UpdateDraftRequest;
@@ -148,8 +149,10 @@ public class AgreementController {
     @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<AgreementResponse> submitForApproval(
             @PathVariable Long agreementId,
+            @RequestBody(required = false) SubmitForApprovalRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(agreementService.submitForApproval(agreementId, principal.getId()));
+        String comments = request != null ? request.comments() : null;
+        return ResponseEntity.ok(agreementService.submitForApproval(agreementId, comments, principal.getId()));
     }
 
     @PostMapping("/{agreementId}/approve")
@@ -211,7 +214,7 @@ public class AgreementController {
             @AuthenticationPrincipal UserPrincipal principal) {
         boolean isAdmin = principal.hasRight(RightCode.ADMIN_USERS.name());
         return ResponseEntity.ok(agreementService.transferOwnership(
-                agreementId, request.newOwnerUserId(), principal.getId(), isAdmin));
+                agreementId, request.newOwnerUserId(), principal.getId(), isAdmin, request.comments()));
     }
 
     @PutMapping("/bulk-transfer")

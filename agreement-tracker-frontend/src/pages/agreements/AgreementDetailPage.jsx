@@ -40,12 +40,13 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
   const [loading, setLoading] = useState(true);
   const [rejectRemarks, setRejectRemarks] = useState('');
   const [activeTab, setActiveTab] = useState('details');
+  const [submitRevisionComments, setSubmitRevisionComments] = useState('');
   const rejectModal = useModal();
   const terminateModal = useModal();
   const cloneModal = useModal();
   const transferModal = useModal();
   const submitModal = useModal();
-  const [terminateData, setTerminateData] = useState({ terminationDate: '', terminationReason: '' });
+  const [terminateData, setTerminateData] = useState({ comments: '', requestedTerminationDate: '' });
 
   const loadVersionDetail = useCallback(async (versionId) => {
     if (!versionId) return null;
@@ -175,31 +176,51 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
 
   const handleTerminate = async () => {
     try {
-      await axiosInstance.post(ENDPOINTS.AGREEMENT_TERMINATE(selectedVersionId), terminateData);
-      enqueueSnackbar('Agreement terminated', { variant: 'success' });
+      const payload = { comments: terminateData.comments.trim() };
+      if (terminateData.requestedTerminationDate) {
+        payload.requestedTerminationDate = terminateData.requestedTerminationDate;
+      }
+      await axiosInstance.post(ENDPOINTS.AGREEMENT_REQUEST_TERMINATE(selectedVersionId), payload);
+      enqueueSnackbar('Termination request submitted to Approver.', { variant: 'success' });
       terminateModal.close();
+      setTerminateData({ comments: '', requestedTerminationDate: '' });
       load();
     } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Termination failed', { variant: 'error' });
+      enqueueSnackbar(err.response?.data?.message || 'Termination request failed', { variant: 'error' });
     }
   };
 
+  const today = dayjs().format('YYYY-MM-DD');
+  const terminateDateInvalid = terminateData.requestedTerminationDate
+    && terminateData.requestedTerminationDate > today;
+
   const handleSubmitConfirm = async () => {
+    const requiresRevisionReason = (agreement?.versionNumber ?? 1) > 1;
+    if (requiresRevisionReason && !submitRevisionComments.trim()) return;
+
     submitModal.close();
     try {
-      const updated = await dispatch(submitAgreementForApproval(selectedVersionId)).unwrap();
+      const updated = await dispatch(submitAgreementForApproval({
+        agreementId: selectedVersionId,
+        comments: submitRevisionComments.trim() || undefined,
+      })).unwrap();
       enqueueSnackbar('Submitted for approval', { variant: 'success' });
+      setSubmitRevisionComments('');
       await refreshAfterMutation(updated, selectedVersionId);
     } catch (err) {
       enqueueSnackbar(typeof err === 'string' ? err : 'Submit failed', { variant: 'error' });
     }
   };
 
-  const latestVersion = versions.reduce(
-    (max, v) => (!max || v.versionNumber > max.versionNumber ? v : max),
-    null,
+  const latestDraftVersion = versions
+    .filter((v) => v.approvalStatus === 'DRAFT')
+    .reduce((max, v) => (!max || v.versionNumber > max.versionNumber ? v : max), null);
+
+  const activeVersionId = group?.currentVersionId ?? latestDraftVersion?.id ?? null;
+  const isReadOnlyView = Boolean(
+    agreement && activeVersionId && selectedVersionId !== activeVersionId,
   );
-  const isReadOnlyView = agreement && latestVersion && selectedVersionId !== latestVersion.id;
+  const requiresSubmitRevisionReason = (agreement?.versionNumber ?? 1) > 1;
 
   const actions = agreement
     ? getDetailPageActions(
@@ -224,9 +245,29 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
     setActiveTab('details');
   };
 
-  const ACTION_COLOR = { SUBMITTED: '#2196F3', APPROVED: BRAND.green, REJECTED: BRAND.red };
+  const ACTION_COLOR = {
+    SUBMITTED: '#2196F3',
+    APPROVED: BRAND.green,
+    REJECTED: BRAND.red,
+    TRANSFER_REQUESTED: '#2196F3',
+    TRANSFER_APPROVED: BRAND.green,
+    TRANSFER_REJECTED: BRAND.red,
+    TERMINATE_REQUESTED: '#FF9800',
+    TERMINATE_APPROVED: BRAND.green,
+    TERMINATE_REJECTED: BRAND.red,
+  };
+
+  const formatTimelineAction = (entry) => {
+    if (entry.operationalEvent) {
+      return entry.operationalEvent.replace(/_/g, ' ');
+    }
+    return entry.action;
+  };
 
   const displayName = agreement?.agreementName || group?.agreementName || group?.agreementNumber;
+
+  const pendingRequest = agreement?.pendingActionRequest;
+  const pendingActionLabel = pendingRequest?.actionType === 'TRANSFER' ? 'Transfer' : 'Terminate';
 
   if (!groupId || groupId === 'undefined') {
     return (
@@ -296,6 +337,18 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
 
       {isReadOnlyView && (
         <Alert severity="info" sx={{ mb: 2 }}>Viewing historical version — read-only.</Alert>
+      )}
+
+      {pendingRequest && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          A request to {pendingActionLabel} this agreement is currently pending approval.
+          {pendingRequest.targetUserName && pendingRequest.actionType === 'TRANSFER' && (
+            <> New owner: <strong>{pendingRequest.targetUserName}</strong>.</>
+          )}
+          {pendingRequest.requestedTerminationDate && pendingRequest.actionType === 'TERMINATE' && (
+            <> Requested termination date: <strong>{dayjs(pendingRequest.requestedTerminationDate).format('DD MMM YYYY')}</strong>.</>
+          )}
+        </Alert>
       )}
 
       {activeTab === 'history' ? (
@@ -472,11 +525,11 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
                   <Step key={t.id} active completed>
                     <StepLabel
                       StepIconComponent={() => (
-                        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: ACTION_COLOR[t.action] || '#999', mt: 0.5 }} />
+                        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: ACTION_COLOR[t.operationalEvent || t.action] || '#999', mt: 0.5 }} />
                       )}
                     >
                       <Typography variant="body2" fontWeight={600}>
-                        {t.action} — {t.actorName || `User ${t.actorUserId}`}
+                        {formatTimelineAction(t)} — {t.actorName || `User ${t.actorUserId}`}
                       </Typography>
                     </StepLabel>
                     <StepContent>
@@ -494,14 +547,52 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
       </Grid>
       )}
 
-      <ConfirmDialog
+      <Dialog
         open={submitModal.isOpen}
-        onClose={submitModal.close}
-        onConfirm={handleSubmitConfirm}
-        title="Submit for Approval"
-        message="Are you sure you want to submit this agreement for approval? You will no longer be able to edit the details until it is reviewed."
-        confirmLabel="Confirm"
-      />
+        onClose={() => {
+          submitModal.close();
+          setSubmitRevisionComments('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle fontWeight={700}>Submit for Approval</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            You will no longer be able to edit the details until this version is reviewed.
+          </Alert>
+          {requiresSubmitRevisionReason && (
+            <TextField
+              label="Reason for Edit / Revision *"
+              multiline
+              rows={4}
+              fullWidth
+              value={submitRevisionComments}
+              onChange={(e) => setSubmitRevisionComments(e.target.value)}
+              placeholder="Explain what changed and why this revision is needed…"
+            />
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => {
+              submitModal.close();
+              setSubmitRevisionComments('');
+            }}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmitConfirm}
+            variant="contained"
+            sx={{ bgcolor: BRAND.red }}
+            disabled={requiresSubmitRevisionReason && !submitRevisionComments.trim()}
+          >
+            Confirm Submit
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ConfirmDialog
         open={cloneModal.isOpen}
@@ -517,9 +608,12 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
         onClose={transferModal.close}
         agreementId={selectedVersionId}
         agreementLabel={group?.agreementNumber}
-        onSuccess={() => {
+        onSuccess={({ immediate } = {}) => {
           transferModal.close();
-          enqueueSnackbar('Ownership transferred', { variant: 'success' });
+          enqueueSnackbar(
+            immediate ? 'Ownership transferred' : 'Transfer request submitted to Approver.',
+            { variant: 'success' },
+          );
           load();
           onActionComplete?.();
         }}
@@ -548,34 +642,61 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
       </Dialog>
 
       {/* Terminate Modal */}
-      <Dialog open={terminateModal.isOpen} onClose={terminateModal.close} maxWidth="sm" fullWidth>
+      <Dialog
+        open={terminateModal.isOpen}
+        onClose={() => {
+          terminateModal.close();
+          setTerminateData({ comments: '', requestedTerminationDate: '' });
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle fontWeight={700} color="error">Terminate Agreement</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid size={12}>
-              <TextField
-                label="Termination Date *" type="date"
-                fullWidth
-                slotProps={{ inputLabel: { shrink: true } }}
-                value={terminateData.terminationDate}
-                onChange={(e) => setTerminateData((p) => ({ ...p, terminationDate: e.target.value }))}
-              />
-            </Grid>
-            <Grid size={12}>
-              <TextField
-                label="Termination Reason *" multiline rows={3}
-                fullWidth
-                value={terminateData.terminationReason}
-                onChange={(e) => setTerminateData((p) => ({ ...p, terminationReason: e.target.value }))}
-              />
-            </Grid>
-          </Grid>
+          <Alert severity="warning" sx={{ mb: 2, mt: 1 }}>
+            Request will be sent to an Approver. Agreement will not be terminated until approved.
+          </Alert>
+          <TextField
+            label="Termination Date (optional)"
+            type="date"
+            fullWidth
+            sx={{ mb: 2 }}
+            slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: today } }}
+            value={terminateData.requestedTerminationDate}
+            onChange={(e) => setTerminateData((prev) => ({
+              ...prev,
+              requestedTerminationDate: e.target.value,
+            }))}
+            error={terminateDateInvalid}
+            helperText={terminateDateInvalid ? 'Termination date cannot be in the future' : 'Leave blank to use approval date'}
+          />
+          <TextField
+            label="Reason / Comments *"
+            multiline
+            rows={4}
+            fullWidth
+            value={terminateData.comments}
+            onChange={(e) => setTerminateData({ comments: e.target.value })}
+            placeholder="Explain why this agreement should be terminated…"
+          />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={terminateModal.close} variant="outlined">Cancel</Button>
-          <Button onClick={handleTerminate} variant="contained" color="error"
-            disabled={!terminateData.terminationDate || !terminateData.terminationReason.trim()}>
-            Terminate
+          <Button
+            onClick={() => {
+              terminateModal.close();
+              setTerminateData({ comments: '', requestedTerminationDate: '' });
+            }}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleTerminate}
+            variant="contained"
+            color="error"
+            disabled={!terminateData.comments.trim() || terminateDateInvalid}
+          >
+            Submit Termination Request
           </Button>
         </DialogActions>
       </Dialog>

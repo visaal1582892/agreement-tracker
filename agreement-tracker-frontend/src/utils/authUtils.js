@@ -69,9 +69,10 @@ export function canReject(ctx, agreement, options) {
   return canApprove(ctx, agreement, options);
 }
 
-/** AGREEMENT_EDIT + approvalStatus === APPROVED + not terminated. */
+/** AGREEMENT_EDIT + approvalStatus === APPROVED + not terminated + no pending action request. */
 export function canTerminate(ctx, agreement, { isReadOnlyView = false } = {}) {
   if (!agreement?.approvalStatus || blockedByReadOnly(isReadOnlyView)) return false;
+  if (agreement.pendingActionRequest) return false;
   return (
     agreement.approvalStatus === 'APPROVED'
     && ctx.hasRight(RIGHTS.AGREEMENT_EDIT)
@@ -85,10 +86,20 @@ export function canClone(ctx, agreement) {
   return ctx.hasRight(RIGHTS.AGREEMENT_CREATE);
 }
 
-/** (owner or ADMIN_USERS) + not DRAFT + version id present. */
+/** (owner or ADMIN_USERS) + not DRAFT + allowed status + no pending action request. */
 export function canTransfer(ctx, agreement) {
   if (!agreement?.approvalStatus || !agreement?.id && !agreement?.latestVersionId) return false;
   if (isDraftAgreement(agreement)) return false;
+  if (agreement.pendingActionRequest) return false;
+
+  const blockedStatuses = ['SUPERSEDED', 'REJECTED', 'EXPIRED'];
+  if (blockedStatuses.includes(agreement.computedStatus)) return false;
+
+  const allowedStatuses = ['ACTIVE', 'PENDING_APPROVAL', 'APPROVED', 'IN_PROGRESS'];
+  if (agreement.computedStatus && !allowedStatuses.includes(agreement.computedStatus)) {
+    return false;
+  }
+
   return (
     isAgreementOwner(ctx.user, agreement)
     || ctx.hasRight(RIGHTS.ADMIN_USERS)

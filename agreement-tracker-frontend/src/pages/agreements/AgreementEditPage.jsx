@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Box, Typography, alpha, Paper, CircularProgress, Alert } from '@mui/material';
+import { Box, Typography, alpha, Paper, CircularProgress, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
@@ -54,8 +54,9 @@ export default function AgreementEditPage() {
   const [draftAgreementId, setDraftAgreementId] = useState(null);
   const [versionSourceId, setVersionSourceId] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [savingDraft, setSavingDraft] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitModalOpen, setSubmitModalOpen] = useState(false);
+  const [revisionComments, setRevisionComments] = useState('');
   const [documentErrors, setDocumentErrors] = useState({});
 
   useEffect(() => {
@@ -99,14 +100,6 @@ export default function AgreementEditPage() {
 
   const clearDocumentError = (id) => {
     setDocumentErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
-  };
-
-  const validateDraftSave = () => {
-    if (!state.agreementName?.trim()) {
-      enqueueSnackbar('Agreement name is required to save draft', { variant: 'warning' });
-      return false;
-    }
-    return true;
   };
 
   const validate = () => {
@@ -191,27 +184,23 @@ export default function AgreementEditPage() {
     nextStep();
   };
 
-  const handleSaveDraft = async () => {
-    if (!validateDraftSave()) return;
-    setSavingDraft(true);
-    try {
-      const data = await persistDraft();
-      enqueueSnackbar(`Version V${data.versionNumber} saved as draft`, { variant: 'success' });
-    } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Failed to save draft', { variant: 'error' });
-    } finally {
-      setSavingDraft(false);
-    }
-  };
-
   const handleSubmitForApproval = async () => {
     if (!validateAgreementForSubmit(state, enqueueSnackbar)) return;
+    setSubmitModalOpen(true);
+  };
+
+  const handleSubmitConfirm = async () => {
+    if (!revisionComments.trim()) return;
+    setSubmitModalOpen(false);
     setSubmitting(true);
     try {
       const data = await persistDraft();
       const targetId = data.id ?? draftAgreementId;
-      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(targetId));
+      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(targetId), {
+        comments: revisionComments.trim(),
+      });
       enqueueSnackbar(`Version V${data.versionNumber} submitted for approval`, { variant: 'success' });
+      setRevisionComments('');
       reset();
       navigate(`/agreements/groups/${data.agreementGroupId}`);
     } catch (err) {
@@ -280,7 +269,7 @@ export default function AgreementEditPage() {
           {state.agreementName || sourceAgreement.agreementName || sourceAgreement.agreementNumber}
         </Typography>
         <Typography sx={{ mt: 0.5, fontSize: '0.9rem', color: '#64748B' }}>
-          {sourceAgreement.agreementNumber} · {versionLabel} — save as draft anytime or submit when ready
+          {sourceAgreement.agreementNumber} · {versionLabel} — submit when ready for approval
         </Typography>
       </Paper>
 
@@ -289,14 +278,57 @@ export default function AgreementEditPage() {
         onNext={handleNext}
         onBack={prevStep}
         onCancel={() => navigate(`/agreements/groups/${sourceAgreement.agreementGroupId}`)}
-        onSaveDraft={handleSaveDraft}
         onSubmitForApproval={handleSubmitForApproval}
         isLastStep={state.step === 2}
-        isSavingDraft={savingDraft}
         isSubmitting={submitting}
       >
         {STEP_COMPONENTS[state.step]}
       </WizardLayout>
+
+      <Dialog
+        open={submitModalOpen}
+        onClose={() => {
+          setSubmitModalOpen(false);
+          setRevisionComments('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle fontWeight={700}>Submit for Approval</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2, mt: 1 }}>
+            Explain why this edit or revision is being submitted. Approvers will see your reason in the timeline.
+          </Alert>
+          <TextField
+            label="Reason for Edit / Revision *"
+            multiline
+            rows={4}
+            fullWidth
+            value={revisionComments}
+            onChange={(e) => setRevisionComments(e.target.value)}
+            placeholder="Describe what changed and why…"
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => {
+              setSubmitModalOpen(false);
+              setRevisionComments('');
+            }}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmitConfirm}
+            variant="contained"
+            sx={{ bgcolor: BRAND.red }}
+            disabled={!revisionComments.trim() || submitting}
+          >
+            {submitting ? 'Submitting…' : 'Confirm Submit'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

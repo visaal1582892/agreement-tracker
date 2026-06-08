@@ -31,6 +31,7 @@ function rowToAgreement(row) {
     ownerId: row.ownerUserId,
     ownerUserId: row.ownerUserId,
     approvalStatus: row.approvalStatus,
+    computedStatus: row.computedStatus,
     id: row.latestVersionId,
     latestVersionId: row.latestVersionId,
   };
@@ -276,9 +277,9 @@ export default function AgreementsTable({
     searchIncomeTypes('');
   }, [searchVendors, searchIncomeTypes]);
 
-  const handleSubmit = useCallback(async (agreementId) => {
+  const handleSubmit = useCallback(async (agreementId, comments) => {
     try {
-      await dispatch(submitAgreementForApproval(agreementId)).unwrap();
+      await dispatch(submitAgreementForApproval({ agreementId, comments })).unwrap();
       enqueueSnackbar('Submitted for approval', { variant: 'success' });
       onRefresh?.();
     } catch (err) {
@@ -349,10 +350,15 @@ export default function AgreementsTable({
       onClose={() => setTransferRow(null)}
       agreementId={transferRow?.latestVersionId}
       agreementLabel={transferRow?.agreementNumber}
-      onSuccess={() => {
-        enqueueSnackbar('Ownership transferred', { variant: 'success' });
+      onSuccess={({ immediate } = {}) => {
+        enqueueSnackbar(
+          immediate ? 'Ownership transferred' : 'Transfer request submitted to Approver.',
+          { variant: 'success' },
+        );
         setTransferRow(null);
-        onRefresh?.();
+        if (immediate) {
+          onRefresh?.();
+        }
       }}
     />
     </>

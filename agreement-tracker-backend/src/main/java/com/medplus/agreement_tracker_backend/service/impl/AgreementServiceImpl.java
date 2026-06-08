@@ -13,9 +13,11 @@ import com.medplus.agreement_tracker_backend.dto.response.AgreementGroupResponse
 import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
 import com.medplus.agreement_tracker_backend.dto.response.BulkAgreementCreateResponse;
+import com.medplus.agreement_tracker_backend.dto.response.PendingActionRequestInfo;
 import com.medplus.agreement_tracker_backend.entity.*;
 import com.medplus.agreement_tracker_backend.enums.ApprovalAction;
 import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
+import com.medplus.agreement_tracker_backend.enums.ActionRequestStatus;
 import com.medplus.agreement_tracker_backend.enums.CommercialStructure;
 import com.medplus.agreement_tracker_backend.enums.RuleType;
 import com.medplus.agreement_tracker_backend.exception.BusinessException;
@@ -46,6 +48,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -62,6 +65,7 @@ public class AgreementServiceImpl implements AgreementService {
     private final AgreementComputedProductRepository computedProductRepository;
     private final AgreementApprovalRepository approvalRepository;
     private final AgreementAuditRepository auditRepository;
+    private final AgreementActionRequestRepository actionRequestRepository;
     private final UserRepository userRepository;
     private final CompanyMasterRepository companyRepository;
     private final IncomeTypeRepository incomeTypeRepository;
@@ -329,10 +333,21 @@ public class AgreementServiceImpl implements AgreementService {
                 .stream()
                 .collect(Collectors.toMap(a -> a.getAgreementGroup().getId(), a -> a, (a, b) -> a));
 
+        List<Long> currentVersionIds = groupPage.getContent().stream()
+                .map(AgreementGroup::getCurrentVersionId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, Agreement> currentVersionById = currentVersionIds.isEmpty()
+                ? Map.of()
+                : agreementRepository.findByIdInWithDetails(currentVersionIds).stream()
+                        .collect(Collectors.toMap(Agreement::getId, a -> a, (a, b) -> a));
+
         Map<Long, Agreement> visibleByGroupId = groupPage.getContent().stream()
                 .collect(Collectors.toMap(
                         AgreementGroup::getId,
-                        g -> resolveVisibleLatest(g, latestByGroupId.get(g.getId()), currentUserId),
+                        g -> resolveListDisplayVersion(
+                                g, latestByGroupId.get(g.getId()), currentVersionById, currentUserId),
                         (a, b) -> a
                 ));
 
@@ -382,7 +397,7 @@ public class AgreementServiceImpl implements AgreementService {
     @Override
     @Transactional
     public AgreementResponse transferOwnership(Long agreementId, Long newOwnerUserId,
-                                               Long performedByUserId, boolean isAdmin) {
+                                               Long performedByUserId, boolean isAdmin, String comments) {
         Agreement agreement = agreementRepository.findById(agreementId)
                 .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
 
@@ -398,6 +413,10 @@ public class AgreementServiceImpl implements AgreementService {
             throw new BusinessException("Agreement is already owned by this user");
         }
 
+        String auditNewValue = isAdmin
+                ? buildAdminTransferAuditNote(newOwnerUserId, comments)
+                : String.valueOf(newOwnerUserId);
+
         Long groupId = agreement.getAgreementGroup().getId();
         agreementRepository.findByAgreementGroupId(groupId).stream()
                 .filter(a -> a.getOwner().getId().equals(currentOwnerId))
@@ -406,21 +425,32 @@ public class AgreementServiceImpl implements AgreementService {
                     a.setUpdatedByUserId(performedByUserId);
                     agreementRepository.save(a);
                     recordAudit(groupId, a.getId(), "OWNERSHIP_TRANSFERRED",
-                            String.valueOf(currentOwnerId), String.valueOf(newOwnerUserId), performedByUserId);
+                            String.valueOf(currentOwnerId), auditNewValue, performedByUserId);
                 });
 
         return toAgreementResponse(agreementRepository.findById(agreementId).orElseThrow());
     }
 
+    private String buildAdminTransferAuditNote(Long newOwnerUserId, String comments) {
+        StringBuilder note = new StringBuilder("Admin override | newOwner=").append(newOwnerUserId);
+        if (comments != null && !comments.isBlank()) {
+            note.append(" | reason=").append(comments.trim());
+        }
+        return note.toString();
+    }
+
     @Override
     @Transactional
-    public AgreementResponse submitForApproval(Long agreementId, Long currentUserId) {
+    public AgreementResponse submitForApproval(Long agreementId, String comments, Long currentUserId) {
         Agreement agreement = loadAndValidateOwnership(agreementId, currentUserId);
-        agreement = applySubmitForApproval(agreement, currentUserId);
+        if (agreement.getVersionNumber() > 1 && (comments == null || comments.isBlank())) {
+            throw new BusinessException("Reason for edit/revision is required when submitting a revised version");
+        }
+        agreement = applySubmitForApproval(agreement, comments, currentUserId);
         return toAgreementResponse(agreement);
     }
 
-    private Agreement applySubmitForApproval(Agreement agreement, Long userId) {
+    private Agreement applySubmitForApproval(Agreement agreement, String comments, Long userId) {
         if (agreement.getApprovalStatus() != ApprovalStatus.DRAFT) {
             throw new BusinessException("Only DRAFT agreements can be submitted for approval");
         }
@@ -431,7 +461,8 @@ public class AgreementServiceImpl implements AgreementService {
         agreement.setUpdatedByUserId(userId);
         agreement = agreementRepository.save(agreement);
 
-        recordApproval(agreement, ApprovalAction.SUBMITTED, null, before, ApprovalStatus.PENDING_APPROVAL, userId);
+        String remarks = comments != null && !comments.isBlank() ? comments.trim() : null;
+        recordApproval(agreement, ApprovalAction.SUBMITTED, remarks, before, ApprovalStatus.PENDING_APPROVAL, userId);
         recordAudit(agreement.getAgreementGroup().getId(), agreement.getId(), "SUBMITTED_FOR_APPROVAL",
                 before.name(), ApprovalStatus.PENDING_APPROVAL.name(), userId);
 
@@ -540,16 +571,74 @@ public class AgreementServiceImpl implements AgreementService {
     @Override
     @Transactional(readOnly = true)
     public List<ApprovalTimelineResponse> getApprovalTimeline(Long agreementId) {
-        return approvalRepository.findByAgreementIdOrderByCreatedAtAsc(agreementId)
+        List<ApprovalTimelineResponse> approvalEntries = approvalRepository
+                .findByAgreementIdOrderByCreatedAtAsc(agreementId)
                 .stream()
                 .map(a -> new ApprovalTimelineResponse(
-                        a.getId(), a.getAction(), a.getRemarks(),
+                        a.getId(), a.getAction(), null, a.getRemarks(),
                         a.getApprovalStatusBefore(), a.getApprovalStatusAfter(),
-                        a.getCreatedByUserId(),
-                        null,
-                        a.getCreatedAt()
-                ))
+                        a.getCreatedByUserId(), resolveUserName(a.getCreatedByUserId()),
+                        a.getCreatedAt()))
                 .toList();
+
+        List<ApprovalTimelineResponse> operationalEntries = actionRequestRepository
+                .findByAgreement_IdOrderByCreatedAtAsc(agreementId)
+                .stream()
+                .flatMap(r -> mapActionRequestToTimeline(r).stream())
+                .toList();
+
+        List<ApprovalTimelineResponse> combined = new ArrayList<>(approvalEntries.size() + operationalEntries.size());
+        combined.addAll(approvalEntries);
+        combined.addAll(operationalEntries);
+        combined.sort((a, b) -> a.timestamp().compareTo(b.timestamp()));
+        return combined;
+    }
+
+    private List<ApprovalTimelineResponse> mapActionRequestToTimeline(AgreementActionRequest request) {
+        List<ApprovalTimelineResponse> entries = new ArrayList<>(2);
+        String actionPrefix = request.getActionType().name();
+        entries.add(new ApprovalTimelineResponse(
+                request.getId() * 10,
+                null,
+                actionPrefix + "_REQUESTED",
+                request.getReasonComments(),
+                null,
+                null,
+                request.getRequestedBy().getId(),
+                request.getRequestedBy().getFullName(),
+                request.getCreatedAt()));
+
+        if (request.getResolvedAt() != null) {
+            String eventSuffix = request.getStatus() == ActionRequestStatus.APPROVED ? "APPROVED" : "REJECTED";
+            String remarks = request.getStatus() == ActionRequestStatus.REJECTED
+                    && request.getApproverComments() != null
+                    ? request.getApproverComments()
+                    : request.getReasonComments();
+            Long actorId = request.getResolvedBy() != null
+                    ? request.getResolvedBy().getId()
+                    : null;
+            String actorName = request.getResolvedBy() != null
+                    ? request.getResolvedBy().getFullName()
+                    : null;
+            entries.add(new ApprovalTimelineResponse(
+                    request.getId() * 10 + 1,
+                    null,
+                    actionPrefix + "_" + eventSuffix,
+                    remarks,
+                    null,
+                    null,
+                    actorId,
+                    actorName,
+                    request.getResolvedAt()));
+        }
+        return entries;
+    }
+
+    private String resolveUserName(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        return userRepository.findById(userId).map(User::getFullName).orElse(null);
     }
 
     @Override
@@ -577,7 +666,9 @@ public class AgreementServiceImpl implements AgreementService {
             a.setUpdatedByUserId(performedByUserId);
             agreementRepository.save(a);
             recordAudit(a.getAgreementGroup().getId(), a.getId(), "OWNERSHIP_TRANSFERRED",
-                    String.valueOf(fromUserId), String.valueOf(toUserId), performedByUserId);
+                    String.valueOf(fromUserId),
+                    buildAdminTransferAuditNote(toUserId, "Bulk admin reassignment"),
+                    performedByUserId);
         }
     }
 
@@ -606,6 +697,18 @@ public class AgreementServiceImpl implements AgreementService {
                 && group.getCurrentVersionId() == null) {
             throw new ResourceNotFoundException("AgreementGroup", group.getId());
         }
+    }
+
+    private Agreement resolveListDisplayVersion(AgreementGroup group, Agreement latest,
+                                                Map<Long, Agreement> currentVersionById,
+                                                Long currentUserId) {
+        if (group.getCurrentVersionId() != null) {
+            Agreement current = currentVersionById.get(group.getCurrentVersionId());
+            if (current != null) {
+                return current;
+            }
+        }
+        return resolveVisibleLatest(group, latest, currentUserId);
     }
 
     private Agreement resolveVisibleLatest(AgreementGroup group, Agreement latest, Long currentUserId) {
@@ -980,9 +1083,26 @@ public class AgreementServiceImpl implements AgreementService {
                 divisionRules,
                 productRules,
                 products,
+                resolvePendingActionRequest(a),
                 a.getCreatedAt(),
                 a.getUpdatedAt()
         );
+    }
+
+    private PendingActionRequestInfo resolvePendingActionRequest(Agreement a) {
+        return actionRequestRepository
+                .findFirstByAgreement_AgreementGroup_IdAndStatus(
+                        a.getAgreementGroup().getId(), ActionRequestStatus.PENDING)
+                .map(r -> new PendingActionRequestInfo(
+                        r.getId(),
+                        r.getActionType(),
+                        r.getReasonComments(),
+                        r.getRequestedTerminationDate(),
+                        r.getTargetUser() != null ? r.getTargetUser().getId() : null,
+                        r.getTargetUser() != null ? r.getTargetUser().getFullName() : null,
+                        r.getRequestedBy().getFullName(),
+                        r.getCreatedAt()))
+                .orElse(null);
     }
 
     /**
