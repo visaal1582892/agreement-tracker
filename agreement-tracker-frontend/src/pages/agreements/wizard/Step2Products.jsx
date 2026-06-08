@@ -25,6 +25,12 @@ const listSx = {
   maxHeight: 320,
 };
 
+const EMPTY_RULES = { manufacturers: [], divisionRules: [], productRules: [] };
+
+function vendorKey(vendorIds = []) {
+  return [...vendorIds].sort((a, b) => a - b).join(',');
+}
+
 function uniqueManufacturers(products) {
   const map = new Map();
   products.forEach((p) => {
@@ -54,13 +60,28 @@ function manufacturerPool(products, selectedManufacturers) {
   return products.filter((p) => mfrIds.has(p.manufacturerId));
 }
 
-function visibleProducts(pool, selectedDivisionIds, divisionOp, applyDivisionFilter) {
-  if (!applyDivisionFilter) return pool;
-  if (!selectedDivisionIds.length) return [];
-  if (divisionOp === 'INCLUDE') {
-    return pool.filter((p) => selectedDivisionIds.includes(p.divisionId));
+/** Live intersection: vendors → optional mfr → optional divisions. */
+export function computeVisibleProducts(
+  vendorProducts,
+  selectedManufacturers,
+  selectedDivisionIds,
+  divisionOp,
+) {
+  if (!vendorProducts.length) return [];
+
+  const hasMfr = selectedManufacturers.length > 0;
+  let pool = vendorProducts;
+
+  if (hasMfr) {
+    pool = manufacturerPool(vendorProducts, selectedManufacturers);
+    if (!selectedDivisionIds.length) return [];
+    if (divisionOp === 'INCLUDE') {
+      return pool.filter((p) => selectedDivisionIds.includes(p.divisionId));
+    }
+    return pool.filter((p) => !selectedDivisionIds.includes(p.divisionId));
   }
-  return pool.filter((p) => !selectedDivisionIds.includes(p.divisionId));
+
+  return pool;
 }
 
 export function hasSavedProductRules(rules = {}) {
@@ -76,7 +97,7 @@ export function mapSharedRulesToLocalState(rules, vendorProducts, manufacturerOp
   const seedMfrs = manufacturerOptions.filter((m) =>
     (rules.manufacturers || []).includes(m.id),
   );
-  const pool = seedMfrs.length
+  const mfrPool = seedMfrs.length
     ? manufacturerPool(vendorProducts, seedMfrs)
     : vendorProducts;
 
@@ -93,7 +114,7 @@ export function mapSharedRulesToLocalState(rules, vendorProducts, manufacturerOp
   if (rules.divisionRules?.length) {
     next.divisionOp = rules.divisionRules[0].ruleType || 'INCLUDE';
     next.selectedDivisionIds = rules.divisionRules.map((r) => r.id);
-    next.prevAvailableDivisionIds = divisionsFromPool(pool).map((d) => d.id);
+    next.prevAvailableDivisionIds = divisionsFromPool(mfrPool).map((d) => d.id);
   }
 
   if (rules.productRules?.length) {
@@ -106,7 +127,6 @@ export function mapSharedRulesToLocalState(rules, vendorProducts, manufacturerOp
 }
 
 export default function Step2Products({ state, updateProductRules }) {
-  const sharedRules = state.productRules || { manufacturers: [], divisionRules: [], productRules: [] };
   const [vendorProducts, setVendorProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState(null);
@@ -115,11 +135,13 @@ export default function Step2Products({ state, updateProductRules }) {
   const [checkedProductIds, setCheckedProductIds] = useState([]);
   const [divisionOp, setDivisionOp] = useState('INCLUDE');
   const [productOp, setProductOp] = useState('INCLUDE');
-  const [rehydratedFromSaved, setRehydratedFromSaved] = useState(false);
 
   const hasInitialized = useRef(false);
   const emitReadyRef = useRef(false);
-  const rehydratedFromSavedRef = useRef(false);
+  const skipDivisionAutoSelectRef = useRef(false);
+  const skipProductAutoSelectRef = useRef(false);
+  const pendingVendorReselectRef = useRef(false);
+  const prevVendorKeyRef = useRef(null);
   const prevAvailableDivisionIdsRef = useRef([]);
   const prevVisibleProductIdsRef = useRef([]);
 
@@ -129,22 +151,35 @@ export default function Step2Products({ state, updateProductRules }) {
     setCheckedProductIds([]);
     setDivisionOp('INCLUDE');
     setProductOp('INCLUDE');
-    setRehydratedFromSaved(false);
     prevAvailableDivisionIdsRef.current = [];
     prevVisibleProductIdsRef.current = [];
     hasInitialized.current = false;
     emitReadyRef.current = false;
-    rehydratedFromSavedRef.current = false;
+    skipDivisionAutoSelectRef.current = false;
+    skipProductAutoSelectRef.current = false;
+    pendingVendorReselectRef.current = false;
   }, []);
 
   useEffect(() => {
-    if (!state.vendorIds?.length) {
+    const key = vendorKey(state.vendorIds);
+
+    if (!key) {
+      prevVendorKeyRef.current = null;
       setVendorProducts([]);
       resetLocalProductState();
+      updateProductRules(EMPTY_RULES);
       return;
     }
 
-    resetLocalProductState();
+    const vendorChanged = prevVendorKeyRef.current !== null && prevVendorKeyRef.current !== key;
+    prevVendorKeyRef.current = key;
+
+    if (vendorChanged) {
+      pendingVendorReselectRef.current = true;
+      resetLocalProductState();
+      updateProductRules(EMPTY_RULES);
+    }
+
     setLoading(true);
     setFetchError(null);
     axiosInstance
@@ -156,7 +191,7 @@ export default function Step2Products({ state, updateProductRules }) {
         setVendorProducts([]);
       })
       .finally(() => setLoading(false));
-  }, [state.vendorIds, resetLocalProductState]);
+  }, [state.vendorIds, resetLocalProductState, updateProductRules]);
 
   const manufacturerOptions = useMemo(
     () => uniqueManufacturers(vendorProducts),
@@ -164,41 +199,33 @@ export default function Step2Products({ state, updateProductRules }) {
   );
 
   const hasManufacturerFilter = selectedManufacturers.length > 0;
-  const canUseDivisionFilters = hasManufacturerFilter || rehydratedFromSaved;
-
-  const filteredByManufacturer = useMemo(
-    () => (hasManufacturerFilter
-      ? manufacturerPool(vendorProducts, selectedManufacturers)
-      : vendorProducts),
-    [vendorProducts, selectedManufacturers, hasManufacturerFilter],
-  );
 
   const availableDivisions = useMemo(() => {
-    if (!vendorProducts.length || !canUseDivisionFilters) return [];
-    return divisionsFromPool(filteredByManufacturer);
-  }, [vendorProducts.length, canUseDivisionFilters, filteredByManufacturer]);
+    if (!hasManufacturerFilter || !vendorProducts.length) return [];
+    return divisionsFromPool(manufacturerPool(vendorProducts, selectedManufacturers));
+  }, [vendorProducts, selectedManufacturers, hasManufacturerFilter]);
 
-  const applyDivisionFilter = canUseDivisionFilters && selectedDivisionIds.length > 0;
-
-  const divisionFilteredProducts = useMemo(
-    () => visibleProducts(
-      filteredByManufacturer,
+  const visibleProducts = useMemo(
+    () => computeVisibleProducts(
+      vendorProducts,
+      selectedManufacturers,
       selectedDivisionIds,
       divisionOp,
-      applyDivisionFilter,
     ),
-    [filteredByManufacturer, selectedDivisionIds, divisionOp, applyDivisionFilter],
+    [vendorProducts, selectedManufacturers, selectedDivisionIds, divisionOp],
   );
 
-  // Rehydrate local UI state from wizard/API rules once vendor catalog is loaded.
+  // Rehydrate from saved rules once vendor catalog is ready.
   useEffect(() => {
     if (!vendorProducts.length || !state.vendorIds?.length || hasInitialized.current) return;
 
     hasInitialized.current = true;
-    const rules = state.productRules || {};
+    const rules = state.productRules || EMPTY_RULES;
 
-    if (hasSavedProductRules(rules)) {
+    if (hasSavedProductRules(rules) && !pendingVendorReselectRef.current) {
       const mapped = mapSharedRulesToLocalState(rules, vendorProducts, manufacturerOptions);
+      skipDivisionAutoSelectRef.current = Boolean(rules.divisionRules?.length);
+      skipProductAutoSelectRef.current = Boolean(rules.productRules?.length);
       setSelectedManufacturers(mapped.selectedManufacturers);
       setSelectedDivisionIds(mapped.selectedDivisionIds);
       setCheckedProductIds(mapped.checkedProductIds);
@@ -206,67 +233,77 @@ export default function Step2Products({ state, updateProductRules }) {
       setProductOp(mapped.productOp);
       prevAvailableDivisionIdsRef.current = mapped.prevAvailableDivisionIds;
       prevVisibleProductIdsRef.current = mapped.prevVisibleProductIds;
-      rehydratedFromSavedRef.current = true;
-      setRehydratedFromSaved(true);
+    } else {
+      const allVendorProductIds = vendorProducts.map((p) => p.id);
+      setCheckedProductIds(allVendorProductIds);
+      prevVisibleProductIdsRef.current = allVendorProductIds;
+      pendingVendorReselectRef.current = false;
     }
 
     emitReadyRef.current = true;
   }, [vendorProducts, state.vendorIds, state.productRules, manufacturerOptions]);
 
-  // Create flow only: auto-select all divisions when manufacturers first narrow the pool.
+  // When vendor catalog expands, auto-select new divisions + products for active manufacturers.
   useEffect(() => {
-    if (!hasInitialized.current || rehydratedFromSavedRef.current || !hasManufacturerFilter) {
-      if (!hasManufacturerFilter && !rehydratedFromSavedRef.current) {
-        setSelectedDivisionIds([]);
-        prevAvailableDivisionIdsRef.current = [];
-      }
+    if (!hasInitialized.current || skipDivisionAutoSelectRef.current || !hasManufacturerFilter) {
       return;
     }
 
     const availableIds = availableDivisions.map((d) => d.id);
-    const previouslyAvailable = prevAvailableDivisionIdsRef.current;
-    const newlyAdded = availableIds.filter((id) => !previouslyAvailable.includes(id));
+    const prevAvailable = prevAvailableDivisionIdsRef.current;
+    const catalogExpanded = availableIds.some((id) => !prevAvailable.includes(id));
+
+    if (!catalogExpanded || !availableIds.length) return;
+
+    setSelectedDivisionIds(availableIds);
     prevAvailableDivisionIdsRef.current = availableIds;
 
-    setSelectedDivisionIds((prev) => {
-      const pruned = prev.filter((id) => availableIds.includes(id));
-      if (previouslyAvailable.length === 0) return availableIds;
-      if (newlyAdded.length === 0) return pruned;
-      return [...new Set([...pruned, ...newlyAdded])];
-    });
-  }, [availableDivisions, hasManufacturerFilter]);
+    const allProductIds = computeVisibleProducts(
+      vendorProducts,
+      selectedManufacturers,
+      availableIds,
+      divisionOp,
+    ).map((p) => p.id);
+    setCheckedProductIds(allProductIds);
+    prevVisibleProductIdsRef.current = allProductIds;
+  }, [availableDivisions, hasManufacturerFilter, vendorProducts, selectedManufacturers, divisionOp]);
 
-  // Create flow only: auto-select visible products after division filter settles.
+  // Auto-select / prune products to match live visible intersection.
   useEffect(() => {
-    if (!hasInitialized.current || rehydratedFromSavedRef.current) return;
+    if (!hasInitialized.current) return;
 
-    const visibleIds = divisionFilteredProducts.map((p) => p.id);
+    if (skipProductAutoSelectRef.current) {
+      const visibleIds = visibleProducts.map((p) => p.id);
+      setCheckedProductIds((prev) => prev.filter((id) => visibleIds.includes(id)));
+      prevVisibleProductIdsRef.current = visibleIds;
+      skipProductAutoSelectRef.current = false;
+      return;
+    }
+
+    const visibleIds = visibleProducts.map((p) => p.id);
     if (!visibleIds.length) {
       setCheckedProductIds([]);
       prevVisibleProductIdsRef.current = [];
       return;
     }
 
-    const previouslyVisible = prevVisibleProductIdsRef.current;
-    const newlyAdded = visibleIds.filter((id) => !previouslyVisible.includes(id));
+    setCheckedProductIds(visibleIds);
     prevVisibleProductIdsRef.current = visibleIds;
+  }, [visibleProducts]);
 
-    setCheckedProductIds((prev) => {
-      const pruned = prev.filter((id) => visibleIds.includes(id));
-      if (previouslyVisible.length === 0) return visibleIds;
-      if (newlyAdded.length === 0) return pruned;
-      return [...new Set([...pruned, ...newlyAdded])];
-    });
-  }, [divisionFilteredProducts]);
-
-  // Sync local selections back to wizard — only after init/rehydration completes.
+  // Sync selections to wizard payload — prune orphans on every emit.
   useEffect(() => {
     if (!emitReadyRef.current) return;
 
+    const visibleIdSet = new Set(visibleProducts.map((p) => p.id));
+    const prunedProductIds = checkedProductIds.filter((id) => visibleIdSet.has(id));
+    const availableDivisionIdSet = new Set(availableDivisions.map((d) => d.id));
+    const prunedDivisionIds = selectedDivisionIds.filter((id) => availableDivisionIdSet.has(id));
+
     updateProductRules({
       manufacturers: selectedManufacturers.map((m) => m.id),
-      divisionRules: selectedDivisionIds.map((id) => ({ id, ruleType: divisionOp })),
-      productRules: checkedProductIds.map((id) => ({ id, ruleType: productOp })),
+      divisionRules: prunedDivisionIds.map((id) => ({ id, ruleType: divisionOp })),
+      productRules: prunedProductIds.map((id) => ({ id, ruleType: productOp })),
     });
   }, [
     selectedManufacturers,
@@ -274,12 +311,38 @@ export default function Step2Products({ state, updateProductRules }) {
     divisionOp,
     checkedProductIds,
     productOp,
+    visibleProducts,
+    availableDivisions,
     updateProductRules,
   ]);
 
   const handleManufacturersChange = useCallback((selected) => {
-    setSelectedManufacturers(Array.isArray(selected) ? selected : []);
-  }, []);
+    const next = Array.isArray(selected) ? selected : [];
+    setSelectedManufacturers(next);
+
+    if (!next.length) {
+      const allVendorProductIds = vendorProducts.map((p) => p.id);
+      setSelectedDivisionIds([]);
+      setCheckedProductIds(allVendorProductIds);
+      prevAvailableDivisionIdsRef.current = [];
+      prevVisibleProductIdsRef.current = allVendorProductIds;
+      return;
+    }
+
+    const mfrPool = manufacturerPool(vendorProducts, next);
+    const allDivisionIds = divisionsFromPool(mfrPool).map((d) => d.id);
+    const allProductIds = computeVisibleProducts(
+      vendorProducts,
+      next,
+      allDivisionIds,
+      divisionOp,
+    ).map((p) => p.id);
+
+    setSelectedDivisionIds(allDivisionIds);
+    setCheckedProductIds(allProductIds);
+    prevAvailableDivisionIdsRef.current = allDivisionIds;
+    prevVisibleProductIdsRef.current = allProductIds;
+  }, [vendorProducts, divisionOp]);
 
   const toggleDivision = (id) => {
     setSelectedDivisionIds((prev) =>
@@ -296,10 +359,10 @@ export default function Step2Products({ state, updateProductRules }) {
   const selectAllDivisions = () => setSelectedDivisionIds(availableDivisions.map((d) => d.id));
   const deselectAllDivisions = () => setSelectedDivisionIds([]);
 
-  const selectAllProducts = () => setCheckedProductIds(divisionFilteredProducts.map((p) => p.id));
+  const selectAllProducts = () => setCheckedProductIds(visibleProducts.map((p) => p.id));
   const deselectAllProducts = () => setCheckedProductIds([]);
 
-  const productsByDivision = divisionFilteredProducts.reduce((acc, p) => {
+  const productsByDivision = visibleProducts.reduce((acc, p) => {
     const key = p.divisionName || 'Other';
     if (!acc[key]) acc[key] = [];
     acc[key].push(p);
@@ -307,16 +370,16 @@ export default function Step2Products({ state, updateProductRules }) {
   }, {});
 
   const resolvedProductIds = productOp === 'INCLUDE'
-    ? checkedProductIds.filter((id) => divisionFilteredProducts.some((p) => p.id === id))
-    : divisionFilteredProducts.filter((p) => !checkedProductIds.includes(p.id)).map((p) => p.id);
+    ? checkedProductIds.filter((id) => visibleProducts.some((p) => p.id === id))
+    : visibleProducts.filter((p) => !checkedProductIds.includes(p.id)).map((p) => p.id);
 
-  const selectedProductChips = divisionFilteredProducts.filter((p) => resolvedProductIds.includes(p.id));
+  const selectedProductChips = visibleProducts.filter((p) => resolvedProductIds.includes(p.id));
 
   return (
     <Box>
       <Typography variant="h6" fontWeight={600} mb={0.5}>Applicable Products</Typography>
       <Typography variant="body2" color="text.secondary" mb={3}>
-        All vendor-mapped products load selected. Use manufacturers and divisions to narrow the list.
+        Select vendors to load products. Add manufacturers to reveal divisions and narrow the product list.
       </Typography>
 
       {!state.vendorIds?.length && (
@@ -333,7 +396,6 @@ export default function Step2Products({ state, updateProductRules }) {
       )}
 
       <Grid container spacing={2.5} sx={{ alignItems: 'stretch' }}>
-        {/* Manufacturer */}
         <Grid size={{ xs: 12, md: 4 }}>
           <Box sx={panelSx}>
             <Typography variant="subtitle2" fontWeight={700} mb={1}>Manufacturer</Typography>
@@ -351,24 +413,39 @@ export default function Step2Products({ state, updateProductRules }) {
             />
             <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
               {selectedManufacturers.length
-                ? `${selectedManufacturers.length} manufacturer(s) filtering list`
-                : `Showing all ${vendorProducts.length} vendor product(s)`}
+                ? `${selectedManufacturers.length} manufacturer(s) active`
+                : `All ${vendorProducts.length} vendor product(s) in scope`}
             </Typography>
           </Box>
         </Grid>
 
-        {/* Divisions */}
         <Grid size={{ xs: 12, md: 4 }}>
           <Box sx={panelSx}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Typography variant="subtitle2" fontWeight={700}>Divisions</Typography>
                 <Typography variant="caption" color="text.disabled">|</Typography>
-                <Button size="small" variant="text" sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }} onClick={selectAllDivisions} disabled={!canUseDivisionFilters || !availableDivisions.length}>Select All</Button>
+                <Button
+                  size="small"
+                  variant="text"
+                  sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }}
+                  onClick={selectAllDivisions}
+                  disabled={!hasManufacturerFilter || !availableDivisions.length}
+                >
+                  Select All
+                </Button>
                 <Typography variant="caption" color="text.disabled">|</Typography>
-                <Button size="small" variant="text" sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }} onClick={deselectAllDivisions} disabled={!canUseDivisionFilters || !availableDivisions.length}>Clear All</Button>
+                <Button
+                  size="small"
+                  variant="text"
+                  sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }}
+                  onClick={deselectAllDivisions}
+                  disabled={!hasManufacturerFilter || !availableDivisions.length}
+                >
+                  Clear All
+                </Button>
               </Box>
-              <FormControl size="small" sx={{ minWidth: 120 }} disabled={!canUseDivisionFilters}>
+              <FormControl size="small" sx={{ minWidth: 120 }} disabled={!hasManufacturerFilter}>
                 <Select value={divisionOp} onChange={(e) => setDivisionOp(e.target.value)}>
                   <MenuItem value="INCLUDE">Include Only</MenuItem>
                   <MenuItem value="EXCLUDE">Exclude</MenuItem>
@@ -376,7 +453,7 @@ export default function Step2Products({ state, updateProductRules }) {
               </FormControl>
             </Box>
             <Box sx={listSx}>
-              {!canUseDivisionFilters ? (
+              {!hasManufacturerFilter ? (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
                   Select manufacturer(s) to view divisions
                 </Typography>
@@ -405,16 +482,31 @@ export default function Step2Products({ state, updateProductRules }) {
           </Box>
         </Grid>
 
-        {/* Products */}
         <Grid size={{ xs: 12, md: 4 }}>
           <Box sx={panelSx}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Typography variant="subtitle2" fontWeight={700}>Products</Typography>
                 <Typography variant="caption" color="text.disabled">|</Typography>
-                <Button size="small" variant="text" sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }} onClick={selectAllProducts} disabled={!divisionFilteredProducts.length}>Select All</Button>
+                <Button
+                  size="small"
+                  variant="text"
+                  sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }}
+                  onClick={selectAllProducts}
+                  disabled={!visibleProducts.length}
+                >
+                  Select All
+                </Button>
                 <Typography variant="caption" color="text.disabled">|</Typography>
-                <Button size="small" variant="text" sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }} onClick={deselectAllProducts} disabled={!divisionFilteredProducts.length}>Clear All</Button>
+                <Button
+                  size="small"
+                  variant="text"
+                  sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }}
+                  onClick={deselectAllProducts}
+                  disabled={!visibleProducts.length}
+                >
+                  Clear All
+                </Button>
               </Box>
               <FormControl size="small" sx={{ minWidth: 120 }}>
                 <Select value={productOp} onChange={(e) => setProductOp(e.target.value)}>
@@ -424,12 +516,12 @@ export default function Step2Products({ state, updateProductRules }) {
               </FormControl>
             </Box>
             <Box sx={listSx}>
-              {divisionFilteredProducts.length === 0 ? (
+              {visibleProducts.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
                   {!vendorProducts.length
                     ? 'No vendor products loaded'
-                    : canUseDivisionFilters && !selectedDivisionIds.length
-                      ? 'Select at least one division'
+                    : hasManufacturerFilter && !selectedDivisionIds.length
+                      ? 'Select manufacturer(s) — divisions will auto-select'
                       : 'No products match current filters'}
                 </Typography>
               ) : (
