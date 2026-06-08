@@ -7,6 +7,7 @@ import {
 import { Search } from '@mui/icons-material';
 import { BRAND } from '../../config/theme';
 import SearchableSelect from '../forms/SearchableSelect';
+import TruncatedText from './TruncatedText';
 
 /**
  * Reusable DataTable with:
@@ -28,8 +29,116 @@ import SearchableSelect from '../forms/SearchableSelect';
  *     getOptionLabel?: (option) => string,
  *     filterKey?: string,       // override filter key (default = field)
  *     render?: (value, row) => ReactNode,
+ *     truncate?: boolean,        // default true — single line + ellipsis + tooltip
+ *     getTooltip?: (value, row) => string,
+ *     stickyRight?: boolean,     // pin column on right during horizontal scroll
  *   }
+ *
+ * horizontalScroll — table grows to fit content; container scrolls left/right
  */
+
+function buildStickyRightOffsets(columns) {
+  const offsets = {};
+  let right = 0;
+  for (let i = columns.length - 1; i >= 0; i -= 1) {
+    const col = columns[i];
+    if (!col.stickyRight) continue;
+    offsets[col.field] = right;
+    right += stickyColumnWidth(col);
+  }
+  return offsets;
+}
+
+function stickyColumnWidth(col) {
+  return col.width ?? col.minWidth ?? 0;
+}
+
+/** Opaque hover — theme row hover uses alpha() which bleeds scroll content through sticky cells */
+const STICKY_BODY_BG = '#ffffff';
+const STICKY_BODY_HOVER_BG = '#fff8f8';
+const STICKY_FILTER_BG = '#ffffff';
+
+function stickyCellSx(col, stickyOffsets, { isHeader = false, isFilter = false, stickyHeader = false } = {}) {
+  const right = stickyOffsets[col.field];
+  if (right == null) return {};
+
+  const isLeftEdge = right > 0;
+  let zIndex = 10;
+  if (isFilter) zIndex = 11;
+  if (isHeader) zIndex = stickyHeader ? 13 : 12;
+
+  const bg = isHeader ? BRAND.bgGray : (isFilter ? STICKY_FILTER_BG : STICKY_BODY_BG);
+
+  return {
+    position: 'sticky',
+    right,
+    zIndex,
+    bgcolor: bg,
+    backgroundImage: 'none',
+    ...(isLeftEdge ? { borderLeft: `1px solid ${BRAND.borderLight}` } : {}),
+    ...(!isHeader && !isFilter ? {
+      '.MuiTableRow-hover:hover &': {
+        bgcolor: STICKY_BODY_HOVER_BG,
+        backgroundImage: 'none',
+      },
+    } : {}),
+  };
+}
+
+function renderCellContent(col, row, horizontalScroll) {
+  const value = row[col.field];
+
+  if (col.render) {
+    return col.render(value, row);
+  }
+
+  if (col.truncate === false || horizontalScroll) {
+    return value ?? '—';
+  }
+
+  const display = value ?? '—';
+  const tooltip = col.getTooltip?.(value, row) ?? (display != null ? String(display) : '');
+
+  return (
+    <TruncatedText title={tooltip}>
+      {display}
+    </TruncatedText>
+  );
+}
+
+const columnSizeSx = (col, horizontalScroll) => {
+  if (col.stickyRight) {
+    const w = stickyColumnWidth(col);
+    return {
+      whiteSpace: 'nowrap',
+      width: w,
+      minWidth: w,
+      maxWidth: w,
+      boxSizing: 'border-box',
+    };
+  }
+
+  if (horizontalScroll) {
+    const min = col.minWidth ?? col.width;
+    return {
+      whiteSpace: 'nowrap',
+      ...(min != null ? { minWidth: min } : {}),
+    };
+  }
+
+  return {
+    ...(col.width != null ? { width: col.width, maxWidth: col.width } : {}),
+    ...(col.minWidth != null ? { minWidth: col.minWidth } : {}),
+  };
+};
+
+const cellSx = (col, horizontalScroll, stickyOffsets, stickyHeader) => ({
+  py: 1.2,
+  ...columnSizeSx(col, horizontalScroll),
+  ...(!horizontalScroll ? { overflow: 'hidden' } : {}),
+  ...stickyCellSx(col, stickyOffsets, { stickyHeader }),
+});
+
 export default function DataTable({
   columns,
   rows,
@@ -50,8 +159,10 @@ export default function DataTable({
   rowsPerPageOptions = [10, 20, 50],
   emptyMessage = 'No records found',
   stickyHeader = true,
+  horizontalScroll = false,
 }) {
   const hasFilters = columns.some((c) => c.filterType);
+  const stickyOffsets = buildStickyRightOffsets(columns);
 
   const resolveSearchableValue = (col, key) => {
     const raw = filters[key];
@@ -86,17 +197,45 @@ export default function DataTable({
       <TableContainer
         component={Paper}
         elevation={0}
-        sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'auto' }}
+        sx={{
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'divider',
+          overflowX: 'auto',
+          overflowY: 'auto',
+        }}
       >
-        <Table size="small" stickyHeader={stickyHeader}>
+        <Table
+          size="small"
+          stickyHeader={stickyHeader}
+          sx={
+            horizontalScroll
+              ? { tableLayout: 'auto', width: 'max-content', minWidth: '100%' }
+              : { tableLayout: 'fixed', width: '100%' }
+          }
+        >
+          <colgroup>
+            {columns.map((col) => (
+              <col
+                key={col.field}
+                style={col.stickyRight ? { width: stickyColumnWidth(col) } : undefined}
+              />
+            ))}
+          </colgroup>
           <TableHead>
             {/* ── Column Headers ── */}
             <TableRow>
               {columns.map((col) => (
                 <TableCell
                   key={col.field}
-                  width={col.width}
-                  sx={{ fontWeight: 600, whiteSpace: 'nowrap', bgcolor: BRAND.bgGray }}
+                  width={col.stickyRight ? stickyColumnWidth(col) : (horizontalScroll ? undefined : col.width)}
+                  sx={{
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    bgcolor: BRAND.bgGray,
+                    ...columnSizeSx(col, horizontalScroll),
+                    ...stickyCellSx(col, stickyOffsets, { isHeader: true, stickyHeader }),
+                  }}
                 >
                   {col.sortable !== false && onSort ? (
                     <TableSortLabel
@@ -121,7 +260,14 @@ export default function DataTable({
                   return (
                     <TableCell
                       key={col.field}
-                      sx={{ py: 0.5, px: 1, bgcolor: '#fff', borderBottom: `1px solid ${BRAND.borderLight}` }}
+                      sx={{
+                        py: 0.5,
+                        px: 1,
+                        bgcolor: '#fff',
+                        borderBottom: `1px solid ${BRAND.borderLight}`,
+                        ...columnSizeSx(col, horizontalScroll),
+                        ...stickyCellSx(col, stickyOffsets, { isFilter: true, stickyHeader }),
+                      }}
                     >
                       {col.filterType === 'text' && (
                         <TextField
@@ -199,8 +345,8 @@ export default function DataTable({
                   sx={{ cursor: onRowClick ? 'pointer' : 'default' }}
                 >
                   {columns.map((col) => (
-                    <TableCell key={col.field} sx={{ py: 1.2 }}>
-                      {col.render ? col.render(row[col.field], row) : row[col.field]}
+                    <TableCell key={col.field} sx={cellSx(col, horizontalScroll, stickyOffsets, stickyHeader)}>
+                      {renderCellContent(col, row, horizontalScroll)}
                     </TableCell>
                   ))}
                 </TableRow>

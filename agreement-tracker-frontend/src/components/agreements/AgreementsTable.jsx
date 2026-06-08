@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Box, Chip, IconButton, Menu, MenuItem } from '@mui/material';
+import { Box, Chip, IconButton, Menu, MenuItem, Tooltip } from '@mui/material';
 import { MoreVert } from '@mui/icons-material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
@@ -25,6 +25,9 @@ const STATUS_FILTER_OPTIONS = [
 
 const formatDate = (d) =>
   d ? new Date(d).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '—';
+
+const formatUpdatedAt = (d) =>
+  d ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(d)) : '—';
 
 function rowToAgreement(row) {
   return {
@@ -128,6 +131,7 @@ const buildColumns = ({ vendorOptions, incomeTypeOptions, onVendorSearch, onInco
   {
     field: 'agreementNumber',
     header: 'Agreement No.',
+    minWidth: 140,
     sortable: true,
     filterType: 'text',
     filterKey: 'agreementNumber',
@@ -135,6 +139,7 @@ const buildColumns = ({ vendorOptions, incomeTypeOptions, onVendorSearch, onInco
   {
     field: 'agreementName',
     header: 'Agreement Name',
+    minWidth: 160,
     sortable: false,
     filterType: 'text',
     filterKey: 'agreementName',
@@ -143,6 +148,7 @@ const buildColumns = ({ vendorOptions, incomeTypeOptions, onVendorSearch, onInco
   {
     field: 'companyName',
     header: 'Company',
+    minWidth: 160,
     sortable: true,
     filterType: 'text',
     filterKey: 'companyName',
@@ -150,6 +156,7 @@ const buildColumns = ({ vendorOptions, incomeTypeOptions, onVendorSearch, onInco
   {
     field: 'vendors',
     header: 'Vendors',
+    minWidth: 220,
     sortable: false,
     filterType: 'searchable-select',
     filterKey: 'vendorId',
@@ -160,19 +167,36 @@ const buildColumns = ({ vendorOptions, incomeTypeOptions, onVendorSearch, onInco
     render: (vendors) => {
       if (!vendors?.length) return '—';
       const [first, ...rest] = vendors;
-      return (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'nowrap' }}>
+      const allNames = vendors.map((v) => v.vendorName).join(', ');
+
+      const content = (
+        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }}>
           <span>{first.vendorName}</span>
           {rest.length > 0 && (
-            <Chip label={`+${rest.length} more`} size="small" sx={{ fontSize: '0.7rem', height: 18 }} />
+            <Chip
+              label={`+${rest.length}`}
+              size="small"
+              sx={{ fontSize: '0.7rem', height: 18, flexShrink: 0 }}
+            />
           )}
         </Box>
+      );
+
+      if (rest.length === 0) return content;
+
+      return (
+        <Tooltip title={allNames} arrow placement="top">
+          <Box component="span" sx={{ display: 'inline-flex' }}>
+            {content}
+          </Box>
+        </Tooltip>
       );
     },
   },
   {
     field: 'incomeTypeName',
     header: 'Income Type',
+    minWidth: 120,
     sortable: false,
     filterType: 'searchable-select',
     filterKey: 'incomeTypeId',
@@ -185,6 +209,7 @@ const buildColumns = ({ vendorOptions, incomeTypeOptions, onVendorSearch, onInco
   {
     field: 'startDate',
     header: 'Validity',
+    minWidth: 200,
     sortable: false,
     render: (_, row) => {
       if (!row.startDate && !row.expiryDate) return '—';
@@ -194,25 +219,39 @@ const buildColumns = ({ vendorOptions, incomeTypeOptions, onVendorSearch, onInco
   {
     field: 'currentVersionNumber',
     header: 'Version',
+    minWidth: 72,
     sortable: false,
+    truncate: false,
     render: (v) => `V${v || 1}`,
-  },
-  {
-    field: 'computedStatus',
-    header: 'Status',
-    sortable: false,
-    filterType: 'select',
-    filterKey: 'status',
-    filterOptions: STATUS_FILTER_OPTIONS,
-    render: (v) => <StatusBadge status={v || 'DRAFT'} />,
   },
   {
     field: 'ownerName',
     header: 'Owner',
+    minWidth: 130,
     sortable: false,
     filterType: 'text',
     filterKey: 'ownerName',
     render: (v) => v || '—',
+  },
+  {
+    field: 'updatedAt',
+    header: 'Last Updated',
+    minWidth: 120,
+    sortable: false,
+    render: (v) => formatUpdatedAt(v),
+  },
+  {
+    field: 'computedStatus',
+    header: 'Status',
+    width: 140,
+    minWidth: 140,
+    sortable: false,
+    truncate: false,
+    stickyRight: true,
+    filterType: 'select',
+    filterKey: 'status',
+    filterOptions: STATUS_FILTER_OPTIONS,
+    render: (v) => <StatusBadge status={v || 'DRAFT'} />,
   },
 ];
 
@@ -313,7 +352,11 @@ export default function AgreementsTable({
     {
       field: 'actions',
       header: '',
+      width: 48,
+      minWidth: 48,
       sortable: false,
+      truncate: false,
+      stickyRight: true,
       render: (_, row) => (
         <RowActionsMenu
           row={row}
@@ -344,6 +387,7 @@ export default function AgreementsTable({
       filters={filters}
       onFilterChange={onFilterChange}
       emptyMessage={emptyMessage}
+      horizontalScroll
     />
     <TransferOwnershipModal
       open={Boolean(transferRow)}

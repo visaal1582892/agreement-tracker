@@ -17,6 +17,7 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import LoadingOverlay from '../../components/ui/LoadingOverlay';
 import { useModal } from '../../hooks/useModal';
 import { useAgreementPermissions } from '../../hooks/useAgreementPermissions';
+import { isHistoricalAgreement, isReadOnlyAgreement } from '../../utils/authUtils';
 import { ROUTES } from '../../config/routes';
 import { fetchAgreementForClone } from '../../utils/agreementClone';
 import { approveAgreement, rejectAgreement, submitAgreementForApproval } from '../../store/slices/agreementSlice';
@@ -217,9 +218,11 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
     .reduce((max, v) => (!max || v.versionNumber > max.versionNumber ? v : max), null);
 
   const activeVersionId = group?.currentVersionId ?? latestDraftVersion?.id ?? null;
-  const isReadOnlyView = Boolean(
-    agreement && activeVersionId && selectedVersionId !== activeVersionId,
-  );
+  const isReadOnlyView = Boolean(agreement && isReadOnlyAgreement(agreement));
+  const isHistorical = Boolean(agreement && isHistoricalAgreement(agreement));
+  const isPendingRevision = agreement?.approvalStatus === 'PENDING_APPROVAL';
+  const isDraftRevision = agreement?.approvalStatus === 'DRAFT'
+    && Boolean(activeVersionId && selectedVersionId !== activeVersionId);
   const requiresSubmitRevisionReason = (agreement?.versionNumber ?? 1) > 1;
 
   const actions = agreement
@@ -321,7 +324,9 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
             <Select value={selectedVersionId || ''} onChange={(e) => setSelectedVersionId(e.target.value)}>
               {versions.map((v) => (
                 <MenuItem key={v.id} value={v.id}>
-                  V{v.versionNumber} {group?.currentVersionId === v.id ? '(Current)' : ''}
+                  V{v.versionNumber}
+                  {group?.currentVersionId === v.id ? ' (Current)' : ''}
+                  {v.approvalStatus === 'PENDING_APPROVAL' ? ' (Pending Review)' : ''}
                 </MenuItem>
               ))}
             </Select>
@@ -335,8 +340,24 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
         <Tab label="Version History" value="history" icon={<History sx={{ fontSize: 18 }} />} iconPosition="start" />
       </Tabs>
 
-      {isReadOnlyView && (
-        <Alert severity="info" sx={{ mb: 2 }}>Viewing historical version — read-only.</Alert>
+      {isHistorical && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {agreement?.computedStatus === 'REJECTED'
+            ? 'Viewing rejected version — read-only. Owner may revise and resubmit.'
+            : 'Viewing historical version — read-only.'}
+        </Alert>
+      )}
+
+      {isPendingRevision && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Pending revision — awaiting approver review.
+        </Alert>
+      )}
+
+      {isDraftRevision && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Draft revision — not yet submitted for approval.
+        </Alert>
       )}
 
       {pendingRequest && (
@@ -371,6 +392,9 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
                         <StatusBadge status={v.computedStatus} />
                         {group?.currentVersionId === v.id && (
                           <Chip label="Current" size="small" color="success" variant="outlined" />
+                        )}
+                        {v.approvalStatus === 'PENDING_APPROVAL' && (
+                          <Chip label="Pending Review" size="small" color="warning" variant="outlined" />
                         )}
                       </Box>
                     }

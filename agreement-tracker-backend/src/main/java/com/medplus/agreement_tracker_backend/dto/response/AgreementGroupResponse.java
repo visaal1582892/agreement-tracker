@@ -20,6 +20,7 @@ public record AgreementGroupResponse(
         ApprovalStatus approvalStatus,
         boolean isActive,
         LocalDateTime createdAt,
+        LocalDateTime updatedAt,
         String incomeTypeName,
         LocalDate startDate,
         LocalDate expiryDate,

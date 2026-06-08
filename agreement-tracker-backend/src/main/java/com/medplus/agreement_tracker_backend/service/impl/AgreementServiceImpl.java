@@ -1130,6 +1130,7 @@ public class AgreementServiceImpl implements AgreementService {
                 latest.getApprovalStatus(),
                 g.isActive(),
                 g.getCreatedAt(),
+                latest.getUpdatedAt(),
                 latest.getIncomeType() != null ? latest.getIncomeType().getName() : null,
                 latest.getStartDate(),
                 latest.getExpiryDate(),
@@ -1151,7 +1152,7 @@ public class AgreementServiceImpl implements AgreementService {
         return new AgreementGroupResponse(
                 g.getId(), g.getAgreementNumber(), vr.agreementName(), companyIdOf(g), companyNameOf(g),
                 g.getCurrentVersionId(), displayVersion.getId(), vr.versionNumber(), vr.computedStatus(),
-                vr.approvalStatus(), g.isActive(), g.getCreatedAt(),
+                vr.approvalStatus(), g.isActive(), g.getCreatedAt(), vr.updatedAt(),
                 vr.incomeTypeName(), vr.startDate(), vr.expiryDate(), vr.ownerName(), vr.ownerId(), vr.vendors()
         );
     }
@@ -1159,7 +1160,7 @@ public class AgreementServiceImpl implements AgreementService {
     private AgreementGroupResponse toGroupResponseEmpty(AgreementGroup g) {
         return new AgreementGroupResponse(
                 g.getId(), g.getAgreementNumber(), null, companyIdOf(g), companyNameOf(g),
-                null, null, null, null, null, g.isActive(), g.getCreatedAt(),
+                null, null, null, null, null, g.isActive(), g.getCreatedAt(), null,
                 null, null, null, null, null, List.of()
         );
     }

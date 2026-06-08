@@ -11,6 +11,20 @@ export function isDraftAgreement(agreement) {
   return agreement?.approvalStatus === 'DRAFT';
 }
 
+/** Versions that are past records — show historical banner. */
+export const HISTORICAL_STATUSES = ['SUPERSEDED', 'REJECTED', 'EXPIRED'];
+
+/** Versions where edit/submit actions are blocked (excludes REJECTED — owner may revise). */
+export const READ_ONLY_STATUSES = ['SUPERSEDED', 'EXPIRED'];
+
+export function isHistoricalAgreement(agreement) {
+  return HISTORICAL_STATUSES.includes(agreement?.computedStatus);
+}
+
+export function isReadOnlyAgreement(agreement) {
+  return READ_ONLY_STATUSES.includes(agreement?.computedStatus);
+}
+
 function blockedByReadOnly(isReadOnlyView) {
   return Boolean(isReadOnlyView);
 }
@@ -55,9 +69,9 @@ export function canRevise(ctx, agreement, { isReadOnlyView = false } = {}) {
   );
 }
 
-/** AGREEMENT_APPROVE + approvalStatus === PENDING_APPROVAL + not owner. */
-export function canApprove(ctx, agreement, { isReadOnlyView = false } = {}) {
-  if (!agreement?.approvalStatus || blockedByReadOnly(isReadOnlyView)) return false;
+/** AGREEMENT_APPROVE + approvalStatus === PENDING_APPROVAL + not owner. Ignores version id vs current. */
+export function canApprove(ctx, agreement) {
+  if (!agreement?.approvalStatus) return false;
   return (
     agreement.approvalStatus === 'PENDING_APPROVAL'
     && ctx.hasRight(RIGHTS.AGREEMENT_APPROVE)
@@ -65,8 +79,8 @@ export function canApprove(ctx, agreement, { isReadOnlyView = false } = {}) {
   );
 }
 
-export function canReject(ctx, agreement, options) {
-  return canApprove(ctx, agreement, options);
+export function canReject(ctx, agreement) {
+  return canApprove(ctx, agreement);
 }
 
 /** AGREEMENT_EDIT + approvalStatus === APPROVED + not terminated + no pending action request. */
