@@ -2,34 +2,18 @@ import { useState } from 'react';
 import {
   Box, Typography, Grid, RadioGroup, FormControlLabel, Radio,
   TextField, Button, FormControl, InputLabel, Select, MenuItem,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, IconButton, Alert, Tabs, Tab,
+  Alert, Tabs, Tab,
 } from '@mui/material';
-import { Add, Delete, Download, Upload } from '@mui/icons-material';
+import { Download, Upload } from '@mui/icons-material';
 import { BRAND } from '../../../config/theme';
+import SlabTiersTable from './SlabTiersTable';
 
-const DISTRIBUTIONS = ['MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'YEARLY'];
+const VALUE_TYPES = [
+  { value: 'VALUE', label: 'Value' },
+  { value: 'PERCENTAGE', label: 'Percentage' },
+];
 
 function CommercialForm({ commercials, onUpdate }) {
-  const [slabs, setSlabs] = useState(commercials.slabs || []);
-
-  const syncSlabs = (updated) => {
-    setSlabs(updated);
-    onUpdate({ slabs: updated });
-  };
-
-  const addSlab = () => {
-    const newSlabs = [...slabs, { slabName: '', fromValue: '', toValue: '', displayOrder: slabs.length + 1 }];
-    syncSlabs(newSlabs);
-  };
-
-  const updateSlab = (idx, field, val) => {
-    syncSlabs(slabs.map((s, i) => (i === idx ? { ...s, [field]: val } : s)));
-  };
-
-  const removeSlab = (idx) => {
-    syncSlabs(slabs.filter((_, i) => i !== idx));
-  };
 
   return (
     <Box>
@@ -48,14 +32,41 @@ function CommercialForm({ commercials, onUpdate }) {
       {commercials.commercialStructure === 'FLAT' && (
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 6 }}>
-            <TextField
-              label="Commercial Value *"
-              type="number"
-              fullWidth
-              value={commercials.commercialValue}
-              onChange={(e) => onUpdate({ commercialValue: e.target.value })}
-              slotProps={{ input: { startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography> } }}
-            />
+            <FormControl fullWidth size="small">
+              <InputLabel>Value Type *</InputLabel>
+              <Select
+                value={commercials.valueType || 'VALUE'}
+                label="Value Type *"
+                onChange={(e) => onUpdate({
+                  valueType: e.target.value,
+                  commercialValue: '',
+                  commercialPercentage: '',
+                })}
+              >
+                {VALUE_TYPES.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            {(commercials.valueType || 'VALUE') === 'PERCENTAGE' ? (
+              <TextField
+                label="Commercial Percentage *"
+                type="number"
+                fullWidth
+                value={commercials.commercialPercentage || ''}
+                onChange={(e) => onUpdate({ commercialPercentage: e.target.value })}
+                slotProps={{ input: { endAdornment: <Typography sx={{ ml: 1 }}>%</Typography> } }}
+              />
+            ) : (
+              <TextField
+                label="Commercial Value *"
+                type="number"
+                fullWidth
+                value={commercials.commercialValue}
+                onChange={(e) => onUpdate({ commercialValue: e.target.value })}
+                slotProps={{ input: { startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography> } }}
+              />
+            )}
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
@@ -71,82 +82,18 @@ function CommercialForm({ commercials, onUpdate }) {
 
       {commercials.commercialStructure === 'SLAB' && (
         <Box>
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Time Distribution *</InputLabel>
-                <Select
-                  value={commercials.timeDistribution || 'MONTHLY'}
-                  label="Time Distribution *"
-                  onChange={(e) => onUpdate({ timeDistribution: e.target.value })}
-                >
-                  {DISTRIBUTIONS.map((d) => <MenuItem key={d} value={d}>{d.replace('_', '-')}</MenuItem>)}
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
+          <SlabTiersTable slabs={commercials.slabs || []} onUpdate={onUpdate} />
 
-          <Typography variant="subtitle2" gutterBottom>Slab Tiers</Typography>
-          <TableContainer component={Paper} elevation={0} sx={{ mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Slab Name</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>From Value (₹)</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>To Value (₹)</TableCell>
-                  <TableCell width={50} />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {slabs.map((slab, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell>
-                      <TextField
-                        size="small" fullWidth
-                        value={slab.slabName}
-                        onChange={(e) => updateSlab(idx, 'slabName', e.target.value)}
-                        placeholder="e.g. 0–1L"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small" type="number" fullWidth
-                        value={slab.fromValue}
-                        onChange={(e) => updateSlab(idx, 'fromValue', e.target.value)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small" type="number" fullWidth
-                        value={slab.toValue}
-                        onChange={(e) => updateSlab(idx, 'toValue', e.target.value)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <IconButton size="small" color="error" onClick={() => removeSlab(idx)}>
-                        <Delete fontSize="small" />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-
-          <Button size="small" startIcon={<Add />} onClick={addSlab} sx={{ mb: 3 }}>
-            Add Slab
-          </Button>
-
-          {slabs.length > 0 && (
+          {(commercials.slabs?.length ?? 0) > 0 && (
             <Alert severity="info" sx={{ mb: 2 }}>
               Once slabs and dates are defined, download the Excel template, fill in commercial values per period, then upload.
             </Alert>
           )}
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <Button variant="outlined" startIcon={<Download />} disabled={slabs.length === 0}>
+          <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+            <Button variant="outlined" startIcon={<Download />} disabled={!(commercials.slabs?.length)}>
               Download Excel Template
             </Button>
-            <Button variant="outlined" startIcon={<Upload />} component="label" disabled={slabs.length === 0}>
+            <Button variant="outlined" startIcon={<Upload />} component="label" disabled={!(commercials.slabs?.length)}>
               Upload Completed Matrix
               <input type="file" hidden accept=".xlsx,.xls" />
             </Button>

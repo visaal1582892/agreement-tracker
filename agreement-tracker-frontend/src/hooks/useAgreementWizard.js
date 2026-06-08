@@ -16,7 +16,9 @@ export function createBlankAgreement() {
     },
     commercials: {
       commercialStructure: 'FLAT',
+      valueType: 'VALUE',
       commercialValue: '',
+      commercialPercentage: '',
       calculationFormula: '',
       slabs: [],
       timeDistribution: 'MONTHLY',
