@@ -109,7 +109,7 @@ export default function Step3Details({ state, updateFields, documentError, onCle
             size="small"
             value={state.notes || ''}
             onChange={(e) => updateFields({ notes: e.target.value })}
-            inputProps={{ maxLength: 1000 }}
+            slotProps={{ htmlInput: { maxLength: 1000 } }}
             sx={notesFieldSx}
           />
         </Grid>

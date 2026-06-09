@@ -1,13 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Box, Typography, Grid, FormControl, InputLabel, Select, MenuItem,
-  TextField, Button, Chip, FormHelperText, IconButton, alpha, Paper,
+  TextField, Button, Chip, FormHelperText, IconButton, alpha, Paper, Alert,
+  CircularProgress,
 } from '@mui/material';
-import { UploadFile, Delete } from '@mui/icons-material';
+import { UploadFile, Delete, Edit, Lock } from '@mui/icons-material';
+import { useSnackbar } from 'notistack';
 import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
 import { BRAND } from '../../../config/theme';
 import DateRangeFields from '../../../components/forms/DateRangeFields';
+import {
+  buildContractDetailsSnapshot,
+  hasPersistedContractDetails,
+  validateContractDetailsFields,
+} from '../../../utils/agreementWizardUtils';
 import CommercialFields from './CommercialFields';
 
 const DOCUMENT_TYPES = ['AGREEMENT', 'SUPPORTING_DOC', 'EMAIL', 'OTHER'];
@@ -20,27 +27,55 @@ const notesFieldSx = {
   },
 };
 
+function formatDateLabel(value) {
+  if (!value) return '—';
+  const raw = value.split('T')[0];
+  const [year, month, day] = raw.split('-');
+  if (!year || !month || !day) return raw;
+  return `${day}/${month}/${year}`;
+}
+
 export default function AgreementDetailsCard({
   cardId,
-  index,
   agreement,
   onUpdateDetails,
   onUpdateCommercials,
-  onRemove,
-  canRemove,
   documentError,
   onClearDocumentError,
+  serverAgreementId,
+  initialContractSnapshot,
+  onSaveContractDetails,
 }) {
+  const { enqueueSnackbar } = useSnackbar();
   const [incomeTypes, setIncomeTypes] = useState([]);
   const [agreementTypes, setAgreementTypes] = useState([]);
   const [dragOver, setDragOver] = useState(false);
+  const [savingContract, setSavingContract] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState(null);
+  const [isLocked, setIsLocked] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const fileInputRef = useRef(null);
   const details = agreement.details;
+
+  const fieldsDisabled = isLocked && !isEditing;
+  const commercialsEnabled = isLocked && !isEditing && savedSnapshot;
 
   useEffect(() => {
     axiosInstance.get(ENDPOINTS.INCOME_TYPES).then(({ data }) => setIncomeTypes(data));
     axiosInstance.get(ENDPOINTS.AGREEMENT_TYPES).then(({ data }) => setAgreementTypes(data));
   }, []);
+
+  useEffect(() => {
+    if (hasPersistedContractDetails(initialContractSnapshot)) {
+      setSavedSnapshot(buildContractDetailsSnapshot(initialContractSnapshot));
+      setIsLocked(true);
+      setIsEditing(false);
+      return;
+    }
+    setSavedSnapshot(null);
+    setIsLocked(false);
+    setIsEditing(false);
+  }, [serverAgreementId, initialContractSnapshot]);
 
   const addDocument = (file) => {
     if (!file) return;
@@ -69,6 +104,50 @@ export default function AgreementDetailsCard({
     onUpdateDetails({ documents: details.documents.filter((_, i) => i !== idx) });
   };
 
+  const handleSaveContractDetails = async () => {
+    if (!validateContractDetailsFields(details, enqueueSnackbar)) return;
+    if (!serverAgreementId) {
+      enqueueSnackbar('Save the agreement draft first', { variant: 'warning' });
+      return;
+    }
+    setSavingContract(true);
+    try {
+      const saved = await onSaveContractDetails?.();
+      const snapshot = buildContractDetailsSnapshot(saved) ?? {
+        incomeTypeId: details.incomeTypeId,
+        agreementTypeId: details.agreementTypeId,
+        startDate: details.startDate,
+        expiryDate: details.expiryDate,
+        notes: details.notes ?? '',
+      };
+      setSavedSnapshot(snapshot);
+      setIsLocked(true);
+      setIsEditing(false);
+      enqueueSnackbar('Contract details saved — commercials are now available', { variant: 'success' });
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to save contract details', { variant: 'error' });
+    } finally {
+      setSavingContract(false);
+    }
+  };
+
+  const handleStartEdit = () => {
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    if (savedSnapshot) {
+      onUpdateDetails({
+        incomeTypeId: savedSnapshot.incomeTypeId,
+        agreementTypeId: savedSnapshot.agreementTypeId,
+        startDate: savedSnapshot.startDate,
+        expiryDate: savedSnapshot.expiryDate,
+        notes: savedSnapshot.notes ?? '',
+      });
+    }
+    setIsEditing(false);
+  };
+
   const documents = details.documents || [];
 
   return (
@@ -85,24 +164,39 @@ export default function AgreementDetailsCard({
       }}
     >
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="subtitle1" fontWeight={700}>
-          Agreement {index + 1} Details
-        </Typography>
-        {canRemove && (
-          <IconButton
-            size="small"
-            color="error"
-            onClick={onRemove}
-            aria-label={`Remove agreement ${index + 1}`}
-          >
-            <Delete fontSize="small" />
-          </IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="subtitle1" fontWeight={700}>
+            Contract Details
+          </Typography>
+          {isLocked && !isEditing && (
+            <Chip
+              icon={<Lock sx={{ fontSize: '14px !important' }} />}
+              label="Saved"
+              size="small"
+              color="success"
+              variant="outlined"
+            />
+          )}
+        </Box>
+        {isLocked && !isEditing && (
+          <Button size="small" startIcon={<Edit />} onClick={handleStartEdit}>
+            Edit Contract Details
+          </Button>
         )}
       </Box>
 
+      {isEditing && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Commercials are paused while you edit. Saved dates (
+          {formatDateLabel(savedSnapshot?.startDate)} – {formatDateLabel(savedSnapshot?.expiryDate)}
+          ) still drive template generation until you save contract details again.
+          Slabs and uploaded targets are not removed.
+        </Alert>
+      )}
+
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <FormControl fullWidth size="small">
+          <FormControl fullWidth size="small" disabled={fieldsDisabled}>
             <InputLabel required>Income Type</InputLabel>
             <Select
               value={details.incomeTypeId || ''}
@@ -114,7 +208,7 @@ export default function AgreementDetailsCard({
           </FormControl>
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <FormControl fullWidth size="small">
+          <FormControl fullWidth size="small" disabled={fieldsDisabled}>
             <InputLabel required>Agreement Type</InputLabel>
             <Select
               value={details.agreementTypeId || ''}
@@ -131,6 +225,7 @@ export default function AgreementDetailsCard({
             startDate={details.startDate}
             expiryDate={details.expiryDate}
             onChange={(fields) => onUpdateDetails(fields)}
+            disabled={fieldsDisabled}
           />
         </Grid>
 
@@ -143,18 +238,57 @@ export default function AgreementDetailsCard({
             size="small"
             value={details.notes || ''}
             onChange={(e) => onUpdateDetails({ notes: e.target.value })}
-            inputProps={{ maxLength: 1000 }}
+            slotProps={{ htmlInput: { maxLength: 1000 } }}
+            disabled={fieldsDisabled}
             sx={notesFieldSx}
           />
         </Grid>
 
         <Grid size={12}>
-          <CommercialFields
-            key={`commercials-${agreement.id}`}
-            commercials={agreement.commercials}
-            onUpdate={onUpdateCommercials}
-          />
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {(!isLocked || isEditing) && (
+              <>
+                <Button
+                  variant="contained"
+                  onClick={handleSaveContractDetails}
+                  disabled={savingContract || fieldsDisabled}
+                  sx={{ bgcolor: BRAND.red }}
+                >
+                  {savingContract ? <CircularProgress size={20} color="inherit" /> : 'Save Contract Details'}
+                </Button>
+                {isEditing && (
+                  <Button variant="outlined" onClick={handleCancelEdit} disabled={savingContract}>
+                    Cancel Edit
+                  </Button>
+                )}
+              </>
+            )}
+          </Box>
+          {!commercialsEnabled && !isEditing && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Save contract details before configuring commercials. Start and expiry dates must be stored on the server first.
+            </Alert>
+          )}
         </Grid>
+
+        {commercialsEnabled ? (
+          <Grid size={12}>
+            <CommercialFields
+              key={`commercials-${serverAgreementId}-${savedSnapshot.startDate}-${savedSnapshot.expiryDate}`}
+              commercials={agreement.commercials}
+              onUpdate={onUpdateCommercials}
+              serverAgreementId={serverAgreementId}
+              startDate={savedSnapshot.startDate}
+              expiryDate={savedSnapshot.expiryDate}
+            />
+          </Grid>
+        ) : isEditing ? (
+          <Grid size={12}>
+            <Alert severity="info">
+              Commercial structure and slabs unlock again after you save contract details.
+            </Alert>
+          </Grid>
+        ) : null}
 
         <Grid size={12}>
           <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>

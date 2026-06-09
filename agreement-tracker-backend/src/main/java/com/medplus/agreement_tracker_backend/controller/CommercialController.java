@@ -1,0 +1,74 @@
+package com.medplus.agreement_tracker_backend.controller;
+
+import com.medplus.agreement_tracker_backend.dto.request.CommercialTemplateRequest;
+import com.medplus.agreement_tracker_backend.dto.response.CommercialUploadResponse;
+import com.medplus.agreement_tracker_backend.dto.request.UpsertSaleTargetRequest;
+import com.medplus.agreement_tracker_backend.dto.response.TimePeriodTargetsPreviewResponse;
+import com.medplus.agreement_tracker_backend.security.UserPrincipal;
+import com.medplus.agreement_tracker_backend.service.CommercialService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+
+import static com.medplus.agreement_tracker_backend.security.RightExpressions.AGREEMENT_EDIT;
+import static com.medplus.agreement_tracker_backend.security.RightExpressions.AGREEMENT_VIEW;
+
+@RestController
+@RequestMapping("/agreements/{agreementId}/commercials")
+@RequiredArgsConstructor
+public class CommercialController {
+
+    private final CommercialService commercialService;
+
+    @PostMapping("/template")
+    @PreAuthorize(AGREEMENT_EDIT)
+    public ResponseEntity<byte[]> generateTemplate(
+            @PathVariable Long agreementId,
+            @Valid @RequestBody CommercialTemplateRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        byte[] file = commercialService.generateCommercialTemplate(agreementId, request, principal.getId());
+
+        String filename = "commercial-template-" + agreementId + ".xlsx";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(file);
+    }
+
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize(AGREEMENT_EDIT)
+    public ResponseEntity<CommercialUploadResponse> uploadTargets(
+            @PathVariable Long agreementId,
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(
+                commercialService.uploadCommercialTargets(agreementId, file, principal.getId()));
+    }
+
+    @GetMapping("/targets/preview")
+    @PreAuthorize(AGREEMENT_VIEW)
+    public ResponseEntity<List<TimePeriodTargetsPreviewResponse>> getTargetsPreview(
+            @PathVariable Long agreementId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(commercialService.getTargetsPreview(agreementId, principal.getId()));
+    }
+
+    @PutMapping("/targets")
+    @PreAuthorize(AGREEMENT_EDIT)
+    public ResponseEntity<Void> upsertSaleTarget(
+            @PathVariable Long agreementId,
+            @Valid @RequestBody UpsertSaleTargetRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        commercialService.upsertSaleTarget(agreementId, request, principal.getId());
+        return ResponseEntity.noContent().build();
+    }
+}

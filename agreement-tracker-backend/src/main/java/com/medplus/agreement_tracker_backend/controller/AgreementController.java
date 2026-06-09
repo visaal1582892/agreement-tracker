@@ -141,8 +141,19 @@ public class AgreementController {
             @PathVariable Long agreementId,
             @Validated(DraftValidation.class) @RequestBody UpdateDraftRequest request,
             @RequestParam(defaultValue = "false") boolean validateStep1,
+            @RequestParam(defaultValue = "false") boolean validateStep2,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(agreementService.updateDraft(agreementId, request, principal.getId(), validateStep1));
+        return ResponseEntity.ok(agreementService.updateDraft(
+                agreementId, request, principal.getId(), validateStep1, validateStep2));
+    }
+
+    @PostMapping("/{agreementId}/clone")
+    @PreAuthorize(AGREEMENT_CREATE)
+    public ResponseEntity<AgreementResponse> cloneAgreement(
+            @PathVariable Long agreementId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(agreementService.cloneAgreement(agreementId, principal.getId()));
     }
 
     @PutMapping("/{agreementId}/submit")

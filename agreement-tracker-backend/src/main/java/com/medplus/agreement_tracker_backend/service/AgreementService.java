@@ -21,7 +21,10 @@ public interface AgreementService {
 
     AgreementResponse createVersionedEdit(Long sourceAgreementId, EditAgreementRequest request, Long currentUserId);
 
-    AgreementResponse updateDraft(Long agreementId, UpdateDraftRequest request, Long currentUserId, boolean validateStep1);
+    AgreementResponse updateDraft(Long agreementId, UpdateDraftRequest request, Long currentUserId,
+                                  boolean validateStep1, boolean validateStep2);
+
+    AgreementResponse cloneAgreement(Long sourceAgreementId, Long currentUserId);
 
     AgreementResponse getAgreementById(Long agreementId, Long currentUserId);
 

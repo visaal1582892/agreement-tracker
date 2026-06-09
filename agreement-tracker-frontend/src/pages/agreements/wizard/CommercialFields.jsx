@@ -1,16 +1,153 @@
+import { useCallback, useEffect, useState } from 'react';
 import {
   Box, Typography, Grid, RadioGroup, FormControlLabel, Radio,
-  TextField, Button, FormControl, InputLabel, Select, MenuItem, Alert,
+  TextField, Button, FormControl, InputLabel, Select, MenuItem,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Paper, IconButton, Alert, CircularProgress,
 } from '@mui/material';
-import { Download, Upload } from '@mui/icons-material';
-import SlabTiersTable from './SlabTiersTable';
+import { Add, Delete, Edit, TableChart } from '@mui/icons-material';
+import { useSnackbar } from 'notistack';
+import { useModal } from '../../../hooks/useModal';
+import {
+  createPurchaseSlab,
+  deletePurchaseSlab,
+  fetchPurchaseSlabs,
+  formatSlabLabel,
+  toSlabPayload,
+  updatePurchaseSlab,
+} from '../../../api/commercialApi';
+import CommercialsUploadModal from './CommercialsUploadModal';
 
-const VALUE_TYPES = [
-  { value: 'VALUE', label: 'Value' },
-  { value: 'PERCENTAGE', label: 'Percentage' },
-];
+const EMPTY_DRAFT = {
+  fromValue: '',
+  toValue: '',
+  valueType: 'PERCENTAGE',
+  commercialValue: '',
+};
 
-export default function CommercialFields({ commercials, onUpdate }) {
+export default function CommercialFields({
+  commercials,
+  onUpdate,
+  serverAgreementId,
+  startDate,
+  expiryDate,
+}) {
+  const { enqueueSnackbar } = useSnackbar();
+  const uploadModal = useModal();
+  const [draftSlab, setDraftSlab] = useState(EMPTY_DRAFT);
+  const [editingSlabId, setEditingSlabId] = useState(null);
+  const [savedSlabs, setSavedSlabs] = useState([]);
+  const [loadingSlabs, setLoadingSlabs] = useState(false);
+  const [savingSlab, setSavingSlab] = useState(false);
+
+  const selectedFrequencies = commercials.selectedFrequencies || [];
+
+  const loadSlabs = useCallback(async () => {
+    if (!serverAgreementId || commercials.commercialStructure !== 'SLAB') {
+      setSavedSlabs([]);
+      return;
+    }
+    setLoadingSlabs(true);
+    try {
+      const data = await fetchPurchaseSlabs(serverAgreementId);
+      setSavedSlabs(data);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to load slabs', { variant: 'error' });
+    } finally {
+      setLoadingSlabs(false);
+    }
+  }, [serverAgreementId, commercials.commercialStructure, enqueueSnackbar]);
+
+  useEffect(() => {
+    loadSlabs();
+  }, [loadSlabs]);
+
+  const updateDraft = (field, value) => {
+    setDraftSlab((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const resetDraft = () => {
+    setDraftSlab(EMPTY_DRAFT);
+    setEditingSlabId(null);
+  };
+
+  const validateDraftSlab = () => {
+    if (draftSlab.fromValue === '' || draftSlab.toValue === '' || draftSlab.commercialValue === '') {
+      enqueueSnackbar('Complete all slab fields before saving', { variant: 'warning' });
+      return false;
+    }
+    if (Number(draftSlab.fromValue) < 0) {
+      enqueueSnackbar('From value must be greater than or equal to 0', { variant: 'warning' });
+      return false;
+    }
+    if (Number(draftSlab.toValue) <= Number(draftSlab.fromValue)) {
+      enqueueSnackbar('To value must be greater than from value', { variant: 'warning' });
+      return false;
+    }
+    return true;
+  };
+
+  const handleSaveSlab = async () => {
+    if (!serverAgreementId) {
+      enqueueSnackbar('Save the agreement draft first before adding slabs', { variant: 'warning' });
+      return;
+    }
+    if (!validateDraftSlab()) return;
+
+    setSavingSlab(true);
+    try {
+      const payload = toSlabPayload(draftSlab);
+      if (editingSlabId) {
+        await updatePurchaseSlab(serverAgreementId, editingSlabId, payload);
+        enqueueSnackbar('Slab updated', { variant: 'success' });
+      } else {
+        await createPurchaseSlab(serverAgreementId, payload);
+        enqueueSnackbar('Slab added', { variant: 'success' });
+      }
+      resetDraft();
+      await loadSlabs();
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to save slab', { variant: 'error' });
+    } finally {
+      setSavingSlab(false);
+    }
+  };
+
+  const handleEditSlab = (slab) => {
+    setEditingSlabId(slab.id);
+    setDraftSlab({
+      fromValue: String(slab.fromValue),
+      toValue: String(slab.toValue),
+      valueType: slab.valueType,
+      commercialValue: String(slab.commercialValue),
+    });
+  };
+
+  const handleDeleteSlab = async (slabId) => {
+    if (!serverAgreementId) return;
+    try {
+      await deletePurchaseSlab(serverAgreementId, slabId);
+      if (editingSlabId === slabId) {
+        resetDraft();
+      }
+      enqueueSnackbar('Slab deleted', { variant: 'success' });
+      await loadSlabs();
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to delete slab', { variant: 'error' });
+    }
+  };
+
+  const openUploadModal = () => {
+    if (!serverAgreementId) {
+      enqueueSnackbar('Save the agreement draft first', { variant: 'warning' });
+      return;
+    }
+    if (!savedSlabs.length) {
+      enqueueSnackbar('Add at least one purchase slab first', { variant: 'warning' });
+      return;
+    }
+    uploadModal.open();
+  };
 
   return (
     <Box>
@@ -32,43 +169,15 @@ export default function CommercialFields({ commercials, onUpdate }) {
       {commercials.commercialStructure === 'FLAT' && (
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 6 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Value Type *</InputLabel>
-              <Select
-                value={commercials.valueType || 'VALUE'}
-                label="Value Type *"
-                onChange={(e) => onUpdate({
-                  valueType: e.target.value,
-                  commercialValue: '',
-                  commercialPercentage: '',
-                })}
-              >
-                {VALUE_TYPES.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6 }}>
-            {(commercials.valueType || 'VALUE') === 'PERCENTAGE' ? (
-              <TextField
-                label="Commercial Percentage *"
-                type="number"
-                fullWidth
-                size="small"
-                value={commercials.commercialPercentage || ''}
-                onChange={(e) => onUpdate({ commercialPercentage: e.target.value })}
-                slotProps={{ input: { endAdornment: <Typography sx={{ ml: 1 }}>%</Typography> } }}
-              />
-            ) : (
-              <TextField
-                label="Commercial Value *"
-                type="number"
-                fullWidth
-                size="small"
-                value={commercials.commercialValue}
-                onChange={(e) => onUpdate({ commercialValue: e.target.value })}
-                slotProps={{ input: { startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography> } }}
-              />
-            )}
+            <TextField
+              label="Commercial Value *"
+              type="number"
+              fullWidth
+              size="small"
+              value={commercials.commercialValue}
+              onChange={(e) => onUpdate({ commercialValue: e.target.value })}
+              slotProps={{ input: { startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography> } }}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
@@ -85,22 +194,133 @@ export default function CommercialFields({ commercials, onUpdate }) {
 
       {commercials.commercialStructure === 'SLAB' && (
         <Box>
-          <SlabTiersTable slabs={commercials.slabs || []} onUpdate={onUpdate} />
+          <Typography variant="subtitle2" gutterBottom>Saved Slabs</Typography>
+          {loadingSlabs ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : savedSlabs.length > 0 ? (
+            <TableContainer component={Paper} elevation={0} sx={{ mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Slab Rule</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                    <TableCell width={100} />
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {savedSlabs.map((slab) => (
+                    <TableRow key={slab.id} selected={editingSlabId === slab.id}>
+                      <TableCell>{formatSlabLabel(slab)}</TableCell>
+                      <TableCell>{slab.valueType === 'PERCENTAGE' ? 'Percentage' : 'Fixed'}</TableCell>
+                      <TableCell>
+                        <IconButton size="small" onClick={() => handleEditSlab(slab)} aria-label="Edit slab">
+                          <Edit fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" color="error" onClick={() => handleDeleteSlab(slab.id)} aria-label="Delete slab">
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Alert severity="info" sx={{ mb: 2 }}>Add and save at least one slab rule.</Alert>
+          )}
 
-          {(commercials.slabs?.length ?? 0) > 0 && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Once slabs and dates are defined, download the Excel template, fill in commercial values per period, then upload.
+          <Typography variant="subtitle2" gutterBottom>
+            {editingSlabId ? 'Edit Slab' : 'Add Slab'}
+          </Typography>
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <TextField
+                label="From Value"
+                type="number"
+                fullWidth
+                size="small"
+                value={draftSlab.fromValue}
+                onChange={(e) => updateDraft('fromValue', e.target.value)}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <TextField
+                label="To Value"
+                type="number"
+                fullWidth
+                size="small"
+                value={draftSlab.toValue}
+                onChange={(e) => updateDraft('toValue', e.target.value)}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Type</InputLabel>
+                <Select
+                  value={draftSlab.valueType}
+                  label="Type"
+                  onChange={(e) => updateDraft('valueType', e.target.value)}
+                >
+                  <MenuItem value="PERCENTAGE">Percentage (%)</MenuItem>
+                  <MenuItem value="FIXED">Fixed</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 3 }}>
+              <TextField
+                label={draftSlab.valueType === 'PERCENTAGE' ? 'Value (%)' : 'Fixed Value'}
+                type="number"
+                fullWidth
+                size="small"
+                value={draftSlab.commercialValue}
+                onChange={(e) => updateDraft('commercialValue', e.target.value)}
+              />
+            </Grid>
+          </Grid>
+
+          <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
+            <Button
+              size="small"
+              startIcon={savingSlab ? <CircularProgress size={16} /> : <Add />}
+              onClick={handleSaveSlab}
+              disabled={savingSlab}
+            >
+              {editingSlabId ? 'Update Slab' : 'Add Slab'}
+            </Button>
+            {editingSlabId && (
+              <Button size="small" variant="outlined" onClick={resetDraft} disabled={savingSlab}>
+                Cancel Edit
+              </Button>
+            )}
+          </Box>
+
+          <Button
+            variant="contained"
+            startIcon={<TableChart />}
+            onClick={openUploadModal}
+            disabled={!savedSlabs.length}
+          >
+            Upload / View Commercials
+          </Button>
+
+          {!serverAgreementId && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              Save the agreement draft before adding slabs or uploading commercial targets.
             </Alert>
           )}
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 2 }}>
-            <Button variant="outlined" size="small" startIcon={<Download />} disabled={!(commercials.slabs?.length)}>
-              Download Excel Template
-            </Button>
-            <Button variant="outlined" size="small" startIcon={<Upload />} component="label" disabled={!(commercials.slabs?.length)}>
-              Upload Completed Matrix
-              <input type="file" hidden accept=".xlsx,.xls" />
-            </Button>
-          </Box>
+
+          <CommercialsUploadModal
+            open={uploadModal.isOpen}
+            onClose={uploadModal.close}
+            agreementId={serverAgreementId}
+            slabs={savedSlabs}
+            startDate={startDate}
+            expiryDate={expiryDate}
+            selectedFrequencies={selectedFrequencies}
+            onFrequenciesChange={(value) => onUpdate({ selectedFrequencies: value })}
+          />
         </Box>
       )}
     </Box>

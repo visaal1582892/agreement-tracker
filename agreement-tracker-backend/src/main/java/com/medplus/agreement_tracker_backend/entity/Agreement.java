@@ -9,6 +9,8 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "agreements", indexes = {
@@ -91,4 +93,12 @@ public class Agreement extends AuditableEntity {
 
     @Column(name = "notes", length = 1000)
     private String notes;
+
+    @OneToMany(mappedBy = "agreement", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<AgreementPurchaseSlab> purchaseSlabs = new ArrayList<>();
+
+    @OneToMany(mappedBy = "agreement", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<AgreementSaleTarget> saleTargets = new ArrayList<>();
 }

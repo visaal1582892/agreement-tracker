@@ -1,15 +1,12 @@
 package com.medplus.agreement_tracker_backend.entity;
 
 import com.medplus.agreement_tracker_backend.entity.base.AuditableEntity;
-import com.medplus.agreement_tracker_backend.enums.TimeDistribution;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDate;
-
 @Entity
-@Table(name = "agreement_time_periods", indexes = {
-        @Index(name = "idx_atp_agreement_id", columnList = "agreement_id")
+@Table(name = "agreement_time_periods", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_atp_name", columnNames = "name")
 })
 @Getter
 @Setter
@@ -22,23 +19,6 @@ public class AgreementTimePeriod extends AuditableEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "agreement_id", nullable = false)
-    private Agreement agreement;
-
-    @Column(name = "period_name", nullable = false, length = 50)
-    private String periodName;
-
-    @Column(name = "start_date", nullable = false)
-    private LocalDate startDate;
-
-    @Column(name = "end_date", nullable = false)
-    private LocalDate endDate;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "distribution_type", nullable = false, length = 20)
-    private TimeDistribution distributionType;
-
-    @Column(name = "display_order")
-    private Integer displayOrder;
+    @Column(name = "name", nullable = false, unique = true, length = 100)
+    private String name;
 }

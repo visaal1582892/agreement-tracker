@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Box, Tab, Tabs } from '@mui/material';
 import { fetchAgreementGroups } from '../../store/slices/agreementSlice';
 import { ROUTES } from '../../config/routes';
+import { navigateToAgreement } from '../../utils/agreementNavigation';
 import { BRAND } from '../../config/theme';
 import PageHeader from '../../components/ui/PageHeader';
 import AgreementsTable from '../../components/agreements/AgreementsTable';
@@ -124,7 +125,7 @@ export default function AgreementListPage() {
         rowsPerPage={rowsPerPage}
         onPageChange={handlePageChange}
         onRowsPerPageChange={handleRowsPerPageChange}
-        onRowClick={(row) => navigate(`/agreements/groups/${row.id}`)}
+        onRowClick={(row) => navigateToAgreement(row, navigate)}
         sortBy={sortBy}
         sortDir={sortDir}
         onSort={handleSort}

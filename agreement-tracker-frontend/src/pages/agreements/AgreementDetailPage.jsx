@@ -19,7 +19,8 @@ import { useModal } from '../../hooks/useModal';
 import { useAgreementPermissions } from '../../hooks/useAgreementPermissions';
 import { isHistoricalAgreement, isReadOnlyAgreement } from '../../utils/authUtils';
 import { ROUTES } from '../../config/routes';
-import { fetchAgreementForClone } from '../../utils/agreementClone';
+import { cloneAgreementOnServer } from '../../utils/agreementClone';
+import { buildAgreementEditPath } from '../../utils/agreementNavigation';
 import { approveAgreement, rejectAgreement, submitAgreementForApproval } from '../../store/slices/agreementSlice';
 import TransferOwnershipModal from '../../components/agreements/TransferOwnershipModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -236,10 +237,11 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
     if (!selectedVersionId) return;
     cloneModal.close();
     try {
-      const clonedData = await fetchAgreementForClone(axiosInstance, ENDPOINTS, selectedVersionId);
-      navigate(ROUTES.AGREEMENT_CREATE, { state: { clonedData } });
+      const cloned = await cloneAgreementOnServer(axiosInstance, ENDPOINTS, selectedVersionId);
+      enqueueSnackbar('Product scope copied — complete remaining details', { variant: 'info' });
+      navigate(buildAgreementEditPath(cloned.id, { step: 2 }));
     } catch {
-      enqueueSnackbar('Failed to prepare clone data', { variant: 'error' });
+      enqueueSnackbar('Failed to clone agreement', { variant: 'error' });
     }
   };
 

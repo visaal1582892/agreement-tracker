@@ -1,11 +1,8 @@
 import { useState, useCallback } from 'react';
 
-let agreementIdCounter = 0;
-
 export function createBlankAgreement() {
-  agreementIdCounter += 1;
   return {
-    id: `agr-${agreementIdCounter}-${Date.now()}`,
+    id: `agr-${Date.now()}`,
     details: {
       incomeTypeId: null,
       agreementTypeId: null,
@@ -16,12 +13,9 @@ export function createBlankAgreement() {
     },
     commercials: {
       commercialStructure: 'FLAT',
-      valueType: 'VALUE',
       commercialValue: '',
-      commercialPercentage: '',
       calculationFormula: '',
-      slabs: [],
-      timeDistribution: 'MONTHLY',
+      selectedFrequencies: [],
     },
   };
 }
@@ -37,18 +31,22 @@ const INITIAL_STATE = {
     divisionRules: [],
     productRules: [],
   },
-  agreements: [createBlankAgreement()],
+  agreement: createBlankAgreement(),
 };
+
+function mapProductRulesFromApi(agreement) {
+  return {
+    manufacturers: agreement.manufacturerIds ?? [],
+    divisionRules: agreement.divisionRules?.map((r) => ({ id: r.id, ruleType: r.ruleType })) ?? [],
+    productRules: agreement.productRules?.map((r) => ({ id: r.id, ruleType: r.ruleType })) ?? [],
+  };
+}
 
 export function useAgreementWizard() {
   const [state, setState] = useState(INITIAL_STATE);
 
   const updateStep = useCallback((step) => {
     setState((prev) => ({ ...prev, step }));
-  }, []);
-
-  const updateField = useCallback((field, value) => {
-    setState((prev) => ({ ...prev, [field]: value }));
   }, []);
 
   const updateFields = useCallback((fields) => {
@@ -62,38 +60,23 @@ export function useAgreementWizard() {
     }));
   }, []);
 
-  const addAgreement = useCallback(() => {
+  const updateAgreementDetails = useCallback((patch) => {
     setState((prev) => ({
       ...prev,
-      agreements: [...prev.agreements, createBlankAgreement()],
+      agreement: {
+        ...prev.agreement,
+        details: { ...prev.agreement.details, ...patch },
+      },
     }));
   }, []);
 
-  const removeAgreement = useCallback((agreementId) => {
-    setState((prev) => {
-      if (prev.agreements.length <= 1) return prev;
-      return {
-        ...prev,
-        agreements: prev.agreements.filter((a) => a.id !== agreementId),
-      };
-    });
-  }, []);
-
-  const updateAgreementDetails = useCallback((agreementId, patch) => {
+  const updateAgreementCommercials = useCallback((patch) => {
     setState((prev) => ({
       ...prev,
-      agreements: prev.agreements.map((a) =>
-        a.id === agreementId ? { ...a, details: { ...a.details, ...patch } } : a,
-      ),
-    }));
-  }, []);
-
-  const updateAgreementCommercials = useCallback((agreementId, patch) => {
-    setState((prev) => ({
-      ...prev,
-      agreements: prev.agreements.map((a) =>
-        a.id === agreementId ? { ...a, commercials: { ...a.commercials, ...patch } } : a,
-      ),
+      agreement: {
+        ...prev.agreement,
+        commercials: { ...prev.agreement.commercials, ...patch },
+      },
     }));
   }, []);
 
@@ -106,14 +89,17 @@ export function useAgreementWizard() {
   }, []);
 
   const reset = useCallback(() => setState({
-    step: 0,
-    agreementName: '',
-    companyId: null,
-    companyName: '',
-    vendorIds: [],
-    productRules: { manufacturers: [], divisionRules: [], productRules: [] },
-    agreements: [createBlankAgreement()],
+    ...INITIAL_STATE,
+    agreement: createBlankAgreement(),
   }), []);
+
+  const clearStep2Fields = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      agreementName: '',
+      agreement: createBlankAgreement(),
+    }));
+  }, []);
 
   const hydrateFromEdit = useCallback((agreement) => {
     if (!agreement) return;
@@ -123,13 +109,9 @@ export function useAgreementWizard() {
       companyId: agreement.companyId ?? null,
       companyName: agreement.companyName ?? '',
       vendorIds: agreement.vendors?.map((v) => v.vendorId) ?? [],
-      productRules: {
-        manufacturers: agreement.manufacturerIds ?? [],
-        divisionRules: agreement.divisionRules?.map((r) => ({ id: r.id, ruleType: r.ruleType })) ?? [],
-        productRules: agreement.productRules?.map((r) => ({ id: r.id, ruleType: r.ruleType })) ?? [],
-      },
-      agreements: [{
-        id: `agr-edit-${Date.now()}`,
+      productRules: mapProductRulesFromApi(agreement),
+      agreement: {
+        id: `agr-edit-${agreement.id}`,
         details: {
           incomeTypeId: agreement.incomeTypeId ?? null,
           agreementTypeId: agreement.agreementTypeId ?? null,
@@ -142,45 +124,38 @@ export function useAgreementWizard() {
           commercialStructure: agreement.commercialStructure ?? 'FLAT',
           commercialValue: agreement.commercialValue ?? '',
           calculationFormula: agreement.calculationFormula ?? '',
-          slabs: [],
-          timeDistribution: 'MONTHLY',
+          selectedFrequencies: [],
         },
-      }],
+      },
     });
   }, []);
 
-  const hydrateFromClone = useCallback((clonedData) => {
-    if (!clonedData) return;
+  const applyCloneResponse = useCallback((cloned) => {
+    if (!cloned) return;
     setState((prev) => ({
       ...prev,
-      step: 0,
-      agreementName: clonedData.agreementName ?? '',
-      companyId: clonedData.companyId ?? null,
-      companyName: clonedData.companyName ?? '',
-      vendorIds: clonedData.vendorIds ?? [],
-      productRules: {
-        manufacturers: clonedData.productRules?.manufacturers ?? [],
-        divisionRules: clonedData.productRules?.divisionRules ?? [],
-        productRules: clonedData.productRules?.productRules ?? [],
-      },
-      agreements: [createBlankAgreement()],
+      step: 1,
+      agreementName: '',
+      companyId: cloned.companyId ?? null,
+      companyName: cloned.companyName ?? '',
+      vendorIds: cloned.vendors?.map((v) => v.vendorId) ?? [],
+      productRules: mapProductRulesFromApi(cloned),
+      agreement: createBlankAgreement(),
     }));
   }, []);
 
   return {
     state,
     updateStep,
-    updateField,
     updateFields,
     updateProductRules,
-    addAgreement,
-    removeAgreement,
     updateAgreementDetails,
     updateAgreementCommercials,
     nextStep,
     prevStep,
     reset,
-    hydrateFromClone,
+    clearStep2Fields,
     hydrateFromEdit,
+    applyCloneResponse,
   };
 }

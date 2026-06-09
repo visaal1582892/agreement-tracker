@@ -2,14 +2,13 @@ package com.medplus.agreement_tracker_backend.repository;
 
 import com.medplus.agreement_tracker_backend.entity.AgreementTimePeriod;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
-@Repository
 public interface AgreementTimePeriodRepository extends JpaRepository<AgreementTimePeriod, Long> {
 
-    List<AgreementTimePeriod> findByAgreementIdOrderByDisplayOrder(Long agreementId);
+    Optional<AgreementTimePeriod> findByName(String name);
 
-    void deleteByAgreementId(Long agreementId);
+    List<AgreementTimePeriod> findAllByOrderByNameAsc();
 }

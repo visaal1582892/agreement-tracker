@@ -27,6 +27,7 @@ import com.medplus.agreement_tracker_backend.exception.UnauthorizedException;
 import com.medplus.agreement_tracker_backend.repository.*;
 import com.medplus.agreement_tracker_backend.repository.AgreementGroupSpec;
 import com.medplus.agreement_tracker_backend.validation.Step1Validation;
+import com.medplus.agreement_tracker_backend.validation.Step2Validation;
 import org.springframework.security.access.AccessDeniedException;
 import com.medplus.agreement_tracker_backend.service.AgreementService;
 import com.medplus.agreement_tracker_backend.util.AgreementNumberGenerator;
@@ -80,8 +81,6 @@ public class AgreementServiceImpl implements AgreementService {
     @Override
     @Transactional
     public BulkAgreementCreateResponse createDraft(CreateAgreementRequest request, Long currentUserId) {
-        validateAgreementName(request.agreementName());
-
         User owner = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", currentUserId));
         CompanyMaster company = resolveCompany(request.companyId());
@@ -218,12 +217,20 @@ public class AgreementServiceImpl implements AgreementService {
     @Override
     @Transactional
     public AgreementResponse updateDraft(Long agreementId, UpdateDraftRequest request, Long currentUserId,
-                                         boolean validateStep1) {
+                                         boolean validateStep1, boolean validateStep2) {
         if (validateStep1) {
             var violations = validator.validate(request, Step1Validation.class);
             if (!violations.isEmpty()) {
                 throw new ConstraintViolationException(violations);
             }
+            validateStep1Fields(request);
+        }
+        if (validateStep2) {
+            var violations = validator.validate(request, Step2Validation.class);
+            if (!violations.isEmpty()) {
+                throw new ConstraintViolationException(violations);
+            }
+            validateStep2Fields(request);
         }
 
         Agreement agreement = loadAndValidateOwnership(agreementId, currentUserId);
@@ -239,7 +246,7 @@ public class AgreementServiceImpl implements AgreementService {
             groupRepository.save(group);
         }
 
-        if (request.agreementName() != null) {
+        if (request.agreementName() != null && !request.agreementName().isBlank()) {
             agreement.setAgreementName(request.agreementName().trim());
         }
 
@@ -261,6 +268,72 @@ public class AgreementServiceImpl implements AgreementService {
 
         recordAudit(group.getId(), agreement.getId(), "DRAFT_UPDATED", null, null, currentUserId);
         return toAgreementResponse(agreement);
+    }
+
+    @Override
+    @Transactional
+    public AgreementResponse cloneAgreement(Long sourceAgreementId, Long currentUserId) {
+        Agreement source = loadAndValidateOwnership(sourceAgreementId, currentUserId);
+        AgreementGroup sourceGroup = source.getAgreementGroup();
+        CompanyMaster company = sourceGroup.getCompany();
+        if (company == null) {
+            throw new BusinessException("Cannot clone: source agreement has no company");
+        }
+
+        User owner = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", currentUserId));
+
+        String agreementNumber = numberGenerator.generate();
+        AgreementGroup group = AgreementGroup.builder()
+                .company(company)
+                .agreementNumber(agreementNumber)
+                .isActive(true)
+                .build();
+        group.setCreatedByUserId(currentUserId);
+        group = groupRepository.save(group);
+
+        Agreement clone = Agreement.builder()
+                .agreementGroup(group)
+                .versionNumber(1)
+                .agreementName(agreementNumber)
+                .owner(owner)
+                .approvalStatus(ApprovalStatus.DRAFT)
+                .build();
+        clone.setCreatedByUserId(currentUserId);
+        clone = agreementRepository.save(clone);
+
+        copyVendors(source.getId(), clone, currentUserId);
+        copyRulesAndComputed(source.getId(), clone, currentUserId);
+
+        recordAudit(group.getId(), clone.getId(), "AGREEMENT_CLONED",
+                String.valueOf(sourceAgreementId), agreementNumber, currentUserId);
+
+        return toAgreementResponse(clone);
+    }
+
+    private void validateStep1Fields(UpdateDraftRequest request) {
+        if (request.vendorIds() == null || request.vendorIds().isEmpty()) {
+            throw new BusinessException("At least one vendor is required");
+        }
+        ProductRulesPayload rulesPayload = request.productRules();
+        List<RuleDTO> productRules = rulesPayload != null && rulesPayload.productRules() != null
+                ? rulesPayload.productRules() : List.of();
+        if (productRules.isEmpty()) {
+            throw new BusinessException("At least one product rule is required");
+        }
+    }
+
+    private void validateStep2Fields(UpdateDraftRequest request) {
+        DraftDetailsPayload details = request.details();
+        if (details == null || details.startDate() == null) {
+            throw new BusinessException("Start date is required");
+        }
+        if (details.expiryDate() == null) {
+            throw new BusinessException("Expiry date is required");
+        }
+        if (details.expiryDate().isBefore(details.startDate())) {
+            throw new BusinessException("Expiry date must be on or after start date");
+        }
     }
 
     /**
@@ -759,7 +832,7 @@ public class AgreementServiceImpl implements AgreementService {
         Agreement agreement = Agreement.builder()
                 .agreementGroup(group)
                 .versionNumber(versionNumber)
-                .agreementName(agreementName.trim())
+                .agreementName(resolveDraftAgreementNameForCreate(agreementName, group.getAgreementNumber()))
                 .owner(owner)
                 .incomeType(incomeType)
                 .agreementType(agreementType)
@@ -1187,6 +1260,13 @@ public class AgreementServiceImpl implements AgreementService {
         if (agreementName == null || agreementName.isBlank()) {
             throw new BusinessException("Agreement name is required");
         }
+    }
+
+    private String resolveDraftAgreementNameForCreate(String requestedName, String agreementNumber) {
+        if (requestedName != null && !requestedName.isBlank()) {
+            return requestedName.trim();
+        }
+        return agreementNumber;
     }
 
     private CompanyMaster resolveCompany(Long companyId) {

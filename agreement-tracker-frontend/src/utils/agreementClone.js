@@ -30,3 +30,8 @@ export async function fetchAgreementForClone(axiosInstance, endpoints, agreement
   const { data } = await axiosInstance.get(endpoints.AGREEMENT_BY_ID(agreementId));
   return buildClonedWizardData(data);
 }
+
+export async function cloneAgreementOnServer(axiosInstance, endpoints, agreementId) {
+  const { data } = await axiosInstance.post(endpoints.AGREEMENT_CLONE(agreementId));
+  return data;
+}

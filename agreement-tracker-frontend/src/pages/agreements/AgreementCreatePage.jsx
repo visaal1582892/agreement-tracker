@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Box, Typography, alpha, Paper } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
@@ -8,240 +8,56 @@ import { ROUTES } from '../../config/routes';
 import { BRAND } from '../../config/theme';
 import WizardLayout from '../../layouts/WizardLayout';
 import { useAgreementWizard } from '../../hooks/useAgreementWizard';
-import { validateAgreementForSubmit } from '../../utils/agreementSubmitValidation';
+import { buildAgreementEditPath } from '../../utils/agreementNavigation';
+import {
+  buildStep1CreatePayload,
+  urlStepFromInternal,
+  validateStep1Fields,
+} from '../../utils/agreementWizardUtils';
 import Step1Setup from './wizard/Step1Setup';
-import Step2Agreements from './wizard/Step2Agreements';
-import Step5Review from './wizard/Step5Review';
-
-function buildAgreementItem(agreement) {
-  if (!agreement) return null;
-  const { details, commercials } = agreement;
-  return {
-    details: {
-      incomeTypeId: details.incomeTypeId || null,
-      agreementTypeId: details.agreementTypeId || null,
-      startDate: details.startDate?.split('T')[0] || null,
-      expiryDate: details.expiryDate?.split('T')[0] || null,
-      notes: details.notes || null,
-    },
-    commercials: {
-      commercialStructure: commercials.commercialStructure || null,
-      commercialValue: commercials.commercialValue || null,
-      calculationFormula: commercials.calculationFormula || null,
-    },
-  };
-}
 
 export default function AgreementCreatePage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { enqueueSnackbar } = useSnackbar();
-  const clonedRef = useRef(false);
-  const {
-    state,
-    updateFields,
-    updateProductRules,
-    addAgreement,
-    removeAgreement,
-    updateAgreementDetails,
-    updateAgreementCommercials,
-    nextStep,
-    prevStep,
-    reset,
-    hydrateFromClone,
-  } = useAgreementWizard();
-  const [draftAgreementId, setDraftAgreementId] = useState(null);
+  const { state, updateFields, updateProductRules } = useAgreementWizard();
   const [savingDraft, setSavingDraft] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [documentErrors, setDocumentErrors] = useState({});
 
-  useEffect(() => {
-    if (location.state?.clonedData && !clonedRef.current) {
-      hydrateFromClone(location.state.clonedData);
-      clonedRef.current = true;
-      enqueueSnackbar('Product scope copied — complete remaining details', { variant: 'info' });
-      navigate(location.pathname, { replace: true, state: {} });
+  const createDraft = useCallback(async () => {
+    const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENTS, buildStep1CreatePayload(state));
+    const created = data.agreements?.[0];
+    if (!created?.id) {
+      throw new Error('Draft created but no agreement id returned');
     }
-  }, [location.state, location.pathname, hydrateFromClone, enqueueSnackbar, navigate]);
-
-  const clearDocumentError = (agreementId) => {
-    setDocumentErrors((prev) => {
-      const next = { ...prev };
-      delete next[agreementId];
-      return next;
-    });
-  };
-
-  const validateDraftSave = () => {
-    if (!state.agreementName?.trim()) {
-      enqueueSnackbar('Agreement name is required to save draft', { variant: 'warning' });
-      return false;
-    }
-    return true;
-  };
-
-  const validate = () => {
-    switch (state.step) {
-      case 0:
-        if (!state.vendorIds?.length) { enqueueSnackbar('Select at least one vendor', { variant: 'warning' }); return false; }
-        if (!state.productRules?.productRules?.length) {
-          enqueueSnackbar('Select at least one product', { variant: 'warning' }); return false;
-        }
-        return true;
-      case 1: {
-        if (!state.agreements?.length) {
-          enqueueSnackbar('Add at least one agreement', { variant: 'warning' }); return false;
-        }
-
-        const errors = {};
-        let hasError = false;
-        state.agreements.forEach((agreement, index) => {
-          const { details, commercials } = agreement;
-          if (!details.incomeTypeId) {
-            enqueueSnackbar(`Agreement ${index + 1}: select income type`, { variant: 'warning' });
-            hasError = true;
-          } else if (!details.agreementTypeId) {
-            enqueueSnackbar(`Agreement ${index + 1}: select agreement type`, { variant: 'warning' });
-            hasError = true;
-          } else if (!details.startDate || !details.expiryDate) {
-            enqueueSnackbar(`Agreement ${index + 1}: dates are required`, { variant: 'warning' });
-            hasError = true;
-          } else if (commercials.commercialStructure === 'FLAT' && !commercials.commercialValue) {
-            enqueueSnackbar(`Agreement ${index + 1}: enter commercial value`, { variant: 'warning' });
-            hasError = true;
-          } else if (!details.documents?.length) {
-            errors[agreement.id] = 'Upload at least one document before continuing.';
-            enqueueSnackbar(`Agreement ${index + 1}: upload at least one document`, { variant: 'warning' });
-            hasError = true;
-          }
-        });
-        setDocumentErrors(errors);
-        return !hasError;
-      }
-      default:
-        return true;
-    }
-  };
-
-  const buildCreatePayload = useCallback(() => ({
-    agreementName: state.agreementName?.trim() || '',
-    companyId: state.companyId,
-    vendorIds: state.vendorIds ?? [],
-    productRules: state.productRules ?? {},
-    agreements: state.agreements.map(buildAgreementItem).filter(Boolean),
-  }), [state]);
-
-  const buildUpdatePayload = useCallback(() => {
-    const agreement = state.agreements[0];
-    return {
-      agreementName: state.agreementName?.trim() || '',
-      companyId: state.companyId,
-      vendorIds: state.vendorIds ?? [],
-      productRules: state.productRules ?? {},
-      details: buildAgreementItem(agreement)?.details ?? {},
-      commercials: buildAgreementItem(agreement)?.commercials ?? {},
-    };
+    return created;
   }, [state]);
 
-  const persistDraft = async ({ validateStep1 = false } = {}) => {
-    const updatePayload = buildUpdatePayload();
-    if (draftAgreementId) {
-      const { data } = await axiosInstance.put(
-        ENDPOINTS.AGREEMENT_UPDATE(draftAgreementId),
-        updatePayload,
-        { params: { validateStep1 } },
-      );
-      return data;
-    }
-    const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENTS, buildCreatePayload());
-    const created = data.agreements?.[0];
-    if (created?.id) {
-      setDraftAgreementId(created.id);
-      if (validateStep1) {
-        const { data: updated } = await axiosInstance.put(
-          ENDPOINTS.AGREEMENT_UPDATE(created.id),
-          updatePayload,
-          { params: { validateStep1: true } },
-        );
-        return updated;
-      }
-    }
-    return created ?? data;
-  };
-
-  const handleNext = async () => {
-    if (state.step === 0) {
-      if (!state.vendorIds?.length) { enqueueSnackbar('Select at least one vendor', { variant: 'warning' }); return; }
-      if (!state.productRules?.productRules?.length) {
-        enqueueSnackbar('Select at least one product', { variant: 'warning' }); return;
-      }
-      try {
-        await persistDraft({ validateStep1: true });
-      } catch (err) {
-        enqueueSnackbar(err.response?.data?.message || 'Complete required step 1 fields', { variant: 'error' });
-        return;
-      }
-      nextStep();
-      return;
-    }
-    if (!validate()) return;
-    nextStep();
-  };
-
   const handleSaveDraft = async () => {
-    if (!validateDraftSave()) return;
+    if (!validateStep1Fields(state, enqueueSnackbar)) return;
     setSavingDraft(true);
     try {
-      const wasNew = !draftAgreementId;
-      const saved = await persistDraft();
-      const label = saved?.versionNumber ? `V${saved.versionNumber}` : 'draft';
-      enqueueSnackbar(`Agreement ${label} saved`, { variant: 'success' });
-      if (wasNew && saved?.id) {
-        navigate(`/agreements/${saved.id}/edit`, { replace: true });
-      }
+      const created = await createDraft();
+      enqueueSnackbar('Draft saved', { variant: 'success' });
+      navigate(buildAgreementEditPath(created.id, { step: urlStepFromInternal(0) }), { replace: true });
     } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Failed to save draft', { variant: 'error' });
+      enqueueSnackbar(err.response?.data?.message || err.message || 'Failed to save draft', { variant: 'error' });
     } finally {
       setSavingDraft(false);
     }
   };
 
-  const handleSubmitForApproval = async () => {
-    if (!validateAgreementForSubmit(state, enqueueSnackbar)) return;
-    setSubmitting(true);
+  const handleNext = async () => {
+    if (!validateStep1Fields(state, enqueueSnackbar)) return;
+    setSavingDraft(true);
     try {
-      const saved = await persistDraft();
-      const agreementId = saved?.id ?? draftAgreementId;
-      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(agreementId));
-      enqueueSnackbar('Agreement submitted for approval', { variant: 'success' });
-      reset();
-      navigate(saved?.agreementGroupId
-        ? `/agreements/groups/${saved.agreementGroupId}`
-        : ROUTES.AGREEMENTS);
+      const created = await createDraft();
+      enqueueSnackbar('Product template saved', { variant: 'success' });
+      navigate(buildAgreementEditPath(created.id, { step: urlStepFromInternal(1) }), { replace: true });
     } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Failed to submit agreement', { variant: 'error' });
+      enqueueSnackbar(err.response?.data?.message || err.message || 'Failed to save draft', { variant: 'error' });
     } finally {
-      setSubmitting(false);
+      setSavingDraft(false);
     }
   };
-
-  const STEP_COMPONENTS = [
-    <Step1Setup
-      state={state}
-      updateFields={updateFields}
-      updateProductRules={updateProductRules}
-    />,
-    <Step2Agreements
-      state={state}
-      addAgreement={addAgreement}
-      removeAgreement={removeAgreement}
-      updateAgreementDetails={updateAgreementDetails}
-      updateAgreementCommercials={updateAgreementCommercials}
-      documentErrors={documentErrors}
-      onClearDocumentError={clearDocumentError}
-    />,
-    <Step5Review state={state} />,
-  ];
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
@@ -266,22 +82,24 @@ export default function AgreementCreatePage() {
           Bulk Agreement
         </Typography>
         <Typography sx={{ mt: 0.5, fontSize: '0.9rem', color: '#64748B' }}>
-          Save as draft anytime — submit when ready
+          Select company, vendors, and products to build your template
         </Typography>
       </Paper>
 
       <WizardLayout
-        activeStep={state.step}
+        activeStep={0}
+        footerMode="setup"
         onNext={handleNext}
-        onBack={prevStep}
+        onBack={() => {}}
         onCancel={() => navigate(ROUTES.AGREEMENTS)}
         onSaveDraft={handleSaveDraft}
-        onSubmitForApproval={handleSubmitForApproval}
-        isLastStep={state.step === 2}
         isSavingDraft={savingDraft}
-        isSubmitting={submitting}
       >
-        {STEP_COMPONENTS[state.step]}
+        <Step1Setup
+          state={state}
+          updateFields={updateFields}
+          updateProductRules={updateProductRules}
+        />
       </WizardLayout>
     </Box>
   );

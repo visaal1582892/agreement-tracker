@@ -11,7 +11,13 @@ import { ENDPOINTS } from '../../config/endpoints';
 import { submitAgreementForApproval } from '../../store/slices/agreementSlice';
 import { useAgreementPermissions } from '../../hooks/useAgreementPermissions';
 import { ROUTES } from '../../config/routes';
-import { fetchAgreementForClone } from '../../utils/agreementClone';
+import { cloneAgreementOnServer } from '../../utils/agreementClone';
+import {
+  buildAgreementDetailPath,
+  buildAgreementEditPath,
+  isIncompleteDraft,
+  navigateToAgreement,
+} from '../../utils/agreementNavigation';
 import TransferOwnershipModal from './TransferOwnershipModal';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import { useModal } from '../../hooks/useModal';
@@ -49,14 +55,20 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
 
   if (!Object.values(actions).some(Boolean)) return null;
 
+  const incomplete = isIncompleteDraft(row);
+
   const goToDetail = () => {
     setAnchor(null);
-    navigate(`/agreements/groups/${row.id}`);
+    if (incomplete) {
+      navigate(buildAgreementEditPath(row.latestVersionId, { step: 2 }));
+      return;
+    }
+    navigate(buildAgreementDetailPath(row.id));
   };
 
   const goToEdit = () => {
     setAnchor(null);
-    navigate(`/agreements/${row.latestVersionId}/edit`);
+    navigate(buildAgreementEditPath(row.latestVersionId, incomplete ? { step: 2 } : {}));
   };
 
   const handleSubmitClick = () => {
@@ -98,8 +110,11 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
         onClose={() => setAnchor(null)}
         onClick={(e) => e.stopPropagation()}
       >
-        {actions.view && <MenuItem dense onClick={goToDetail}>View</MenuItem>}
-        {actions.editDraft && <MenuItem dense onClick={goToEdit}>Edit Draft</MenuItem>}
+        {actions.view && !incomplete && <MenuItem dense onClick={goToDetail}>View</MenuItem>}
+        {incomplete && (actions.editDraft || actions.view) && (
+          <MenuItem dense onClick={goToEdit}>Resume Draft</MenuItem>
+        )}
+        {actions.editDraft && !incomplete && <MenuItem dense onClick={goToEdit}>Edit Draft</MenuItem>}
         {actions.editApproved && <MenuItem dense onClick={goToEdit}>Edit</MenuItem>}
         {actions.revise && <MenuItem dense onClick={goToEdit}>Revise & Resubmit</MenuItem>}
         {actions.submit && <MenuItem dense onClick={handleSubmitClick}>Submit for Approval</MenuItem>}
@@ -263,7 +278,7 @@ export default function AgreementsTable({
   rowsPerPage,
   onPageChange,
   onRowsPerPageChange,
-  onRowClick,
+  onRowClick: onRowClickProp,
   sortBy,
   sortDir,
   onSort,
@@ -328,10 +343,11 @@ export default function AgreementsTable({
 
   const handleClone = useCallback(async (agreementId) => {
     try {
-      const clonedData = await fetchAgreementForClone(axiosInstance, ENDPOINTS, agreementId);
-      navigate(ROUTES.AGREEMENT_CREATE, { state: { clonedData } });
+      const cloned = await cloneAgreementOnServer(axiosInstance, ENDPOINTS, agreementId);
+      enqueueSnackbar('Product scope copied — complete remaining details', { variant: 'info' });
+      navigate(buildAgreementEditPath(cloned.id, { step: 2 }));
     } catch {
-      enqueueSnackbar('Failed to prepare clone data', { variant: 'error' });
+      enqueueSnackbar('Failed to clone agreement', { variant: 'error' });
     }
   }, [navigate, enqueueSnackbar]);
 
@@ -369,6 +385,8 @@ export default function AgreementsTable({
     },
   ];
 
+  const handleRowClick = onRowClickProp ?? ((row) => navigateToAgreement(row, navigate));
+
   return (
     <>
     <DataTable
@@ -380,7 +398,7 @@ export default function AgreementsTable({
       rowsPerPage={rowsPerPage}
       onPageChange={onPageChange}
       onRowsPerPageChange={onRowsPerPageChange}
-      onRowClick={onRowClick}
+      onRowClick={handleRowClick}
       sortBy={sortBy}
       sortDir={sortDir}
       onSort={onSort}

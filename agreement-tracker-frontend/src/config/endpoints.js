@@ -36,8 +36,15 @@ export const ENDPOINTS = {
   AGREEMENT_IN_PROGRESS: (id) => `${BASE}/agreements/${id}/in-progress`,
   AGREEMENT_TIMELINE: (id) => `${BASE}/agreements/${id}/timeline`,
   AGREEMENT_CREATE_VERSION: (id) => `${BASE}/agreements/${id}/versions`,
+  AGREEMENT_CLONE: (id) => `${BASE}/agreements/${id}/clone`,
+  AGREEMENT_SLABS: (id) => `${BASE}/agreements/${id}/slabs`,
+  AGREEMENT_SLAB: (agreementId, slabId) => `${BASE}/agreements/${agreementId}/slabs/${slabId}`,
   AGREEMENT_PENDING_APPROVALS: `${BASE}/agreements/pending-approvals`,
   AGREEMENT_BULK_TRANSFER: `${BASE}/agreements/bulk-transfer`,
+  COMMERCIAL_TEMPLATE: (id) => `${BASE}/agreements/${id}/commercials/template`,
+  COMMERCIAL_UPLOAD: (id) => `${BASE}/agreements/${id}/commercials/upload`,
+  COMMERCIAL_TARGETS_PREVIEW: (id) => `${BASE}/agreements/${id}/commercials/targets/preview`,
+  COMMERCIAL_TARGETS: (id) => `${BASE}/agreements/${id}/commercials/targets`,
 
   // Dashboard
   DASHBOARD_STATS: `${BASE}/dashboard/stats`,

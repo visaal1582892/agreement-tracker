@@ -135,7 +135,7 @@ const datePickerSlotProps = {
   },
 };
 
-export default function DateRangeFields({ startDate, expiryDate, onChange }) {
+export default function DateRangeFields({ startDate, expiryDate, onChange, disabled = false }) {
   const [tenureYears, setTenureYears] = useState('');
   const [tenureMonths, setTenureMonths] = useState('');
   const [tenureDays, setTenureDays] = useState('');
@@ -254,6 +254,7 @@ export default function DateRangeFields({ startDate, expiryDate, onChange }) {
           format={DATE_FORMAT}
           value={startDate ? dayjs(startDate) : null}
           onChange={handleStartChange}
+          disabled={disabled}
           slotProps={datePickerSlotProps}
         />
       </Grid>
@@ -280,7 +281,8 @@ export default function DateRangeFields({ startDate, expiryDate, onChange }) {
                   value={tenureValues[key]}
                   onChange={(e) => handleTenureChange(key, e.target.value)}
                   placeholder="0"
-                  inputProps={{ min: 0, 'aria-label': label }}
+                  disabled={disabled}
+                  slotProps={{ input: { min: 0, 'aria-label': label } }}
                   sx={tenureInputSx}
                 />
                 <Typography
@@ -307,6 +309,7 @@ export default function DateRangeFields({ startDate, expiryDate, onChange }) {
           value={expiryDate ? dayjs(expiryDate) : null}
           onChange={handleExpiryChange}
           minDate={startDate ? toDay(startDate).add(1, 'day') : undefined}
+          disabled={disabled}
           slotProps={datePickerSlotProps}
         />
       </Grid>

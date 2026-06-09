@@ -17,15 +17,21 @@ const cardSx = {
 export default function WizardLayout({
   activeStep,
   children,
-  onNext,
   onBack,
   onCancel,
+  footerMode = 'setup',
   onSaveDraft,
+  onNext,
+  onSaveAndCreateAnother,
+  onFinishAndExit,
   onSubmitForApproval,
-  isLastStep,
+  showSaveDraft = true,
   isSavingDraft,
   isSubmitting,
+  isSavingLoop,
 }) {
+  const busy = isSavingDraft || isSubmitting || isSavingLoop;
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <Paper
@@ -38,7 +44,6 @@ export default function WizardLayout({
           minHeight: 0,
         }}
       >
-        {/* Stepper */}
         <Box sx={{
           px: { xs: 2, md: 3 },
           py: 2.5,
@@ -78,12 +83,10 @@ export default function WizardLayout({
           </Stepper>
         </Box>
 
-        {/* Step content */}
         <Box sx={{ flex: 1, p: { xs: 2.5, md: 3.5 }, display: 'flex', flexDirection: 'column' }}>
           {children}
         </Box>
 
-        {/* Footer actions */}
         <Box sx={{
           px: { xs: 2.5, md: 3.5 },
           py: 2.5,
@@ -113,33 +116,101 @@ export default function WizardLayout({
             <Button
               variant="outlined"
               onClick={onBack}
-              disabled={activeStep === 0 || isSavingDraft || isSubmitting}
+              disabled={activeStep === 0 || busy}
               sx={{ borderRadius: 2.5, px: 2.5, minWidth: 90 }}
             >
               Back
             </Button>
-            {onSaveDraft && (
-              <Button
-                variant="outlined"
-                onClick={onSaveDraft}
-                disabled={isSavingDraft || isSubmitting}
-                sx={{
-                  borderRadius: 2.5,
-                  px: 2.5,
-                  minWidth: 130,
-                  fontWeight: 600,
-                  borderColor: '#CBD5E1',
-                  color: '#475569',
-                }}
-              >
-                {isSavingDraft ? 'Saving…' : 'Save as Draft'}
-              </Button>
+
+            {footerMode === 'setup' && (
+              <>
+                {onSaveDraft && (
+                  <Button
+                    variant="outlined"
+                    onClick={onSaveDraft}
+                    disabled={busy}
+                    sx={{
+                      borderRadius: 2.5,
+                      px: 2.5,
+                      minWidth: 130,
+                      fontWeight: 600,
+                      borderColor: '#CBD5E1',
+                      color: '#475569',
+                    }}
+                  >
+                    {isSavingDraft ? 'Saving…' : 'Save as Draft'}
+                  </Button>
+                )}
+                <Button
+                  variant="contained"
+                  onClick={onNext}
+                  disabled={busy}
+                  sx={{
+                    borderRadius: 2.5,
+                    px: 3,
+                    minWidth: 120,
+                    fontWeight: 700,
+                    background: BRAND.redGradient,
+                    boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
+                    '&:hover': { background: BRAND.redGradient },
+                  }}
+                >
+                  Next
+                </Button>
+              </>
             )}
-            {isLastStep ? (
+
+            {footerMode === 'details' && (
+              <>
+                {showSaveDraft && onSaveDraft && (
+                  <Button
+                    variant="outlined"
+                    onClick={onSaveDraft}
+                    disabled={busy}
+                    sx={{
+                      borderRadius: 2.5,
+                      px: 2.5,
+                      minWidth: 130,
+                      fontWeight: 600,
+                      borderColor: '#CBD5E1',
+                      color: '#475569',
+                    }}
+                  >
+                    {isSavingDraft ? 'Saving…' : 'Save as Draft'}
+                  </Button>
+                )}
+                <Button
+                  variant="outlined"
+                  onClick={onFinishAndExit}
+                  disabled={busy}
+                  sx={{ borderRadius: 2.5, px: 2.5, minWidth: 130, fontWeight: 600 }}
+                >
+                  {isSavingDraft ? 'Saving…' : 'Finish & Exit'}
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={onSaveAndCreateAnother}
+                  disabled={busy}
+                  sx={{
+                    borderRadius: 2.5,
+                    px: 3,
+                    minWidth: 190,
+                    fontWeight: 700,
+                    background: BRAND.redGradient,
+                    boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
+                    '&:hover': { background: BRAND.redGradient },
+                  }}
+                >
+                  {isSavingLoop ? 'Saving…' : 'Save & Create Another'}
+                </Button>
+              </>
+            )}
+
+            {footerMode === 'review' && (
               <Button
                 variant="contained"
                 onClick={onSubmitForApproval}
-                disabled={isSavingDraft || isSubmitting}
+                disabled={busy}
                 sx={{
                   borderRadius: 2.5,
                   px: 3,
@@ -152,23 +223,64 @@ export default function WizardLayout({
               >
                 {isSubmitting ? 'Submitting…' : 'Submit for Approval'}
               </Button>
-            ) : (
-              <Button
-                variant="contained"
-                onClick={onNext}
-                disabled={isSavingDraft || isSubmitting}
-                sx={{
-                  borderRadius: 2.5,
-                  px: 3,
-                  minWidth: 120,
-                  fontWeight: 700,
-                  background: BRAND.redGradient,
-                  boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
-                  '&:hover': { background: BRAND.redGradient },
-                }}
-              >
-                Next
-              </Button>
+            )}
+
+            {footerMode === 'revision' && (
+              <>
+                {showSaveDraft && onSaveDraft && activeStep < 2 && (
+                  <Button
+                    variant="outlined"
+                    onClick={onSaveDraft}
+                    disabled={busy}
+                    sx={{
+                      borderRadius: 2.5,
+                      px: 2.5,
+                      minWidth: 130,
+                      fontWeight: 600,
+                      borderColor: '#CBD5E1',
+                      color: '#475569',
+                    }}
+                  >
+                    {isSavingDraft ? 'Saving…' : 'Save as Draft'}
+                  </Button>
+                )}
+                {activeStep < 2 && (
+                  <Button
+                    variant="contained"
+                    onClick={onNext}
+                    disabled={busy}
+                    sx={{
+                      borderRadius: 2.5,
+                      px: 3,
+                      minWidth: 120,
+                      fontWeight: 700,
+                      background: BRAND.redGradient,
+                      boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
+                      '&:hover': { background: BRAND.redGradient },
+                    }}
+                  >
+                    Next
+                  </Button>
+                )}
+                {activeStep === 2 && (
+                  <Button
+                    variant="contained"
+                    onClick={onSubmitForApproval}
+                    disabled={busy}
+                    sx={{
+                      borderRadius: 2.5,
+                      px: 3,
+                      minWidth: 160,
+                      fontWeight: 700,
+                      background: BRAND.redGradient,
+                      boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
+                      '&:hover': { background: BRAND.redGradient },
+                    }}
+                  >
+                    {isSubmitting ? 'Submitting…' : 'Submit for Approval'}
+                  </Button>
+                )}
+              </>
             )}
           </Box>
         </Box>
