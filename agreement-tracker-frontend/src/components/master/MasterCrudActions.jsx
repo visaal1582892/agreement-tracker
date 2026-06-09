@@ -1,4 +1,4 @@
-import { Button, Stack } from '@mui/material';
+import { Button, IconButton, Stack, Tooltip } from '@mui/material';
 import { Add, Edit, PowerSettingsNew } from '@mui/icons-material';
 import { BRAND } from '../../config/theme';
 import { isRecordActive } from '../../utils/masterUtils';
@@ -28,26 +28,25 @@ export function MasterRowActions({ row, onEdit, onToggleStatus }) {
   const active = isRecordActive(row);
 
   return (
-    <Stack direction="row" spacing={0.5}>
-      <Button
-        size="small"
-        variant="outlined"
-        startIcon={<Edit sx={{ fontSize: 14 }} />}
-        onClick={(e) => { e.stopPropagation(); onEdit(row); }}
-        sx={{ fontSize: '0.72rem', py: 0.3, px: 1 }}
-      >
-        Edit
-      </Button>
-      <Button
-        size="small"
-        variant="outlined"
-        color={active ? 'error' : 'success'}
-        startIcon={<PowerSettingsNew sx={{ fontSize: 14 }} />}
-        onClick={(e) => { e.stopPropagation(); onToggleStatus(row); }}
-        sx={{ fontSize: '0.72rem', py: 0.3, px: 1 }}
-      >
-        {active ? 'Deactivate' : 'Activate'}
-      </Button>
+    <Stack direction="row" spacing={0.25} sx={{ flexWrap: 'nowrap', alignItems: 'center' }}>
+      <Tooltip title="Edit" arrow>
+        <IconButton
+          size="small"
+          onClick={(e) => { e.stopPropagation(); onEdit(row); }}
+          sx={{ color: 'text.secondary' }}
+        >
+          <Edit sx={{ fontSize: 18 }} />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title={active ? 'Deactivate' : 'Activate'} arrow>
+        <IconButton
+          size="small"
+          color={active ? 'error' : 'success'}
+          onClick={(e) => { e.stopPropagation(); onToggleStatus(row); }}
+        >
+          <PowerSettingsNew sx={{ fontSize: 18 }} />
+        </IconButton>
+      </Tooltip>
     </Stack>
   );
 }

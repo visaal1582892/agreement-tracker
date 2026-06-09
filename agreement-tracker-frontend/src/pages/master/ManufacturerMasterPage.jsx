@@ -1,33 +1,22 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import {
-  Box, Button, TextField, Chip, Stack, Typography, FormControlLabel, Switch, alpha,
+  Box, Button, TextField, Stack, Typography, FormControlLabel, Switch,
 } from '@mui/material';
-import DataTable from '../../components/ui/DataTable';
 import SlidePanel from '../../components/ui/SlidePanel';
+import MasterDataTable from '../../components/master/MasterDataTable';
 import { MasterAddButton, MasterRowActions } from '../../components/master/MasterCrudActions';
+import { buildMasterColumns, masterIdColumn } from '../../components/master/masterTableColumns';
 import { manufacturerApi } from '../../api/masterApi';
 import { useMasterPage } from '../../hooks/useMasterPage';
 import { BRAND } from '../../config/theme';
 import { isRecordActive } from '../../utils/masterUtils';
 
-const STATUS_OPTS = [{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }];
-
-const COLUMNS = [
-  { field: 'id',                 header: '#',                  width: 60,  sortable: true },
-  { field: 'manufacturerCode',   header: 'Code',               width: 130, sortable: true, filterType: 'text' },
-  { field: 'manufacturerName',   header: 'Manufacturer Name',              sortable: true, filterType: 'text' },
-  {
-    field: 'isActive', header: 'Status', width: 110, sortable: true,
-    filterType: 'select', filterOptions: STATUS_OPTS,
-    render: (_, row) => (
-      <Chip label={isRecordActive(row) ? 'Active' : 'Inactive'} size="small"
-        sx={{ bgcolor: isRecordActive(row) ? alpha(BRAND.green, 0.12) : alpha('#EF4444', 0.10),
-          color: isRecordActive(row) ? BRAND.greenDark : '#DC2626', fontWeight: 600, fontSize: '0.72rem' }} />
-    ),
-  },
-  { field: '_actions', header: 'Actions', width: 160, sortable: false },
-];
+const COLUMNS = buildMasterColumns([
+  masterIdColumn(),
+  { field: 'manufacturerCode', header: 'Code', minWidth: 130, sortable: true, filterType: 'text' },
+  { field: 'manufacturerName', header: 'Manufacturer Name', minWidth: 200, sortable: true, filterType: 'text' },
+]);
 
 export default function ManufacturerMasterPage() {
   const page = useMasterPage({ api: manufacturerApi, entityLabel: 'Manufacturer' });
@@ -52,17 +41,17 @@ export default function ManufacturerMasterPage() {
         </Box>
         <MasterAddButton label="Add Manufacturer" onClick={page.openCreate} />
       </Stack>
-      <DataTable columns={COLUMNS} rows={enrichedRows} loading={page.loading} totalCount={page.totalCount}
+      <MasterDataTable columns={COLUMNS} rows={enrichedRows} loading={page.loading} totalCount={page.totalCount}
         page={page.page} rowsPerPage={page.rowsPerPage} onPageChange={page.handlePageChange}
         onRowsPerPageChange={page.handleRowsPerPageChange} sortBy={page.sortBy} sortDir={page.sortDir}
         onSort={page.handleSort} filters={page.filters} onFilterChange={page.handleFilterChange} />
-      <MfgFormPanel open={page.panelOpen} onClose={page.closePanel} editingRow={page.editingRow}
+      <ManufacturerFormPanel open={page.panelOpen} onClose={page.closePanel} editingRow={page.editingRow}
         saving={page.saving} onSave={page.handleSave} />
     </Box>
   );
 }
 
-function MfgFormPanel({ open, onClose, editingRow, saving, onSave }) {
+function ManufacturerFormPanel({ open, onClose, editingRow, saving, onSave }) {
   const isEdit = Boolean(editingRow);
   const { register, handleSubmit, reset, formState: { errors } } = useForm();
 
@@ -75,7 +64,7 @@ function MfgFormPanel({ open, onClose, editingRow, saving, onSave }) {
     <SlidePanel open={open} onClose={onClose} title={isEdit ? 'Edit Manufacturer' : 'Add Manufacturer'} loading={saving}>
       <Box component="form" onSubmit={handleSubmit(onSave)} noValidate
         sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-        <TextField label="Manufacturer Code" {...register('manufacturerCode')} fullWidth helperText="Optional unique code" />
+        <TextField label="Manufacturer Code" {...register('manufacturerCode')} fullWidth />
         <TextField label="Manufacturer Name" required error={!!errors.manufacturerName}
           helperText={errors.manufacturerName?.message}
           {...register('manufacturerName', { required: 'Manufacturer name is required' })} fullWidth />

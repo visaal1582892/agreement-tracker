@@ -1,45 +1,22 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import {
-  Box, Button, TextField, Chip, Stack, Typography,
-  FormControlLabel, Switch, alpha,
+  Box, Button, TextField, Stack, Typography,
+  FormControlLabel, Switch,
 } from '@mui/material';
-import DataTable from '../../components/ui/DataTable';
 import SlidePanel from '../../components/ui/SlidePanel';
+import MasterDataTable from '../../components/master/MasterDataTable';
 import { MasterAddButton, MasterRowActions } from '../../components/master/MasterCrudActions';
+import { buildMasterColumns, masterIdColumn } from '../../components/master/masterTableColumns';
 import { companyApi } from '../../api/masterApi';
 import { useMasterPage } from '../../hooks/useMasterPage';
 import { BRAND } from '../../config/theme';
 import { isRecordActive } from '../../utils/masterUtils';
 
-const COLUMNS = [
-  { field: 'id',          header: '#',            width: 60,  sortable: true, filterType: null },
-  { field: 'companyName', header: 'Company Name',             sortable: true, filterType: 'text' },
-  {
-    field: 'isActive',
-    header: 'Status',
-    width: 110,
-    sortable: true,
-    filterType: 'select',
-    filterOptions: [
-      { value: 'true',  label: 'Active' },
-      { value: 'false', label: 'Inactive' },
-    ],
-    render: (_, row) => (
-      <Chip
-        label={isRecordActive(row) ? 'Active' : 'Inactive'}
-        size="small"
-        sx={{
-          bgcolor: isRecordActive(row) ? alpha(BRAND.green, 0.12) : alpha('#EF4444', 0.10),
-          color: isRecordActive(row) ? BRAND.greenDark : '#DC2626',
-          fontWeight: 600,
-          fontSize: '0.72rem',
-        }}
-      />
-    ),
-  },
-  { field: '_actions', header: 'Actions', width: 120, sortable: false, filterType: null },
-];
+const COLUMNS = buildMasterColumns([
+  masterIdColumn(),
+  { field: 'companyName', header: 'Company Name', minWidth: 180, sortable: true, filterType: 'text' },
+]);
 
 export default function CompanyMasterPage() {
   const page = useMasterPage({ api: companyApi, entityLabel: 'Company' });
@@ -57,7 +34,6 @@ export default function CompanyMasterPage() {
 
   return (
     <Box>
-      {/* Toolbar */}
       <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>Companies</Typography>
@@ -68,7 +44,7 @@ export default function CompanyMasterPage() {
         <MasterAddButton label="Add Company" onClick={page.openCreate} />
       </Stack>
 
-      <DataTable
+      <MasterDataTable
         columns={COLUMNS}
         rows={enrichedRows}
         loading={page.loading}

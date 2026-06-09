@@ -1,44 +1,22 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import {
-  Box, Button, TextField, Chip, Stack, Typography, FormControlLabel, Switch, alpha,
+  Box, Button, TextField, Stack, Typography, FormControlLabel, Switch,
 } from '@mui/material';
-import DataTable from '../../components/ui/DataTable';
 import SlidePanel from '../../components/ui/SlidePanel';
+import MasterDataTable from '../../components/master/MasterDataTable';
 import { MasterAddButton, MasterRowActions } from '../../components/master/MasterCrudActions';
+import { buildMasterColumns, masterIdColumn } from '../../components/master/masterTableColumns';
 import { vendorApi } from '../../api/masterApi';
 import { useMasterPage } from '../../hooks/useMasterPage';
 import { BRAND } from '../../config/theme';
 import { isRecordActive } from '../../utils/masterUtils';
 
-const STATUS_OPTS = [
-  { value: 'true', label: 'Active' },
-  { value: 'false', label: 'Inactive' },
-];
-
-const COLUMNS = [
-  { field: 'id',         header: '#',           width: 60,  sortable: true },
-  { field: 'vendorCode', header: 'Vendor Code', width: 140, sortable: true, filterType: 'text' },
-  { field: 'vendorName', header: 'Vendor Name',             sortable: true, filterType: 'text' },
-  {
-    field: 'isActive', header: 'Status', width: 110, sortable: true,
-    filterType: 'select', filterOptions: STATUS_OPTS,
-    render: (_, row) => <StatusChip active={isRecordActive(row)} />,
-  },
-  { field: '_actions', header: 'Actions', width: 160, sortable: false },
-];
-
-const StatusChip = ({ active }) => (
-  <Chip
-    label={active ? 'Active' : 'Inactive'}
-    size="small"
-    sx={{
-      bgcolor: active ? alpha(BRAND.green, 0.12) : alpha('#EF4444', 0.10),
-      color: active ? BRAND.greenDark : '#DC2626',
-      fontWeight: 600, fontSize: '0.72rem',
-    }}
-  />
-);
+const COLUMNS = buildMasterColumns([
+  masterIdColumn(),
+  { field: 'vendorCode', header: 'Vendor Code', minWidth: 140, sortable: true, filterType: 'text' },
+  { field: 'vendorName', header: 'Vendor Name', minWidth: 180, sortable: true, filterType: 'text' },
+]);
 
 export default function VendorMasterPage() {
   const page = useMasterPage({ api: vendorApi, entityLabel: 'Vendor' });
@@ -63,7 +41,7 @@ export default function VendorMasterPage() {
         </Box>
         <MasterAddButton label="Add Vendor" onClick={page.openCreate} />
       </Stack>
-      <DataTable columns={COLUMNS} rows={enrichedRows} loading={page.loading} totalCount={page.totalCount}
+      <MasterDataTable columns={COLUMNS} rows={enrichedRows} loading={page.loading} totalCount={page.totalCount}
         page={page.page} rowsPerPage={page.rowsPerPage} onPageChange={page.handlePageChange}
         onRowsPerPageChange={page.handleRowsPerPageChange} sortBy={page.sortBy} sortDir={page.sortDir}
         onSort={page.handleSort} filters={page.filters} onFilterChange={page.handleFilterChange} />

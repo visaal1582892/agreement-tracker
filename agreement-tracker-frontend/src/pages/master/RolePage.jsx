@@ -1,35 +1,25 @@
 import { useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import {
-  Box, Button, TextField, Chip, Stack, Typography, FormControlLabel, Switch, alpha,
+  Box, Button, TextField, Stack, Typography, FormControlLabel, Switch,
   MenuItem, Select, FormControl, InputLabel, FormHelperText,
 } from '@mui/material';
-import DataTable from '../../components/ui/DataTable';
 import SlidePanel from '../../components/ui/SlidePanel';
+import MasterDataTable from '../../components/master/MasterDataTable';
 import { MasterAddButton, MasterRowActions } from '../../components/master/MasterCrudActions';
+import { buildMasterColumns, masterIdColumn } from '../../components/master/masterTableColumns';
 import { roleApi } from '../../api/masterApi';
 import { useMasterPage } from '../../hooks/useMasterPage';
 import { BRAND } from '../../config/theme';
 import { isRecordActive } from '../../utils/masterUtils';
 
 const ROLE_NAMES = ['ADMIN', 'ACCOUNT_MANAGER', 'APPROVER', 'LEADERSHIP', 'FINANCE'];
-const STATUS_OPTS = [{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }];
 
-const COLUMNS = [
-  { field: 'id',          header: '#',           width: 60, sortable: true },
-  { field: 'name',        header: 'Role',                   sortable: true, filterType: 'text' },
-  { field: 'description', header: 'Description',            sortable: true, filterType: 'text' },
-  {
-    field: 'isActive', header: 'Status', width: 110, sortable: true,
-    filterType: 'select', filterOptions: STATUS_OPTS,
-    render: (_, row) => (
-      <Chip label={isRecordActive(row) ? 'Active' : 'Inactive'} size="small"
-        sx={{ bgcolor: isRecordActive(row) ? alpha(BRAND.green, 0.12) : alpha('#EF4444', 0.10),
-          color: isRecordActive(row) ? BRAND.greenDark : '#DC2626', fontWeight: 600, fontSize: '0.72rem' }} />
-    ),
-  },
-  { field: '_actions', header: 'Actions', width: 160, sortable: false },
-];
+const COLUMNS = buildMasterColumns([
+  masterIdColumn(),
+  { field: 'name', header: 'Role', minWidth: 160, sortable: true, filterType: 'text' },
+  { field: 'description', header: 'Description', minWidth: 200, sortable: true, filterType: 'text' },
+]);
 
 export default function RolePage() {
   const page = useMasterPage({ api: roleApi, entityLabel: 'Role' });
@@ -54,7 +44,7 @@ export default function RolePage() {
         </Box>
         <MasterAddButton label="Add Role" onClick={page.openCreate} />
       </Stack>
-      <DataTable columns={COLUMNS} rows={enrichedRows} loading={page.loading} totalCount={page.totalCount}
+      <MasterDataTable columns={COLUMNS} rows={enrichedRows} loading={page.loading} totalCount={page.totalCount}
         page={page.page} rowsPerPage={page.rowsPerPage} onPageChange={page.handlePageChange}
         onRowsPerPageChange={page.handleRowsPerPageChange} sortBy={page.sortBy} sortDir={page.sortDir}
         onSort={page.handleSort} filters={page.filters} onFilterChange={page.handleFilterChange} />
