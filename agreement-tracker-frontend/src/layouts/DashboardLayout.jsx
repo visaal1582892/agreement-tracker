@@ -3,13 +3,14 @@ import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   AppBar, Box, List, ListItem,
   ListItemButton, Toolbar, Typography,
-  Badge, Avatar, Menu, MenuItem, Divider, InputBase,
-  IconButton, Tooltip,
+  Avatar, Menu, MenuItem, Divider, InputBase,
+  Tooltip,
 } from '@mui/material';
 import {
   SpaceDashboardOutlined, DescriptionOutlined, CheckCircleOutlined, Search,
-  NotificationsNone, Logout, Person, ExpandMore, StorageOutlined, ManageAccountsOutlined,
+  Logout, Person, ExpandMore, StorageOutlined, ManageAccountsOutlined,
 } from '@mui/icons-material';
+import NotificationBell from '../components/layout/NotificationBell';
 import { alpha } from '@mui/material/styles';
 import { useDispatch } from 'react-redux';
 import { BRAND } from '../config/theme';
@@ -147,8 +148,9 @@ export default function DashboardLayout() {
             </Box>
           </Box>
 
-          <Box sx={{ flexGrow: { xs: 1, md: 0 } }} />
-
+          
+          
+          
 
           <Box
             onClick={(e) => setAnchorEl(e.currentTarget)}
@@ -158,19 +160,8 @@ export default function DashboardLayout() {
               '&:hover': { bgcolor: '#F8FAFC' },
             }}
           >
-            
-          <IconButton sx={{ color: '#64748B' }}>
-            <Badge
-              badgeContent={3}
-              color="error"
-              sx={{ '& .MuiBadge-badge': { fontSize: '0.62rem', fontWeight: 700, minWidth: 17, height: 17 } }}
-            >
-              <NotificationsNone sx={{ fontSize: 22 }} />
-            </Badge>
-          </IconButton>
-
-          <Divider orientation="vertical" flexItem sx={{ height: 32, alignSelf: 'center', borderColor: '#E2E8F0' }} />  
-
+            <NotificationBell />
+            <Divider orientation="vertical" flexItem sx={{ height: 32, alignSelf: 'center', borderColor: '#E2E8F0' }} />
             <Avatar sx={{ width: 36, height: 36, bgcolor: BRAND.red, fontSize: 15, fontWeight: 700 }}>
               {userInitial}
             </Avatar>

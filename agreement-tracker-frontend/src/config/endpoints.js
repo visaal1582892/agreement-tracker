@@ -20,6 +20,8 @@ export const ENDPOINTS = {
   AGREEMENT_BY_ID: (id) => `${BASE}/agreements/${id}`,
   AGREEMENT_VERSIONS: (agreementId) => `${BASE}/agreements/${agreementId}/versions`,
   AGREEMENT_NEW_VERSION: (agreementId) => `${BASE}/agreements/${agreementId}/new-version`,
+  AGREEMENT_IN_PROGRESS: (agreementId) => `${BASE}/agreements/${agreementId}/in-progress`,
+  AGREEMENT_RENEW: (agreementId) => `${BASE}/agreements/${agreementId}/renew`,
   AGREEMENT_BULK_TRANSFER: `${BASE}/agreements/bulk-transfer`,
 
   // Agreement versions (ex-agreements)
@@ -34,7 +36,8 @@ export const ENDPOINTS = {
   AGREEMENT_VERSION_APPROVE: (id) => `${BASE}/agreement-versions/${id}/approve`,
   AGREEMENT_VERSION_REJECT: (id) => `${BASE}/agreement-versions/${id}/reject`,
   AGREEMENT_VERSION_TERMINATE: (id) => `${BASE}/agreement-versions/${id}/terminate`,
-  AGREEMENT_VERSION_IN_PROGRESS: (id) => `${BASE}/agreement-versions/${id}/in-progress`,
+  REMINDERS_UNREAD: `${BASE}/reminders/unread`,
+  REMINDER_MARK_READ: (id) => `${BASE}/reminders/${id}/read`,
   AGREEMENT_VERSION_TIMELINE: (id) => `${BASE}/agreement-versions/${id}/timeline`,
   AGREEMENT_VERSION_CREATE_EDIT: (id) => `${BASE}/agreement-versions/${id}/versions`,
   AGREEMENT_VERSION_CLONE: (id) => `${BASE}/agreement-versions/${id}/clone`,

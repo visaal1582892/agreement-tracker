@@ -14,9 +14,6 @@ public class AgreementStatusResolver {
         if (version.getTerminationDate() != null) {
             return AgreementStatus.TERMINATED;
         }
-        if (version.isInProgressFlag()) {
-            return AgreementStatus.IN_PROGRESS;
-        }
         if (version.getApprovalStatus() == ApprovalStatus.DRAFT) {
             return AgreementStatus.DRAFT;
         }
@@ -30,6 +27,9 @@ public class AgreementStatusResolver {
             Long currentVersionId = version.getAgreement().getCurrentVersionId();
             if (currentVersionId != null && !currentVersionId.equals(version.getId())) {
                 return AgreementStatus.SUPERSEDED;
+            }
+            if (version.isInProgressFlag()) {
+                return AgreementStatus.IN_PROGRESS;
             }
             if (version.getExpiryDate() != null && version.getExpiryDate().isBefore(LocalDate.now())) {
                 return AgreementStatus.EXPIRED;

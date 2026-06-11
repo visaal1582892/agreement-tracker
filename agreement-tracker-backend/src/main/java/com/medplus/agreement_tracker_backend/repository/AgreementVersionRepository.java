@@ -164,4 +164,27 @@ public interface AgreementVersionRepository extends JpaRepository<AgreementVersi
             @Param("groupId") Long groupId,
             @Param("incomeTypeId") Long incomeTypeId,
             @Param("excludeAgreementId") Long excludeAgreementId);
+
+    @Query("""
+            SELECT av FROM AgreementVersion av
+            JOIN FETCH av.agreement ag
+            JOIN FETCH ag.owner
+            WHERE av.approvalStatus = com.medplus.agreement_tracker_backend.enums.ApprovalStatus.APPROVED
+            AND av.terminationDate IS NULL
+            AND av.id = ag.currentVersionId
+            AND ag.isActive = true
+            """)
+    List<AgreementVersion> findCurrentApprovedVersions();
+
+    @Query("""
+            SELECT av FROM AgreementVersion av
+            JOIN FETCH av.agreement ag
+            WHERE av.inProgressFlag = true
+            AND av.inProgressSince IS NOT NULL
+            AND av.inProgressSince < :cutoff
+            AND av.id = ag.currentVersionId
+            AND av.approvalStatus = com.medplus.agreement_tracker_backend.enums.ApprovalStatus.APPROVED
+            """)
+    List<AgreementVersion> findStaleInProgressCurrentVersions(@Param("cutoff") java.time.LocalDateTime cutoff);
 }
+

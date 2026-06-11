@@ -5,6 +5,7 @@ import com.medplus.agreement_tracker_backend.dto.request.CreateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementVersionResponse;
 import com.medplus.agreement_tracker_backend.dto.response.BulkAgreementCreateResponse;
+import com.medplus.agreement_tracker_backend.dto.response.RenewAgreementResponse;
 import com.medplus.agreement_tracker_backend.enums.RightCode;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;
 import com.medplus.agreement_tracker_backend.service.AgreementService;
@@ -112,6 +113,23 @@ public class AgreementController {
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(agreementService.createNewVersion(id, principal.getId()));
+    }
+
+    @PatchMapping("/{id}/in-progress")
+    @PreAuthorize(AGREEMENT_EDIT)
+    public ResponseEntity<AgreementVersionResponse> toggleInProgress(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(agreementService.toggleAgreementInProgress(id, principal.getId()));
+    }
+
+    @PostMapping("/{id}/renew")
+    @PreAuthorize(AGREEMENT_EDIT)
+    public ResponseEntity<RenewAgreementResponse> renewAgreement(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(agreementService.renewAgreement(id, principal.getId()));
     }
 
     @PutMapping("/bulk-transfer")

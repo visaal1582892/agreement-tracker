@@ -9,6 +9,7 @@ import com.medplus.agreement_tracker_backend.dto.response.AgreementVersionRespon
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
 import com.medplus.agreement_tracker_backend.dto.response.BulkAgreementCreateResponse;
 import com.medplus.agreement_tracker_backend.dto.response.BulkGroupSubmitResponse;
+import com.medplus.agreement_tracker_backend.dto.response.RenewAgreementResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -54,7 +55,9 @@ public interface AgreementService {
 
     AgreementVersionResponse terminate(Long agreementVersionId, TerminateAgreementRequest request, Long currentUserId);
 
-    AgreementVersionResponse toggleInProgress(Long agreementVersionId, boolean inProgress, Long currentUserId);
+    AgreementVersionResponse toggleAgreementInProgress(Long agreementId, Long currentUserId);
+
+    RenewAgreementResponse renewAgreement(Long agreementId, Long currentUserId);
 
     Page<AgreementVersionResponse> getPendingApprovals(String search, Pageable pageable);
 

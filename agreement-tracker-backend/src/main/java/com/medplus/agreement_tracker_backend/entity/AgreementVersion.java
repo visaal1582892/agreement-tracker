@@ -76,6 +76,9 @@ public class AgreementVersion extends AuditableEntity {
     @Builder.Default
     private boolean inProgressFlag = false;
 
+    @Column(name = "in_progress_since")
+    private LocalDateTime inProgressSince;
+
     @Column(name = "termination_reason", length = 500)
     private String terminationReason;
 

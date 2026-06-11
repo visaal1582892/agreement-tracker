@@ -14,6 +14,7 @@ import com.medplus.agreement_tracker_backend.dto.response.AgreementVersionRespon
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
 import com.medplus.agreement_tracker_backend.dto.response.BulkAgreementCreateResponse;
 import com.medplus.agreement_tracker_backend.dto.response.BulkGroupSubmitResponse;
+import com.medplus.agreement_tracker_backend.dto.response.RenewAgreementResponse;
 import com.medplus.agreement_tracker_backend.dto.response.CompanyAgreementGroupResponse;
 import com.medplus.agreement_tracker_backend.dto.response.PendingActionRequestInfo;
 import com.medplus.agreement_tracker_backend.entity.Agreement;
@@ -24,6 +25,7 @@ import com.medplus.agreement_tracker_backend.entity.AgreementComputedProduct;
 import com.medplus.agreement_tracker_backend.entity.AgreementDivisionRule;
 import com.medplus.agreement_tracker_backend.entity.AgreementManufacturer;
 import com.medplus.agreement_tracker_backend.entity.AgreementProductRule;
+import com.medplus.agreement_tracker_backend.entity.AgreementPurchaseSlab;
 import com.medplus.agreement_tracker_backend.entity.AgreementType;
 import com.medplus.agreement_tracker_backend.entity.AgreementVendor;
 import com.medplus.agreement_tracker_backend.entity.AgreementVersion;
@@ -690,15 +692,83 @@ public class AgreementServiceImpl implements AgreementService {
 
     @Override
     @Transactional
-    public AgreementVersionResponse toggleInProgress(Long agreementVersionId, boolean inProgress, Long currentUserId) {
-        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
-                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
+    public AgreementVersionResponse toggleAgreementInProgress(Long agreementId, Long currentUserId) {
+        Agreement parent = agreementRepository.findById(agreementId)
+                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
 
-        version.setInProgressFlag(inProgress);
+        if (parent.getCurrentVersionId() == null) {
+            throw new BusinessException("No active version exists for this agreement");
+        }
+
+        AgreementVersion version = agreementVersionRepository.findById(parent.getCurrentVersionId())
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", parent.getCurrentVersionId()));
+
+        loadAndValidateOwnership(version.getId(), currentUserId);
+
+        if (version.getApprovalStatus() != ApprovalStatus.APPROVED) {
+            throw new BusinessException("In-progress flag can only be toggled on approved agreements");
+        }
+
+        boolean nextFlag = !version.isInProgressFlag();
+        version.setInProgressFlag(nextFlag);
+        version.setInProgressSince(nextFlag ? LocalDateTime.now() : null);
         version.setUpdatedByUserId(currentUserId);
         version = agreementVersionRepository.save(version);
 
         return toVersionResponse(version);
+    }
+
+    @Override
+    @Transactional
+    public RenewAgreementResponse renewAgreement(Long agreementId, Long currentUserId) {
+        Agreement parent = agreementRepository.findById(agreementId)
+                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
+
+        if (parent.getCurrentVersionId() == null) {
+            throw new BusinessException("No active version exists to renew from");
+        }
+
+        AgreementVersion source = agreementVersionRepository.findById(parent.getCurrentVersionId())
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", parent.getCurrentVersionId()));
+
+        loadAndValidateOwnership(source.getId(), currentUserId);
+
+        if (source.getApprovalStatus() != ApprovalStatus.APPROVED) {
+            throw new BusinessException("Only approved agreements can be renewed");
+        }
+
+        Integer maxVersion = agreementVersionRepository.findMaxVersionByAgreementId(agreementId);
+        User owner = parent.getOwner();
+
+        AgreementVersion newVersion = AgreementVersion.builder()
+                .agreement(parent)
+                .versionNumber(maxVersion + 1)
+                .owner(owner)
+                .incomeType(source.getIncomeType())
+                .agreementType(source.getAgreementType())
+                .commercialStructure(source.getCommercialStructure())
+                .commercialValue(source.getCommercialValue())
+                .calculationFormula(source.getCalculationFormula())
+                .startDate(source.getStartDate())
+                .expiryDate(source.getExpiryDate())
+                .approvalStatus(ApprovalStatus.DRAFT)
+                .notes(source.getNotes())
+                .build();
+        newVersion.setCreatedByUserId(currentUserId);
+        newVersion = agreementVersionRepository.save(newVersion);
+
+        copyVendors(source.getId(), newVersion, currentUserId);
+        copyRulesAndComputed(source.getId(), newVersion, currentUserId);
+        copyPurchaseSlabs(source.getId(), newVersion, currentUserId);
+
+        recordAudit(parent.getId(), newVersion.getId(), "AGREEMENT_RENEWED",
+                String.valueOf(source.getVersionNumber()), String.valueOf(newVersion.getVersionNumber()), currentUserId);
+
+        return new RenewAgreementResponse(
+                newVersion.getId(),
+                parent.getId(),
+                parent.getCompanyAgreementGroup().getId()
+        );
     }
 
     @Override
@@ -1145,6 +1215,20 @@ public class AgreementServiceImpl implements AgreementService {
             return products.stream().filter(p -> productIds.contains(p.getId())).toList();
         }
         return products.stream().filter(p -> !productIds.contains(p.getId())).toList();
+    }
+
+    private void copyPurchaseSlabs(Long sourceVersionId, AgreementVersion target, Long userId) {
+        purchaseSlabRepository.findByAgreementVersionIdOrderByFromValueAsc(sourceVersionId).forEach(s -> {
+            AgreementPurchaseSlab copy = AgreementPurchaseSlab.builder()
+                    .agreementVersion(target)
+                    .fromValue(s.getFromValue())
+                    .toValue(s.getToValue())
+                    .valueType(s.getValueType())
+                    .commercialValue(s.getCommercialValue())
+                    .build();
+            copy.setCreatedByUserId(userId);
+            purchaseSlabRepository.save(copy);
+        });
     }
 
     private void copyVendors(Long sourceVersionId, AgreementVersion target, Long userId) {

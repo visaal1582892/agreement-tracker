@@ -20,7 +20,7 @@ import { useAgreementPermissions } from '../../hooks/useAgreementPermissions';
 import { isHistoricalAgreement, isReadOnlyAgreement } from '../../utils/authUtils';
 import { ROUTES } from '../../config/routes';
 import { cloneAgreementOnServer } from '../../utils/agreementClone';
-import { buildAgreementEditPath } from '../../utils/agreementNavigation';
+import { buildAgreementEditPath, buildGroupWizardPath } from '../../utils/agreementNavigation';
 import { approveAgreement, rejectAgreement, submitAgreementForApproval } from '../../store/slices/agreementSlice';
 import TransferOwnershipModal from '../../components/agreements/TransferOwnershipModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -255,6 +255,39 @@ export default function AgreementDetailPage({
       { isReadOnlyView },
     )
     : null;
+
+  const daysToExpiry = agreement?.expiryDate
+    ? dayjs(agreement.expiryDate).startOf('day').diff(dayjs().startOf('day'), 'day')
+    : null;
+  const isCurrentVersion = Boolean(group?.currentVersionId && selectedVersionId === group.currentVersionId);
+  const showLifecycleActions = isCurrentVersion
+    && agreement?.approvalStatus === 'APPROVED'
+    && !isReadOnlyView
+    && (actions?.editApproved || actions?.terminate);
+
+  const handleToggleInProgress = async () => {
+    try {
+      const { data } = await axiosInstance.patch(ENDPOINTS.AGREEMENT_IN_PROGRESS(agreementId));
+      enqueueSnackbar(
+        data.inProgressFlag ? 'Marked discussions in progress' : 'In progress status cleared',
+        { variant: 'success' },
+      );
+      await refreshAfterMutation(data, data.id);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to update in-progress status', { variant: 'error' });
+    }
+  };
+
+  const handleRenew = async () => {
+    try {
+      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_RENEW(agreementId));
+      enqueueSnackbar('Renewal draft created — continue in wizard', { variant: 'success' });
+      const path = buildGroupWizardPath(data.groupId, data.agreementId);
+      if (path) navigate(path);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Renewal failed', { variant: 'error' });
+    }
+  };
 
   const handleCloneConfirm = async () => {
     if (!selectedVersionId) return;
@@ -580,6 +613,26 @@ export default function AgreementDetailPage({
                     onClick={() => navigate(`/agreements/${selectedVersionId}/edit`)}
                     sx={{ bgcolor: BRAND.red }}>
                     Revise & Resubmit
+                  </Button>
+                )}
+                {showLifecycleActions && (daysToExpiry <= 90 || agreement?.computedStatus === 'EXPIRED') && (
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    fullWidth
+                    onClick={handleToggleInProgress}
+                  >
+                    {agreement?.inProgressFlag ? 'Clear Discussions In Progress' : 'Mark Discussions in Progress'}
+                  </Button>
+                )}
+                {showLifecycleActions && (agreement?.computedStatus === 'EXPIRED' || daysToExpiry <= 90) && (
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    onClick={handleRenew}
+                    sx={{ bgcolor: BRAND.red }}
+                  >
+                    Renew Agreement
                   </Button>
                 )}
                 {actions?.terminate && (

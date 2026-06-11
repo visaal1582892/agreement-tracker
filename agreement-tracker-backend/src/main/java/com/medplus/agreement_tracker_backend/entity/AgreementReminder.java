@@ -1,7 +1,6 @@
 package com.medplus.agreement_tracker_backend.entity;
 
 import com.medplus.agreement_tracker_backend.entity.base.AuditableEntity;
-import com.medplus.agreement_tracker_backend.enums.ReminderType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -27,9 +26,8 @@ public class AgreementReminder extends AuditableEntity {
     @JoinColumn(name = "agreement_version_id", nullable = false)
     private AgreementVersion agreementVersion;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "reminder_type", nullable = false, length = 20)
-    private ReminderType reminderType;
+    @Column(name = "reminder_type", nullable = false, length = 50)
+    private String reminderType;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sent_to_user_id", nullable = false)
@@ -37,4 +35,8 @@ public class AgreementReminder extends AuditableEntity {
 
     @Column(name = "sent_at", nullable = false)
     private LocalDateTime sentAt;
+
+    @Column(name = "is_read", nullable = false)
+    @Builder.Default
+    private boolean isRead = false;
 }

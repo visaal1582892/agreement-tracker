@@ -112,15 +112,6 @@ public class AgreementVersionController {
         return ResponseEntity.ok(agreementService.terminate(id, request, principal.getId()));
     }
 
-    @PatchMapping("/{id}/in-progress")
-    @PreAuthorize(AGREEMENT_EDIT)
-    public ResponseEntity<AgreementVersionResponse> toggleInProgress(
-            @PathVariable Long id,
-            @RequestParam boolean value,
-            @AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(agreementService.toggleInProgress(id, value, principal.getId()));
-    }
-
     @GetMapping("/pending-approvals")
     @PreAuthorize(AGREEMENT_APPROVE)
     public ResponseEntity<PagedResponse<AgreementVersionResponse>> getPendingApprovals(
