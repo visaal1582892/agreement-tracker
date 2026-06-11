@@ -1,3 +1,5 @@
+import { formatLocalDateString } from './dateUtils';
+
 export function buildAgreementDetailsPayload(agreement) {
   if (!agreement) {
     return { details: {}, commercials: {} };
@@ -7,8 +9,8 @@ export function buildAgreementDetailsPayload(agreement) {
     details: {
       incomeTypeId: details.incomeTypeId || null,
       agreementTypeId: details.agreementTypeId || null,
-      startDate: details.startDate?.split('T')[0] || null,
-      expiryDate: details.expiryDate?.split('T')[0] || null,
+      startDate: formatLocalDateString(details.startDate),
+      expiryDate: formatLocalDateString(details.expiryDate),
       notes: details.notes || null,
     },
     commercials: {

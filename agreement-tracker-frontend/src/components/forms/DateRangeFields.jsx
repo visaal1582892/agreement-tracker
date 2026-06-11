@@ -4,6 +4,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import { BRAND } from '../../config/theme';
+import { formatLocalDateString } from '../../utils/dateUtils';
 
 dayjs.extend(customParseFormat);
 
@@ -149,10 +150,10 @@ export default function DateRangeFields({ startDate, expiryDate, onChange, disab
     });
   };
 
-  const toIso = (d) => {
+  const toLocalDate = (d) => {
     if (!d) return null;
     const parsed = dayjs.isDayjs(d) ? d : dayjs(d);
-    return parsed.isValid() ? parsed.toISOString() : null;
+    return parsed.isValid() ? formatLocalDateString(parsed) : null;
   };
 
   const applyTenureFields = (fields) => {
@@ -174,9 +175,9 @@ export default function DateRangeFields({ startDate, expiryDate, onChange, disab
     syncTenureFromDates(startDate, expiryDate);
   }, [startDate, expiryDate]);
 
-  const computeExpiryIso = (nextStartIso, years, months, days) => {
-    const nextExpiry = calculateExpiryFromTenure(nextStartIso, years, months, days);
-    return nextExpiry ? toIso(nextExpiry) : null;
+  const computeExpiryDate = (nextStartDate, years, months, days) => {
+    const nextExpiry = calculateExpiryFromTenure(nextStartDate, years, months, days);
+    return nextExpiry ? toLocalDate(nextExpiry) : null;
   };
 
   const handleStartChange = (date) => {
@@ -187,12 +188,12 @@ export default function DateRangeFields({ startDate, expiryDate, onChange, disab
       return;
     }
 
-    const nextStartIso = toIso(nextStart);
+    const nextStartDate = toLocalDate(nextStart);
 
     if (hasAnyTenure(tenureYears, tenureMonths, tenureDays)) {
       emit({
-        startDate: nextStartIso,
-        expiryDate: computeExpiryIso(nextStartIso, tenureYears, tenureMonths, tenureDays),
+        startDate: nextStartDate,
+        expiryDate: computeExpiryDate(nextStartDate, tenureYears, tenureMonths, tenureDays),
       });
       return;
     }
@@ -200,14 +201,14 @@ export default function DateRangeFields({ startDate, expiryDate, onChange, disab
     if (expiryDate) {
       if (!toDay(expiryDate).isAfter(nextStart)) {
         applyTenureFields({ tenureYears: '', tenureMonths: '', tenureDays: '' });
-        emit({ startDate: nextStartIso, expiryDate: null });
+        emit({ startDate: nextStartDate, expiryDate: null });
         return;
       }
-      emit({ startDate: nextStartIso });
+      emit({ startDate: nextStartDate });
       return;
     }
 
-    emit({ startDate: nextStartIso });
+    emit({ startDate: nextStartDate });
   };
 
   const handleTenureChange = (field, rawValue) => {
@@ -228,7 +229,7 @@ export default function DateRangeFields({ startDate, expiryDate, onChange, disab
       return;
     }
 
-    emit({ expiryDate: computeExpiryIso(startDate, nextYears, nextMonths, nextDays) });
+    emit({ expiryDate: computeExpiryDate(startDate, nextYears, nextMonths, nextDays) });
   };
 
   const handleExpiryChange = (date) => {
@@ -243,7 +244,7 @@ export default function DateRangeFields({ startDate, expiryDate, onChange, disab
       return;
     }
 
-    emit({ expiryDate: toIso(nextExpiry) });
+    emit({ expiryDate: toLocalDate(nextExpiry) });
   };
 
   return (

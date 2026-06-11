@@ -119,7 +119,7 @@ export default function DashboardLayout() {
           boxShadow: 'none',
         }}
       >
-        <Toolbar sx={{ gap: 2, minHeight: '68px !important', px: { xs: 2, md: 3 } }}>
+        <Toolbar sx={{ gap: 2, minHeight: '68px !important', justifyContent: 'space-between', px: { xs: 2, md: 3 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
             <Box sx={{
               width: 38, height: 38, borderRadius: 2,
@@ -147,28 +147,18 @@ export default function DashboardLayout() {
             </Box>
           </Box>
 
-          <Box sx={{
-            flex: 1,
-            maxWidth: 520,
-            mx: 'auto',
-            display: { xs: 'none', md: 'flex' },
-            alignItems: 'center',
-            bgcolor: '#F8FAFC',
-            border: '1px solid #E2E8F0',
-            borderRadius: 10,
-            px: 2,
-            py: 0.75,
-            gap: 1,
-          }}>
-            <Search sx={{ fontSize: 20, color: '#94A3B8' }} />
-            <InputBase
-              placeholder="Search agreements, vendors, companies..."
-              sx={{ flex: 1, fontSize: '0.875rem', color: BRAND.textPrimary }}
-            />
-          </Box>
-
           <Box sx={{ flexGrow: { xs: 1, md: 0 } }} />
 
+
+          <Box
+            onClick={(e) => setAnchorEl(e.currentTarget)}
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 1.25,
+              cursor: 'pointer', borderRadius: 2, px: 1, py: 0.5,
+              '&:hover': { bgcolor: '#F8FAFC' },
+            }}
+          >
+            
           <IconButton sx={{ color: '#64748B' }}>
             <Badge
               badgeContent={3}
@@ -179,16 +169,8 @@ export default function DashboardLayout() {
             </Badge>
           </IconButton>
 
-          <Divider orientation="vertical" flexItem sx={{ height: 32, alignSelf: 'center', borderColor: '#E2E8F0' }} />
+          <Divider orientation="vertical" flexItem sx={{ height: 32, alignSelf: 'center', borderColor: '#E2E8F0' }} />  
 
-          <Box
-            onClick={(e) => setAnchorEl(e.currentTarget)}
-            sx={{
-              display: 'flex', alignItems: 'center', gap: 1.25,
-              cursor: 'pointer', borderRadius: 2, px: 1, py: 0.5,
-              '&:hover': { bgcolor: '#F8FAFC' },
-            }}
-          >
             <Avatar sx={{ width: 36, height: 36, bgcolor: BRAND.red, fontSize: 15, fontWeight: 700 }}>
               {userInitial}
             </Avatar>

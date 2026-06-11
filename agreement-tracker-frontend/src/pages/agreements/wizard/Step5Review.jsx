@@ -90,7 +90,14 @@ export default function Step5Review({ state, serverAgreementId }) {
               <Typography variant="subtitle2" fontWeight={700} mb={1}>Commercials</Typography>
               <ReviewRow label="Structure" value={agreement.commercials.commercialStructure} />
               {agreement.commercials.commercialStructure === 'FLAT' && (
-                <ReviewRow label="Value" value={agreement.commercials.commercialValue ? `₹${Number(agreement.commercials.commercialValue).toLocaleString('en-IN')}` : ''} />
+                <ReviewRow
+                  label="Value"
+                  value={agreement.commercials.commercialValue
+                    ? (agreement.commercials.valueType === 'PERCENTAGE'
+                      ? `${agreement.commercials.commercialValue}%`
+                      : `₹${Number(agreement.commercials.commercialValue).toLocaleString('en-IN')}`)
+                    : ''}
+                />
               )}
               {agreement.commercials.commercialStructure === 'SLAB' && (
                 <>

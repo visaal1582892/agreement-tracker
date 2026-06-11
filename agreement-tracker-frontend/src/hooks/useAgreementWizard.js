@@ -14,6 +14,7 @@ export function createBlankAgreement() {
     commercials: {
       commercialStructure: 'FLAT',
       commercialValue: '',
+      valueType: 'FIXED',
       calculationFormula: '',
       selectedFrequencies: [],
     },
@@ -129,6 +130,7 @@ export function useAgreementWizard() {
         commercials: {
           commercialStructure: agreement.commercialStructure ?? 'FLAT',
           commercialValue: agreement.commercialValue ?? '',
+          valueType: agreement.valueType ?? 'FIXED',
           calculationFormula: agreement.calculationFormula ?? '',
           selectedFrequencies: [],
         },

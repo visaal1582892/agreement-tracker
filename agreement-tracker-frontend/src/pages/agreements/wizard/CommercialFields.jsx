@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Box, Typography, Grid, RadioGroup, FormControlLabel, Radio,
-  TextField, Button, FormControl, InputLabel, Select, MenuItem,
+  TextField, Button,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, IconButton, Alert, CircularProgress,
 } from '@mui/material';
@@ -16,6 +16,7 @@ import {
   toSlabPayload,
   updatePurchaseSlab,
 } from '../../../api/commercialApi';
+import CommercialValueInput from '../../../components/forms/CommercialValueInput';
 import CommercialsUploadModal from './CommercialsUploadModal';
 
 const EMPTY_DRAFT = {
@@ -169,14 +170,13 @@ export default function CommercialFields({
       {commercials.commercialStructure === 'FLAT' && (
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 6 }}>
-            <TextField
-              label="Commercial Value *"
-              type="number"
-              fullWidth
-              size="small"
+            <CommercialValueInput
+              label="Commercial Value"
+              required
               value={commercials.commercialValue}
-              onChange={(e) => onUpdate({ commercialValue: e.target.value })}
-              slotProps={{ input: { startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography> } }}
+              onChangeValue={(v) => onUpdate({ commercialValue: v })}
+              type={commercials.valueType || 'FIXED'}
+              onChangeType={(t) => onUpdate({ valueType: t })}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
@@ -205,7 +205,6 @@ export default function CommercialFields({
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Slab Rule</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
                     <TableCell width={100} />
                   </TableRow>
                 </TableHead>
@@ -213,7 +212,6 @@ export default function CommercialFields({
                   {savedSlabs.map((slab) => (
                     <TableRow key={slab.id} selected={editingSlabId === slab.id}>
                       <TableCell>{formatSlabLabel(slab)}</TableCell>
-                      <TableCell>{slab.valueType === 'PERCENTAGE' ? 'Percentage' : 'Fixed'}</TableCell>
                       <TableCell>
                         <IconButton size="small" onClick={() => handleEditSlab(slab)} aria-label="Edit slab">
                           <Edit fontSize="small" />
@@ -235,7 +233,7 @@ export default function CommercialFields({
             {editingSlabId ? 'Edit Slab' : 'Add Slab'}
           </Typography>
           <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid size={{ xs: 12, sm: 3 }}>
+            <Grid size={{ xs: 12, sm: 4 }}>
               <TextField
                 label="From Value"
                 type="number"
@@ -245,7 +243,7 @@ export default function CommercialFields({
                 onChange={(e) => updateDraft('fromValue', e.target.value)}
               />
             </Grid>
-            <Grid size={{ xs: 12, sm: 3 }}>
+            <Grid size={{ xs: 12, sm: 4 }}>
               <TextField
                 label="To Value"
                 type="number"
@@ -255,27 +253,13 @@ export default function CommercialFields({
                 onChange={(e) => updateDraft('toValue', e.target.value)}
               />
             </Grid>
-            <Grid size={{ xs: 12, sm: 3 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Type</InputLabel>
-                <Select
-                  value={draftSlab.valueType}
-                  label="Type"
-                  onChange={(e) => updateDraft('valueType', e.target.value)}
-                >
-                  <MenuItem value="PERCENTAGE">Percentage (%)</MenuItem>
-                  <MenuItem value="FIXED">Fixed</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 3 }}>
-              <TextField
-                label={draftSlab.valueType === 'PERCENTAGE' ? 'Value (%)' : 'Fixed Value'}
-                type="number"
-                fullWidth
-                size="small"
+            <Grid size={{ xs: 12, sm: 4 }}>
+              <CommercialValueInput
+                label="Commercial Value"
                 value={draftSlab.commercialValue}
-                onChange={(e) => updateDraft('commercialValue', e.target.value)}
+                onChangeValue={(v) => updateDraft('commercialValue', v)}
+                type={draftSlab.valueType}
+                onChangeType={(t) => updateDraft('valueType', t)}
               />
             </Grid>
           </Grid>
