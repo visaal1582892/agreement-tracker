@@ -13,21 +13,29 @@ import java.util.Optional;
 
 public interface AgreementActionRequestRepository extends JpaRepository<AgreementActionRequest, Long> {
 
-    Optional<AgreementActionRequest> findFirstByAgreement_AgreementGroup_IdAndStatus(
-            Long agreementGroupId, ActionRequestStatus status);
+    Optional<AgreementActionRequest> findFirstByAgreementVersion_Agreement_IdAndStatus(
+            Long agreementId, ActionRequestStatus status);
 
-    List<AgreementActionRequest> findByAgreement_IdOrderByCreatedAtAsc(Long agreementId);
+    Optional<AgreementActionRequest> findFirstByCompanyAgreementGroup_IdAndStatus(
+            Long groupId, ActionRequestStatus status);
+
+    List<AgreementActionRequest> findByAgreementVersion_IdOrderByCreatedAtAsc(Long agreementVersionId);
+
+    void deleteByAgreementVersionId(Long agreementVersionId);
 
     @Query("""
             SELECT r FROM AgreementActionRequest r
-            JOIN FETCH r.agreement a
-            JOIN FETCH a.agreementGroup g
+            LEFT JOIN FETCH r.agreementVersion av
+            LEFT JOIN FETCH av.agreement ag
+            LEFT JOIN FETCH r.companyAgreementGroup cag
+            LEFT JOIN FETCH cag.company
             JOIN FETCH r.requestedBy
             LEFT JOIN FETCH r.targetUser
             WHERE r.status = :status
             AND (:search IS NULL OR :search = '' OR
-                 LOWER(g.agreementNumber) LIKE LOWER(CONCAT('%', :search, '%')) OR
-                 LOWER(a.agreementName) LIKE LOWER(CONCAT('%', :search, '%')))
+                 LOWER(COALESCE(ag.agreementName, cag.name, '')) LIKE LOWER(CONCAT('%', :search, '%'))
+                 OR LOWER(COALESCE(ag.companyAgreementGroup.company.companyName, cag.company.companyName, ''))
+                    LIKE LOWER(CONCAT('%', :search, '%')))
             ORDER BY r.createdAt ASC
             """)
     Page<AgreementActionRequest> findAllPending(

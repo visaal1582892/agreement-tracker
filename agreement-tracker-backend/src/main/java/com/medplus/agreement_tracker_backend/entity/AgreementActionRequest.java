@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "agreement_action_requests", indexes = {
-        @Index(name = "idx_action_req_agreement_id", columnList = "agreement_id"),
+        @Index(name = "idx_action_req_agreement_id", columnList = "agreement_version_id"),
         @Index(name = "idx_action_req_status", columnList = "status")
 })
 @Getter
@@ -26,8 +26,12 @@ public class AgreementActionRequest {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "agreement_id", nullable = false)
-    private Agreement agreement;
+    @JoinColumn(name = "agreement_version_id")
+    private AgreementVersion agreementVersion;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_agreement_group_id")
+    private CompanyAgreementGroup companyAgreementGroup;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "action_type", nullable = false, length = 20)

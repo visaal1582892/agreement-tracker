@@ -1,4 +1,4 @@
-import { Box, Step, StepLabel, Stepper, Typography, Paper, Button, alpha } from '@mui/material';
+import { Box, Step, StepLabel, Stepper, Typography, Paper, Button, Chip, Tabs, Tab, alpha } from '@mui/material';
 import { BRAND } from '../config/theme';
 
 const STEPS = [
@@ -16,16 +16,21 @@ const cardSx = {
 
 export default function WizardLayout({
   activeStep,
+  agreementTabLabel = 'New Agreement',
+  draftTabs = [],
+  activeDraftId,
+  onDraftTabChange,
+  submitButtonLabel = 'Submit for Approval',
   children,
   onBack,
   onCancel,
   footerMode = 'setup',
-  onSaveDraft,
   onNext,
   onSaveAndCreateAnother,
   onFinishAndExit,
+  onDetailsNext,
+  showDraftTabs = true,
   onSubmitForApproval,
-  showSaveDraft = true,
   isSavingDraft,
   isSubmitting,
   isSavingLoop,
@@ -44,9 +49,67 @@ export default function WizardLayout({
           minHeight: 0,
         }}
       >
+        {showDraftTabs && draftTabs.length > 0 ? (
+          <Box sx={{
+            px: { xs: 1, md: 2 },
+            background: '#FAFBFC',
+            borderBottom: '1px solid #F1F5F9',
+          }}>
+            <Tabs
+              value={activeDraftId ?? false}
+              onChange={(_, value) => onDraftTabChange?.(value)}
+              variant="scrollable"
+              scrollButtons="auto"
+              sx={{
+                minHeight: 44,
+                '& .MuiTab-root': {
+                  minHeight: 44,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  maxWidth: 220,
+                },
+                '& .Mui-selected': { color: BRAND.red },
+                '& .MuiTabs-indicator': { bgcolor: BRAND.red },
+              }}
+            >
+              {draftTabs.map((tab) => (
+                <Tab
+                  key={tab.agreementId}
+                  value={tab.agreementId}
+                  label={tab.label}
+                />
+              ))}
+            </Tabs>
+          </Box>
+        ) : (
+          <Box sx={{
+            px: { xs: 2, md: 3 },
+            py: 1.25,
+            background: '#FAFBFC',
+            borderBottom: '1px solid #F1F5F9',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+          }}>
+            <Chip
+              label={agreementTabLabel}
+              size="small"
+              sx={{
+                fontWeight: 700,
+                bgcolor: alpha(BRAND.red, 0.08),
+                color: BRAND.red,
+                border: `1px solid ${alpha(BRAND.red, 0.2)}`,
+                maxWidth: '100%',
+                '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' },
+              }}
+            />
+          </Box>
+        )}
+
         <Box sx={{
           px: { xs: 2, md: 3 },
-          py: 2.5,
+          py: 2,
           background: 'linear-gradient(180deg, #FAFBFC 0%, #fff 100%)',
           borderBottom: '1px solid #F1F5F9',
         }}>
@@ -124,23 +187,6 @@ export default function WizardLayout({
 
             {footerMode === 'setup' && (
               <>
-                {onSaveDraft && (
-                  <Button
-                    variant="outlined"
-                    onClick={onSaveDraft}
-                    disabled={busy}
-                    sx={{
-                      borderRadius: 2.5,
-                      px: 2.5,
-                      minWidth: 130,
-                      fontWeight: 600,
-                      borderColor: '#CBD5E1',
-                      color: '#475569',
-                    }}
-                  >
-                    {isSavingDraft ? 'Saving…' : 'Save as Draft'}
-                  </Button>
-                )}
                 <Button
                   variant="contained"
                   onClick={onNext}
@@ -162,31 +208,33 @@ export default function WizardLayout({
 
             {footerMode === 'details' && (
               <>
-                {showSaveDraft && onSaveDraft && (
+                {onDetailsNext ? (
                   <Button
-                    variant="outlined"
-                    onClick={onSaveDraft}
+                    variant="contained"
+                    onClick={onDetailsNext}
                     disabled={busy}
                     sx={{
                       borderRadius: 2.5,
-                      px: 2.5,
-                      minWidth: 130,
-                      fontWeight: 600,
-                      borderColor: '#CBD5E1',
-                      color: '#475569',
+                      px: 3,
+                      minWidth: 120,
+                      fontWeight: 700,
+                      background: BRAND.redGradient,
+                      boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
+                      '&:hover': { background: BRAND.redGradient },
                     }}
                   >
-                    {isSavingDraft ? 'Saving…' : 'Save as Draft'}
+                    {isSavingDraft ? 'Saving…' : 'Next'}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outlined"
+                    onClick={onFinishAndExit}
+                    disabled={busy}
+                    sx={{ borderRadius: 2.5, px: 2.5, minWidth: 130, fontWeight: 600 }}
+                  >
+                    {isSavingDraft ? 'Saving…' : 'Finish & Exit'}
                   </Button>
                 )}
-                <Button
-                  variant="outlined"
-                  onClick={onFinishAndExit}
-                  disabled={busy}
-                  sx={{ borderRadius: 2.5, px: 2.5, minWidth: 130, fontWeight: 600 }}
-                >
-                  {isSavingDraft ? 'Saving…' : 'Finish & Exit'}
-                </Button>
                 <Button
                   variant="contained"
                   onClick={onSaveAndCreateAnother}
@@ -221,29 +269,12 @@ export default function WizardLayout({
                   '&:hover': { background: BRAND.redGradient },
                 }}
               >
-                {isSubmitting ? 'Submitting…' : 'Submit for Approval'}
+                {isSubmitting ? 'Submitting…' : submitButtonLabel}
               </Button>
             )}
 
             {footerMode === 'revision' && (
               <>
-                {showSaveDraft && onSaveDraft && activeStep < 2 && (
-                  <Button
-                    variant="outlined"
-                    onClick={onSaveDraft}
-                    disabled={busy}
-                    sx={{
-                      borderRadius: 2.5,
-                      px: 2.5,
-                      minWidth: 130,
-                      fontWeight: 600,
-                      borderColor: '#CBD5E1',
-                      color: '#475569',
-                    }}
-                  >
-                    {isSavingDraft ? 'Saving…' : 'Save as Draft'}
-                  </Button>
-                )}
                 {activeStep < 2 && (
                   <Button
                     variant="contained"
@@ -277,7 +308,7 @@ export default function WizardLayout({
                       '&:hover': { background: BRAND.redGradient },
                     }}
                   >
-                    {isSubmitting ? 'Submitting…' : 'Submit for Approval'}
+                    {isSubmitting ? 'Submitting…' : submitButtonLabel}
                   </Button>
                 )}
               </>

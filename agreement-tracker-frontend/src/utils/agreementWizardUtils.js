@@ -21,8 +21,9 @@ export function buildAgreementDetailsPayload(agreement) {
 
 export function buildStep1CreatePayload(state) {
   return {
-    agreementName: state.agreementName?.trim() || null,
     companyId: state.companyId,
+    companyAgreementGroupId: state.companyAgreementGroupId || null,
+    newCompanyAgreementGroupName: state.newCompanyAgreementGroupName?.trim() || null,
     vendorIds: state.vendorIds ?? [],
     productRules: state.productRules ?? {},
     agreements: [],
@@ -32,8 +33,9 @@ export function buildStep1CreatePayload(state) {
 export function buildStep1UpdatePayload(state) {
   const { details, commercials } = buildAgreementDetailsPayload(state.agreement);
   return {
-    agreementName: state.agreementName?.trim() || null,
     companyId: state.companyId,
+    companyAgreementGroupId: state.companyAgreementGroupId || null,
+    newCompanyAgreementGroupName: state.newCompanyAgreementGroupName?.trim() || null,
     vendorIds: state.vendorIds ?? [],
     productRules: state.productRules ?? {},
     details,
@@ -44,6 +46,10 @@ export function buildStep1UpdatePayload(state) {
 export function validateStep1Fields(state, enqueueSnackbar) {
   if (!state.companyId) {
     enqueueSnackbar('Company is required', { variant: 'warning' });
+    return false;
+  }
+  if (!state.companyAgreementGroupId && !state.newCompanyAgreementGroupName?.trim()) {
+    enqueueSnackbar('Select or enter a company agreement group', { variant: 'warning' });
     return false;
   }
   if (!state.vendorIds?.length) {
@@ -94,13 +100,17 @@ export function buildContractDetailsSnapshot(agreement) {
 }
 
 export function validateStep2LoopFields(state, enqueueSnackbar) {
-  if (!state.agreementName?.trim()) {
-    enqueueSnackbar('Agreement name is required', { variant: 'warning' });
+  const { details } = state.agreement ?? {};
+  if (!details?.agreementTypeId) {
+    enqueueSnackbar('Agreement type is required', { variant: 'warning' });
     return false;
   }
-  const { details } = state.agreement ?? {};
-  if (!details?.startDate || !details?.expiryDate) {
-    enqueueSnackbar('Start and expiry dates are required', { variant: 'warning' });
+  if (!details?.startDate) {
+    enqueueSnackbar('Start date is required', { variant: 'warning' });
+    return false;
+  }
+  if (!details?.expiryDate) {
+    enqueueSnackbar('Expiry date is required', { variant: 'warning' });
     return false;
   }
   return true;

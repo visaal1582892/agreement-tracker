@@ -25,6 +25,9 @@ const INITIAL_STATE = {
   agreementName: '',
   companyId: null,
   companyName: '',
+  companyAgreementGroupId: null,
+  companyAgreementGroupName: '',
+  newCompanyAgreementGroupName: '',
   vendorIds: [],
   productRules: {
     manufacturers: [],
@@ -108,6 +111,9 @@ export function useAgreementWizard() {
       agreementName: agreement.agreementName ?? '',
       companyId: agreement.companyId ?? null,
       companyName: agreement.companyName ?? '',
+      companyAgreementGroupId: agreement.companyAgreementGroupId ?? null,
+      companyAgreementGroupName: agreement.companyAgreementGroupName ?? '',
+      newCompanyAgreementGroupName: '',
       vendorIds: agreement.vendors?.map((v) => v.vendorId) ?? [],
       productRules: mapProductRulesFromApi(agreement),
       agreement: {
@@ -138,6 +144,8 @@ export function useAgreementWizard() {
       agreementName: '',
       companyId: cloned.companyId ?? null,
       companyName: cloned.companyName ?? '',
+      companyAgreementGroupId: cloned.companyAgreementGroupId ?? prev.companyAgreementGroupId,
+      companyAgreementGroupName: cloned.companyAgreementGroupName ?? prev.companyAgreementGroupName,
       vendorIds: cloned.vendors?.map((v) => v.vendorId) ?? [],
       productRules: mapProductRulesFromApi(cloned),
       agreement: createBlankAgreement(),

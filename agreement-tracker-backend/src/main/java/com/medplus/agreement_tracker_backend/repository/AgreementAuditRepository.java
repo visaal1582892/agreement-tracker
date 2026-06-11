@@ -9,7 +9,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface AgreementAuditRepository extends JpaRepository<AgreementAudit, Long> {
 
-    Page<AgreementAudit> findByAgreementGroupIdOrderByCreatedAtDesc(Long agreementGroupId, Pageable pageable);
-
     Page<AgreementAudit> findByAgreementIdOrderByCreatedAtDesc(Long agreementId, Pageable pageable);
+
+    Page<AgreementAudit> findByAgreementVersionIdOrderByCreatedAtDesc(Long agreementVersionId, Pageable pageable);
+
+    void deleteByAgreementId(Long agreementId);
+
+    void deleteByAgreementVersionId(Long agreementVersionId);
 }

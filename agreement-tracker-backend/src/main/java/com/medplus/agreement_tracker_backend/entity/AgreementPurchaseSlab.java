@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 
 @Entity
 @Table(name = "agreement_purchase_slabs", indexes = {
-        @Index(name = "idx_aps_agreement_id", columnList = "agreement_id")
+        @Index(name = "idx_aps_agreement_version_id", columnList = "agreement_version_id")
 })
 @Getter
 @Setter
@@ -23,8 +23,8 @@ public class AgreementPurchaseSlab extends AuditableEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "agreement_id", nullable = false)
-    private Agreement agreement;
+    @JoinColumn(name = "agreement_version_id", nullable = false)
+    private AgreementVersion agreementVersion;
 
     @Column(name = "from_value", nullable = false, precision = 15, scale = 2)
     private BigDecimal fromValue;

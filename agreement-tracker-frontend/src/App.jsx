@@ -13,7 +13,9 @@ import DashboardLayout from './layouts/DashboardLayout';
 import LoginPage from './pages/auth/LoginPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import AgreementListPage from './pages/agreements/AgreementListPage';
+import GroupDetailsPage from './pages/agreements/GroupDetailsPage';
 import AgreementCreatePage from './pages/agreements/AgreementCreatePage';
+import AgreementGroupWizardPage from './pages/agreements/AgreementGroupWizardPage';
 import AgreementDetailPage from './pages/agreements/AgreementDetailPage';
 import AgreementEditPage from './pages/agreements/AgreementEditPage';
 import ApprovalsPage from './pages/approvals/ApprovalsPage';
@@ -49,17 +51,19 @@ export default function App() {
                       <Route index element={<DashboardPage />} />
                     </Route>
 
-                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL]} />}>
-                      <Route path={ROUTES.AGREEMENTS} element={<AgreementListPage />} />
-                      <Route path="/agreements/groups/:groupId" element={<AgreementDetailPage />} />
-                    </Route>
-
                     <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_CREATE]} />}>
                       <Route path={ROUTES.AGREEMENT_CREATE} element={<AgreementCreatePage />} />
                     </Route>
 
-                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_EDIT]} />}>
+                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_CREATE, RIGHTS.AGREEMENT_EDIT]} />}>
+                      <Route path={ROUTES.AGREEMENT_GROUP_WIZARD} element={<AgreementGroupWizardPage />} />
                       <Route path={ROUTES.AGREEMENT_EDIT} element={<AgreementEditPage />} />
+                    </Route>
+
+                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL]} />}>
+                      <Route path={ROUTES.AGREEMENTS} element={<AgreementListPage />} />
+                      <Route path={ROUTES.AGREEMENT_GROUP_DETAIL} element={<GroupDetailsPage />} />
+                      <Route path={ROUTES.AGREEMENT_DETAIL} element={<AgreementDetailPage />} />
                     </Route>
 
                     <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_APPROVE]} />}>

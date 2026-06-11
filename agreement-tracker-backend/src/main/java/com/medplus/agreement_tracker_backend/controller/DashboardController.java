@@ -2,8 +2,8 @@ package com.medplus.agreement_tracker_backend.controller;
 
 import com.medplus.agreement_tracker_backend.dto.response.DashboardStatsResponse;
 import com.medplus.agreement_tracker_backend.dto.response.ExpiringAgreementResponse;
-import com.medplus.agreement_tracker_backend.entity.Agreement;
-import com.medplus.agreement_tracker_backend.repository.AgreementRepository;
+import com.medplus.agreement_tracker_backend.entity.AgreementVersion;
+import com.medplus.agreement_tracker_backend.repository.AgreementVersionRepository;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,7 +22,7 @@ import static com.medplus.agreement_tracker_backend.security.RightExpressions.DA
 @RequiredArgsConstructor
 public class DashboardController {
 
-    private final AgreementRepository agreementRepository;
+    private final AgreementVersionRepository agreementVersionRepository;
 
     @GetMapping("/stats")
     @PreAuthorize(DASHBOARD_VIEW)
@@ -30,12 +30,12 @@ public class DashboardController {
             @AuthenticationPrincipal UserPrincipal principal) {
         LocalDate today = LocalDate.now();
 
-        long active = agreementRepository.countActive(today);
-        long expiring30 = agreementRepository.findApprovedExpiringSoon(today, today.plusDays(30)).size();
-        long expiring60 = agreementRepository.findApprovedExpiringSoon(today.plusDays(31), today.plusDays(60)).size();
-        long expiring90 = agreementRepository.findApprovedExpiringSoon(today.plusDays(61), today.plusDays(90)).size();
-        long expired = agreementRepository.findExpiredNotInProgress(today).size();
-        long pendingApproval = agreementRepository.countPendingByOwner(principal.getId());
+        long active = agreementVersionRepository.countActive(today);
+        long expiring30 = agreementVersionRepository.findApprovedExpiringSoon(today, today.plusDays(30)).size();
+        long expiring60 = agreementVersionRepository.findApprovedExpiringSoon(today.plusDays(31), today.plusDays(60)).size();
+        long expiring90 = agreementVersionRepository.findApprovedExpiringSoon(today.plusDays(61), today.plusDays(90)).size();
+        long expired = agreementVersionRepository.findExpiredNotInProgress(today).size();
+        long pendingApproval = agreementVersionRepository.countPendingByOwner(principal.getId());
 
         return ResponseEntity.ok(new DashboardStatsResponse(
                 active, expiring30, expiring60, expiring90, expired, pendingApproval, 0L, 0L
@@ -47,25 +47,25 @@ public class DashboardController {
     public ResponseEntity<List<ExpiringAgreementResponse>> getExpiring() {
         LocalDate today = LocalDate.now();
         LocalDate limit = today.plusDays(90);
-        List<ExpiringAgreementResponse> items = agreementRepository.findApprovedExpiringWithinDays(today, limit)
+        List<ExpiringAgreementResponse> items = agreementVersionRepository.findApprovedExpiringWithinDays(today, limit)
                 .stream()
-                .map(a -> toExpiringResponse(a, today))
+                .map(v -> toExpiringResponse(v, today))
                 .toList();
         return ResponseEntity.ok(items);
     }
 
-    private ExpiringAgreementResponse toExpiringResponse(Agreement a, LocalDate today) {
-        long days = ChronoUnit.DAYS.between(today, a.getExpiryDate());
+    private ExpiringAgreementResponse toExpiringResponse(AgreementVersion v, LocalDate today) {
+        long days = ChronoUnit.DAYS.between(today, v.getExpiryDate());
         String urgency = days < 30 ? "RED" : days < 60 ? "YELLOW" : "BLUE";
+        var parent = v.getAgreement();
+        var cag = parent.getCompanyAgreementGroup();
         return new ExpiringAgreementResponse(
-                a.getId(),
-                a.getAgreementGroup().getId(),
-                a.getAgreementGroup().getAgreementNumber(),
-                a.getAgreementGroup().getCompany() != null
-                        ? a.getAgreementGroup().getCompany().getCompanyName()
-                        : null,
-                a.getOwner().getFullName(),
-                a.getExpiryDate(),
+                v.getId(),
+                parent.getId(),
+                parent.getAgreementName(),
+                cag.getCompany().getCompanyName(),
+                parent.getOwner().getFullName(),
+                v.getExpiryDate(),
                 days,
                 urgency
         );

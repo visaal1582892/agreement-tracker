@@ -10,10 +10,9 @@ import java.util.List;
 
 public interface AgreementPurchaseSlabRepository extends JpaRepository<AgreementPurchaseSlab, Long> {
 
-    List<AgreementPurchaseSlab> findByAgreementIdOrderByFromValueAsc(Long agreementId);
+    List<AgreementPurchaseSlab> findByAgreementVersionIdOrderByFromValueAsc(Long agreementVersionId);
 
     @Modifying
-    @Query("DELETE FROM AgreementPurchaseSlab s WHERE s.agreement.id = :agreementId")
-    void deleteByAgreementId(@Param("agreementId") Long agreementId);
+    @Query("DELETE FROM AgreementPurchaseSlab s WHERE s.agreementVersion.id = :agreementVersionId")
+    void deleteByAgreementVersionId(@Param("agreementVersionId") Long agreementVersionId);
 }
-

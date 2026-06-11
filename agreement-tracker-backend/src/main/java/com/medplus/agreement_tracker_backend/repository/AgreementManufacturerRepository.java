@@ -9,7 +9,7 @@ import java.util.List;
 @Repository
 public interface AgreementManufacturerRepository extends JpaRepository<AgreementManufacturer, Long> {
 
-    List<AgreementManufacturer> findByAgreementId(Long agreementId);
+    List<AgreementManufacturer> findByAgreementVersionId(Long agreementId);
 
-    void deleteByAgreementId(Long agreementId);
+    void deleteByAgreementVersionId(Long agreementId);
 }

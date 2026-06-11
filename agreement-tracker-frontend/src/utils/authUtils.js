@@ -1,5 +1,10 @@
 import { RIGHTS } from '../config/rights';
 
+/** List API scope aligned with backend: MY unless user has AGREEMENT_VIEW_ALL. */
+export function resolveAgreementListScope(hasRight) {
+  return hasRight(RIGHTS.AGREEMENT_VIEW_ALL) ? 'ALL' : 'MY';
+}
+
 export function isAgreementOwner(user, agreement) {
   if (!user?.id || !agreement) return false;
   const ownerId = agreement.ownerId ?? agreement.ownerUserId;

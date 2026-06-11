@@ -18,7 +18,7 @@ import static com.medplus.agreement_tracker_backend.security.RightExpressions.AG
 import static com.medplus.agreement_tracker_backend.security.RightExpressions.AGREEMENT_VIEW;
 
 @RestController
-@RequestMapping("/agreements/{agreementId}/slabs")
+@RequestMapping("/agreement-versions/{agreementVersionId}/slabs")
 @RequiredArgsConstructor
 public class AgreementPurchaseSlabController {
 
@@ -27,39 +27,39 @@ public class AgreementPurchaseSlabController {
     @GetMapping
     @PreAuthorize(AGREEMENT_VIEW)
     public ResponseEntity<List<PurchaseSlabResponse>> listSlabs(
-            @PathVariable Long agreementId,
+            @PathVariable Long agreementVersionId,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(purchaseSlabService.listSlabs(agreementId, principal.getId()));
+        return ResponseEntity.ok(purchaseSlabService.listSlabs(agreementVersionId, principal.getId()));
     }
 
     @PostMapping
     @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<PurchaseSlabResponse> createSlab(
-            @PathVariable Long agreementId,
+            @PathVariable Long agreementVersionId,
             @Valid @RequestBody SlabDTO request,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(purchaseSlabService.createSlab(agreementId, request, principal.getId()));
+                .body(purchaseSlabService.createSlab(agreementVersionId, request, principal.getId()));
     }
 
     @PutMapping("/{slabId}")
     @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<PurchaseSlabResponse> updateSlab(
-            @PathVariable Long agreementId,
+            @PathVariable Long agreementVersionId,
             @PathVariable Long slabId,
             @Valid @RequestBody SlabDTO request,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(
-                purchaseSlabService.updateSlab(agreementId, slabId, request, principal.getId()));
+                purchaseSlabService.updateSlab(agreementVersionId, slabId, request, principal.getId()));
     }
 
     @DeleteMapping("/{slabId}")
     @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<Void> deleteSlab(
-            @PathVariable Long agreementId,
+            @PathVariable Long agreementVersionId,
             @PathVariable Long slabId,
             @AuthenticationPrincipal UserPrincipal principal) {
-        purchaseSlabService.deleteSlab(agreementId, slabId, principal.getId());
+        purchaseSlabService.deleteSlab(agreementVersionId, slabId, principal.getId());
         return ResponseEntity.noContent().build();
     }
 }

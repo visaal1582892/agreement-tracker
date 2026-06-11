@@ -9,8 +9,8 @@ import java.time.LocalDateTime;
 public record AgreementActionRequestResponse(
         Long id,
         Long agreementId,
-        Long agreementGroupId,
-        String agreementNumber,
+        Long agreementVersionId,
+        Long companyAgreementGroupId,
         String agreementName,
         String companyName,
         ActionRequestType actionType,

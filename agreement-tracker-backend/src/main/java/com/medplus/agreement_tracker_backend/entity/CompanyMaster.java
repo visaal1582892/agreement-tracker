@@ -1,8 +1,12 @@
 package com.medplus.agreement_tracker_backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.medplus.agreement_tracker_backend.entity.base.AuditableEntity;
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "company_master", indexes = {
@@ -25,4 +29,9 @@ public class CompanyMaster extends AuditableEntity {
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private boolean isActive = true;
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "company")
+    @Builder.Default
+    private List<CompanyAgreementGroup> agreementGroups = new ArrayList<>();
 }

@@ -1,4 +1,4 @@
-import { Box, Typography, TextField } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import AgreementDetailsCard from './AgreementDetailsCard';
 
 export default function Step2Agreements({
@@ -21,16 +21,11 @@ export default function Step2Agreements({
         Fill in details, commercial structure, and documents for this agreement.
       </Typography>
 
-      <TextField
-        label="Agreement Name"
-        value={state.agreementName || ''}
-        onChange={(e) => updateFields?.({ agreementName: e.target.value })}
-        required
-        fullWidth
-        size="small"
-        slotProps={{ htmlInput: { maxLength: 255 } }}
-        sx={{ mb: 2.5 }}
-      />
+      {state.agreementName && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+          Agreement name: <strong>{state.agreementName}</strong> (auto-generated when income type and dates are saved)
+        </Typography>
+      )}
 
       <AgreementDetailsCard
         cardId={`agreement-card-${agreement.id}`}

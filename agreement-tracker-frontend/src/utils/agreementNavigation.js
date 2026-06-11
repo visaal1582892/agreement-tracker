@@ -2,14 +2,13 @@
  * Draft missing agreement name — route to edit wizard, not read-only detail.
  */
 export function isIncompleteDraft(agreement) {
-  const name = agreement?.agreementName?.trim();
-  if (!name) return true;
-  const number = agreement?.agreementNumber?.trim();
-  if (number && name === number) return true;
-  return false;
+  const missingType = !agreement?.agreementTypeId;
+  const missingStartDate = !agreement?.startDate;
+  return missingType || missingStartDate;
 }
 
 export function buildAgreementEditPath(agreementId, { step } = {}) {
+  if (agreementId == null || agreementId === '') return null;
   const base = `/agreements/${agreementId}/edit`;
   if (step != null && step !== '') {
     return `${base}?step=${step}`;
@@ -17,24 +16,49 @@ export function buildAgreementEditPath(agreementId, { step } = {}) {
   return base;
 }
 
-export function buildAgreementDetailPath(groupId) {
+export function buildAgreementDetailPath(agreementId) {
+  if (agreementId == null || agreementId === '') return null;
+  return `/agreements/${agreementId}`;
+}
+
+export function buildGroupDetailPath(groupId) {
+  if (groupId == null || groupId === '') return null;
   return `/agreements/groups/${groupId}`;
+}
+
+export function buildGroupWizardPath(groupId, activeAgreementId, { step } = {}) {
+  if (groupId == null || groupId === '' || activeAgreementId == null || activeAgreementId === '') {
+    return null;
+  }
+  const params = new URLSearchParams();
+  params.set('groupId', String(groupId));
+  params.set('activeAgreementId', String(activeAgreementId));
+  if (step != null && step !== '') {
+    params.set('step', String(step));
+  }
+  return `/agreements/wizard?${params.toString()}`;
 }
 
 /**
  * Row click / primary navigation from agreements list.
- * Incomplete draft → edit wizard step 2 (agreement details).
- * Complete → group detail page.
+ * DRAFT → group wizard editor with all drafts in tabs.
+ * Other statuses → read-only agreement detail page.
  */
 export function navigateToAgreement(row, navigate) {
-  if (!row?.latestVersionId) return;
+  if (!row?.id) return;
 
-  if (isIncompleteDraft(row)) {
-    navigate(buildAgreementEditPath(row.latestVersionId, { step: 2 }));
+  if (row.approvalStatus === 'DRAFT') {
+    if (!row.companyAgreementGroupId) return;
+    const path = buildGroupWizardPath(row.companyAgreementGroupId, row.id);
+    if (path) navigate(path);
     return;
   }
 
-  if (row.id) {
-    navigate(buildAgreementDetailPath(row.id));
-  }
+  const path = buildAgreementDetailPath(row.id);
+  if (path) navigate(path);
+}
+
+export function navigateToGroup(row, navigate) {
+  const path = buildGroupDetailPath(row?.id);
+  if (path) navigate(path);
 }

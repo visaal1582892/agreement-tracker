@@ -4,15 +4,16 @@ export const ROUTES = {
   DASHBOARD: '/',
 
   AGREEMENTS: '/agreements',
+  AGREEMENT_GROUP_DETAIL: '/agreements/groups/:groupId',
   AGREEMENT_CREATE: '/agreements/new',
-  AGREEMENT_DETAIL: '/agreements/groups/:groupId',
-  AGREEMENT_EDIT: '/agreements/:agreementId/edit',
+  AGREEMENT_GROUP_WIZARD: '/agreements/wizard',
+  AGREEMENT_DETAIL: '/agreements/:agreementId',
+  AGREEMENT_EDIT: '/agreements/:agreementVersionId/edit',
 
   APPROVALS: '/approvals',
 
   ADMIN_USERS: '/admin/users',
 
-  // Master Data Configuration
   MASTER: '/master',
   MASTER_COMPANIES: '/master/companies',
   MASTER_VENDORS: '/master/vendors',

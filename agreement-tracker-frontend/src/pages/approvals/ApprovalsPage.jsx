@@ -5,7 +5,7 @@ import {
   TextField, InputAdornment, TablePagination, CircularProgress, alpha, Tabs, Tab,
   Button, Alert, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
-import { Search, TaskAlt, InboxOutlined, SwapHoriz, PowerSettingsNew } from '@mui/icons-material';
+import { Search, TaskAlt, InboxOutlined, SwapHoriz, PowerSettingsNew, DeleteOutlined } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import {
   fetchPendingApprovals,
@@ -123,8 +123,16 @@ function OperationalRequestDetail({ request, onResolved }) {
 
   if (!request) return null;
 
-  const actionLabel = request.actionType === 'TRANSFER' ? 'Transfer' : 'Terminate';
-  const ActionIcon = request.actionType === 'TRANSFER' ? SwapHoriz : PowerSettingsNew;
+  const actionLabel = request.actionType === 'TRANSFER'
+    ? 'Transfer'
+    : request.actionType === 'DELETE_GROUP'
+      ? 'Delete Group'
+      : 'Terminate';
+  const ActionIcon = request.actionType === 'TRANSFER'
+    ? SwapHoriz
+    : request.actionType === 'DELETE_GROUP'
+      ? DeleteOutlined
+      : PowerSettingsNew;
 
   const handleResolve = async (approved) => {
     setSubmitting(true);
@@ -171,9 +179,15 @@ function OperationalRequestDetail({ request, onResolved }) {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
           Requested by <strong>{request.requestedByName}</strong>
         </Typography>
-        {request.targetUserName && (
+        {request.targetUserName && request.actionType === 'TRANSFER' && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             New owner: <strong>{request.targetUserName}</strong>
+          </Typography>
+        )}
+        {request.actionType === 'DELETE_GROUP' && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Group: <strong>{request.agreementName}</strong>
+            {request.companyName ? ` · ${request.companyName}` : ''}
           </Typography>
         )}
         {request.requestedTerminationDate && (
@@ -205,10 +219,12 @@ function OperationalRequestDetail({ request, onResolved }) {
         </Box>
       </Paper>
 
-      <AgreementDetailPage
-        key={request.agreementGroupId}
-        embeddedGroupId={request.agreementGroupId}
-      />
+      {request.actionType !== 'DELETE_GROUP' && request.agreementId && (
+        <AgreementDetailPage
+          key={request.agreementId}
+          embeddedAgreementId={request.agreementId}
+        />
+      )}
 
       <Dialog open={rejectOpen} onClose={() => setRejectOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle fontWeight={700}>Reject {actionLabel} Request</DialogTitle>
@@ -363,7 +379,7 @@ export default function ApprovalsPage() {
   } = useSelector((s) => s.agreements);
 
   const [activeTab, setActiveTab] = useState('approvals');
-  const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [selectedAgreementId, setSelectedAgreementId] = useState(null);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -404,21 +420,21 @@ export default function ApprovalsPage() {
     setSearchInput('');
     setSearchQuery('');
     prevSearchRef.current = '';
-    setSelectedGroupId(null);
+    setSelectedAgreementId(null);
     setSelectedRequestId(null);
   }, [activeTab]);
 
   useEffect(() => {
     if (activeTab !== 'approvals') return;
     if (pendingApprovals.length === 0) {
-      setSelectedGroupId(null);
+      setSelectedAgreementId(null);
       return;
     }
-    const stillVisible = pendingApprovals.some((a) => a.agreementGroupId === selectedGroupId);
-    if (!selectedGroupId || !stillVisible) {
-      setSelectedGroupId(pendingApprovals[0].agreementGroupId ?? null);
+    const stillVisible = pendingApprovals.some((a) => a.agreementId === selectedAgreementId);
+    if (!selectedAgreementId || !stillVisible) {
+      setSelectedAgreementId(pendingApprovals[0].agreementId ?? null);
     }
-  }, [pendingApprovals, selectedGroupId, activeTab]);
+  }, [pendingApprovals, selectedAgreementId, activeTab]);
 
   useEffect(() => {
     if (activeTab !== 'operational') return;
@@ -463,8 +479,8 @@ export default function ApprovalsPage() {
               items={pendingApprovals}
               emptyVariant="approvals"
               hasSearch={hasSearch}
-              selectedKey={selectedGroupId}
-              onSelect={(a) => setSelectedGroupId(a.agreementGroupId)}
+              selectedKey={selectedAgreementId}
+              onSelect={(a) => setSelectedAgreementId(a.agreementId)}
               page={page}
               rowsPerPage={rowsPerPage}
               onPageChange={(_, newPage) => setPage(newPage)}
@@ -473,12 +489,12 @@ export default function ApprovalsPage() {
                 setPage(0);
               }}
               renderItem={{
-                key: (a) => a.agreementGroupId,
+                key: (a) => a.agreementId,
                 content: (a) => (
                   <ListItemText
                     primary={(
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body2" fontWeight={600} noWrap>{a.agreementNumber}</Typography>
+                        <Typography variant="body2" fontWeight={600} noWrap>{a.agreementName || 'Agreement'}</Typography>
                         <StatusBadge status="PENDING_APPROVAL" />
                       </Box>
                     )}
@@ -512,11 +528,27 @@ export default function ApprovalsPage() {
                   <ListItemText
                     primary={(
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body2" fontWeight={600} noWrap>{r.agreementNumber}</Typography>
+                        <Typography variant="body2" fontWeight={600} noWrap>
+                          {r.actionType === 'DELETE_GROUP'
+                            ? (r.agreementName || 'Group deletion')
+                            : (r.agreementName || 'Agreement')}
+                        </Typography>
                         <Chip
-                          label={r.actionType === 'TRANSFER' ? 'Transfer' : 'Terminate'}
+                          label={
+                            r.actionType === 'TRANSFER'
+                              ? 'Transfer'
+                              : r.actionType === 'DELETE_GROUP'
+                                ? 'Delete Group'
+                                : 'Terminate'
+                          }
                           size="small"
-                          color={r.actionType === 'TRANSFER' ? 'primary' : 'error'}
+                          color={
+                            r.actionType === 'TRANSFER'
+                              ? 'primary'
+                              : r.actionType === 'DELETE_GROUP'
+                                ? 'warning'
+                                : 'error'
+                          }
                           variant="outlined"
                         />
                       </Box>
@@ -538,14 +570,14 @@ export default function ApprovalsPage() {
               borderColor: 'divider',
               height: '100%',
               overflowY: 'auto',
-              p: (activeTab === 'approvals' ? selectedGroupId : selectedRequestId) ? 3 : 0,
+              p: (activeTab === 'approvals' ? selectedAgreementId : selectedRequestId) ? 3 : 0,
             }}
           >
             {activeTab === 'approvals' ? (
-              selectedGroupId ? (
+              selectedAgreementId ? (
                 <AgreementDetailPage
-                  key={selectedGroupId}
-                  embeddedGroupId={selectedGroupId}
+                  key={selectedAgreementId}
+                  embeddedAgreementId={selectedAgreementId}
                   onActionComplete={loadPending}
                 />
               ) : (

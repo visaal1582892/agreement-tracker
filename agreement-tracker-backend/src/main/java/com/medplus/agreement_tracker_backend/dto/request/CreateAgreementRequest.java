@@ -6,10 +6,12 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 public record CreateAgreementRequest(
-        String agreementName,
-
         @NotNull(message = "Company is required", groups = Step1Validation.class)
         Long companyId,
+
+        Long companyAgreementGroupId,
+
+        String newCompanyAgreementGroupName,
 
         List<Long> vendorIds,
 

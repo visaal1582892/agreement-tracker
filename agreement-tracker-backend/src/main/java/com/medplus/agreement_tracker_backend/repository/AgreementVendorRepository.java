@@ -11,10 +11,10 @@ import java.util.List;
 @Repository
 public interface AgreementVendorRepository extends JpaRepository<AgreementVendor, Long> {
 
-    List<AgreementVendor> findByAgreementId(Long agreementId);
+    List<AgreementVendor> findByAgreementVersionId(Long agreementVersionId);
 
-    @Query("SELECT v FROM AgreementVendor v WHERE v.agreement.id IN :agreementIds")
-    List<AgreementVendor> findByAgreementIdIn(@Param("agreementIds") List<Long> agreementIds);
+    @Query("SELECT v FROM AgreementVendor v WHERE v.agreementVersion.id IN :agreementVersionIds")
+    List<AgreementVendor> findByAgreementVersionIdIn(@Param("agreementVersionIds") List<Long> agreementVersionIds);
 
-    void deleteByAgreementId(Long agreementId);
+    void deleteByAgreementVersionId(Long agreementVersionId);
 }

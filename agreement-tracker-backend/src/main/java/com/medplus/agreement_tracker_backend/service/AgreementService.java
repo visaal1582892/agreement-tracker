@@ -4,56 +4,61 @@ import com.medplus.agreement_tracker_backend.dto.request.CreateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.EditAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.TerminateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.UpdateDraftRequest;
-import com.medplus.agreement_tracker_backend.dto.response.AgreementGroupResponse;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
+import com.medplus.agreement_tracker_backend.dto.response.AgreementVersionResponse;
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
 import com.medplus.agreement_tracker_backend.dto.response.BulkAgreementCreateResponse;
+import com.medplus.agreement_tracker_backend.dto.response.BulkGroupSubmitResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface AgreementService {
 
     BulkAgreementCreateResponse createDraft(CreateAgreementRequest request, Long currentUserId);
 
-    AgreementResponse createNewVersion(Long agreementGroupId, Long currentUserId);
+    AgreementVersionResponse createNewVersion(Long agreementId, Long currentUserId);
 
-    AgreementResponse createVersionedEdit(Long sourceAgreementId, EditAgreementRequest request, Long currentUserId);
+    AgreementVersionResponse createVersionedEdit(Long sourceAgreementVersionId, EditAgreementRequest request, Long currentUserId);
 
-    AgreementResponse updateDraft(Long agreementId, UpdateDraftRequest request, Long currentUserId,
-                                  boolean validateStep1, boolean validateStep2);
+    AgreementVersionResponse updateDraft(Long agreementVersionId, UpdateDraftRequest request, Long currentUserId,
+                                         boolean validateStep1, boolean validateStep2);
 
-    AgreementResponse cloneAgreement(Long sourceAgreementId, Long currentUserId);
+    AgreementVersionResponse cloneAgreement(Long sourceAgreementVersionId, Long currentUserId);
+
+    AgreementVersionResponse getAgreementVersionById(Long agreementVersionId, Long currentUserId);
 
     AgreementResponse getAgreementById(Long agreementId, Long currentUserId);
 
-    AgreementGroupResponse getGroupById(Long groupId, Long currentUserId);
+    Page<AgreementResponse> getAllAgreements(Pageable pageable, Long currentUserId, String scope, boolean canViewAll,
+                                           Long companyId, Long companyAgreementGroupId, String companyAgreementGroupName,
+                                           String agreementName, String status, String ownerName,
+                                           Long vendorId, Long incomeTypeId,
+                                           LocalDate startDateFrom, LocalDate startDateTo,
+                                           LocalDate endDateFrom, LocalDate endDateTo);
 
-    Page<AgreementGroupResponse> getAllGroups(Pageable pageable, Long currentUserId, String scope, boolean canViewAll,
-                                              String agreementNumber, String companyName, String status, String ownerName,
-                                              Long vendorId, Long incomeTypeId);
+    List<AgreementVersionResponse> getVersionsByAgreementId(Long agreementId, Long currentUserId);
 
-    List<AgreementResponse> getVersionsByGroup(Long groupId, Long currentUserId);
+    AgreementVersionResponse transferOwnership(Long agreementVersionId, Long newOwnerUserId, Long performedByUserId,
+                                               boolean isAdmin, String comments);
 
-    List<AgreementResponse> getVersionsByAgreementId(Long agreementId, Long currentUserId);
+    AgreementVersionResponse submitForApproval(Long agreementVersionId, String comments, Long currentUserId);
 
-    AgreementResponse transferOwnership(Long agreementId, Long newOwnerUserId, Long performedByUserId,
-                                        boolean isAdmin, String comments);
+    AgreementVersionResponse approve(Long agreementVersionId, String remarks, Long approverId);
 
-    AgreementResponse submitForApproval(Long agreementId, String comments, Long currentUserId);
+    AgreementVersionResponse reject(Long agreementVersionId, String remarks, Long approverId);
 
-    AgreementResponse approve(Long agreementId, String remarks, Long approverId);
+    AgreementVersionResponse terminate(Long agreementVersionId, TerminateAgreementRequest request, Long currentUserId);
 
-    AgreementResponse reject(Long agreementId, String remarks, Long approverId);
+    AgreementVersionResponse toggleInProgress(Long agreementVersionId, boolean inProgress, Long currentUserId);
 
-    AgreementResponse terminate(Long agreementId, TerminateAgreementRequest request, Long currentUserId);
+    Page<AgreementVersionResponse> getPendingApprovals(String search, Pageable pageable);
 
-    AgreementResponse toggleInProgress(Long agreementId, boolean inProgress, Long currentUserId);
+    List<ApprovalTimelineResponse> getApprovalTimeline(Long agreementVersionId);
 
-    Page<AgreementResponse> getPendingApprovals(String search, Pageable pageable);
+    void bulkTransferOwnership(Long fromUserId, Long toUserId, List<Long> agreementIds, Long performedByUserId);
 
-    List<ApprovalTimelineResponse> getApprovalTimeline(Long agreementId);
-
-    void bulkTransferOwnership(Long fromUserId, Long toUserId, List<Long> groupIds, Long performedByUserId);
+    BulkGroupSubmitResponse submitGroupDraftsForApproval(Long groupId, Long currentUserId);
 }

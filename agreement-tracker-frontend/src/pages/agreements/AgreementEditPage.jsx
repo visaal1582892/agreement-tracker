@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  Box, Typography, alpha, Paper, CircularProgress, Alert, Dialog,
+  Box, CircularProgress, Alert, Dialog,
   DialogTitle, DialogContent, DialogActions, Button, TextField,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
@@ -9,6 +9,7 @@ import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
 import { ROUTES } from '../../config/routes';
 import { BRAND } from '../../config/theme';
+import { submitAgreementGroupForApproval } from '../../api/agreementGroupApi';
 import WizardLayout from '../../layouts/WizardLayout';
 import { useAgreementWizard } from '../../hooks/useAgreementWizard';
 import { validateAgreementForSubmit } from '../../utils/agreementSubmitValidation';
@@ -30,7 +31,7 @@ import Step2Agreements from './wizard/Step2Agreements';
 import Step5Review from './wizard/Step5Review';
 
 export default function AgreementEditPage() {
-  const { agreementId } = useParams();
+  const { agreementVersionId: agreementId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
@@ -65,7 +66,7 @@ export default function AgreementEditPage() {
     if (!agreementId || hydratedRef.current) return;
     const load = async () => {
       try {
-        const { data: loaded } = await axiosInstance.get(ENDPOINTS.AGREEMENT_BY_ID(agreementId));
+        const { data: loaded } = await axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_BY_ID(agreementId));
 
         if (loaded.approvalStatus === 'DRAFT') {
           setSourceAgreement(loaded);
@@ -79,7 +80,7 @@ export default function AgreementEditPage() {
         setVersionSourceId(loaded.id);
 
         const { data: versions } = await axiosInstance.get(
-          ENDPOINTS.AGREEMENT_VERSIONS(loaded.agreementGroupId),
+          ENDPOINTS.AGREEMENT_VERSIONS(loaded.agreementId),
         );
         const existingDraft = [...versions].reverse().find((v) => v.approvalStatus === 'DRAFT');
 
@@ -146,42 +147,37 @@ export default function AgreementEditPage() {
     const payload = buildUpdatePayload();
     if (draftAgreementId) {
       const { data } = await axiosInstance.put(
-        ENDPOINTS.AGREEMENT_UPDATE(draftAgreementId),
+        ENDPOINTS.AGREEMENT_VERSION_UPDATE(draftAgreementId),
         payload,
         { params: { validateStep1, validateStep2 } },
       );
       setSourceAgreement(data);
+      if (data.agreementName) {
+        updateFields({ agreementName: data.agreementName });
+      }
       return data;
     }
     const sourceId = versionSourceId ?? sourceAgreement?.id;
-    const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_CREATE_VERSION(sourceId), payload);
+    const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_CREATE_EDIT(sourceId), payload);
     setDraftAgreementId(data.id);
     setSourceAgreement(data);
+    if (data.agreementName) {
+      updateFields({ agreementName: data.agreementName });
+    }
     navigate(buildAgreementEditPath(data.id, { step: urlStepFromInternal(state.step) }), { replace: true });
     if (validateStep1) {
       const { data: updated } = await axiosInstance.put(
-        ENDPOINTS.AGREEMENT_UPDATE(data.id),
+        ENDPOINTS.AGREEMENT_VERSION_UPDATE(data.id),
         payload,
         { params: { validateStep1: true, validateStep2: false } },
       );
       setSourceAgreement(updated);
+      if (updated.agreementName) {
+        updateFields({ agreementName: updated.agreementName });
+      }
       return updated;
     }
     return data;
-  };
-
-  const handleSaveDraft = async () => {
-    if (state.step === 0 && !validateStep1Fields(state, enqueueSnackbar)) return;
-    setSavingDraft(true);
-    try {
-      const saved = await persistDraft({ validateStep1: state.step === 0 });
-      const label = saved?.versionNumber ? `V${saved.versionNumber}` : 'draft';
-      enqueueSnackbar(`Agreement ${label} saved`, { variant: 'success' });
-    } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Failed to save draft', { variant: 'error' });
-    } finally {
-      setSavingDraft(false);
-    }
   };
 
   const handleSetupNext = async () => {
@@ -222,8 +218,8 @@ export default function AgreementEditPage() {
     try {
       const saved = await persistDraft();
       enqueueSnackbar('Agreement saved', { variant: 'success' });
-      if (saved?.agreementGroupId) {
-        navigate(buildAgreementDetailPath(saved.agreementGroupId));
+      if (saved?.agreementId) {
+        navigate(buildAgreementDetailPath(saved.agreementId));
       } else {
         navigate(ROUTES.AGREEMENTS);
       }
@@ -258,20 +254,59 @@ export default function AgreementEditPage() {
   };
 
   const handleSubmitForApproval = async () => {
-    if (!validateAgreementForSubmit(state, enqueueSnackbar)) return;
     if (versionSourceId) {
+      if (!validateAgreementForSubmit(state, enqueueSnackbar)) return;
       setSubmitModalOpen(true);
       return;
     }
+
+    if (isFreshDraftWizard) {
+      const groupId = state.companyAgreementGroupId;
+      if (!groupId) {
+        enqueueSnackbar('Company agreement group is required for bulk submit', { variant: 'warning' });
+        return;
+      }
+
+      setSubmitting(true);
+      try {
+        if (state.step >= 1) {
+          if (!validateStep2LoopFields(state, enqueueSnackbar)) {
+            setSubmitting(false);
+            return;
+          }
+          await persistDraft({ validateStep2: true });
+        } else {
+          await persistDraft();
+        }
+
+        const result = await submitAgreementGroupForApproval(groupId);
+        enqueueSnackbar(
+          `Submitted ${result.submittedCount} agreement(s) for approval`,
+          { variant: 'success' },
+        );
+        reset();
+        navigate(ROUTES.AGREEMENTS);
+      } catch (err) {
+        enqueueSnackbar(
+          err.response?.data?.message || err.message || 'Bulk submit failed',
+          { variant: 'error' },
+        );
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (!validateAgreementForSubmit(state, enqueueSnackbar)) return;
     setSubmitting(true);
     try {
       const saved = await persistDraft();
       const targetId = saved?.id ?? draftAgreementId;
-      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(targetId));
+      await axiosInstance.put(ENDPOINTS.AGREEMENT_VERSION_SUBMIT(targetId));
       enqueueSnackbar('Agreement submitted for approval', { variant: 'success' });
       reset();
-      navigate(saved?.agreementGroupId
-        ? buildAgreementDetailPath(saved.agreementGroupId)
+      navigate(saved?.agreementId
+        ? buildAgreementDetailPath(saved.agreementId)
         : ROUTES.AGREEMENTS);
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to submit agreement', { variant: 'error' });
@@ -287,13 +322,13 @@ export default function AgreementEditPage() {
     try {
       const data = await persistDraft();
       const targetId = data.id ?? draftAgreementId;
-      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(targetId), {
+      await axiosInstance.put(ENDPOINTS.AGREEMENT_VERSION_SUBMIT(targetId), {
         comments: revisionComments.trim(),
       });
       enqueueSnackbar(`Version V${data.versionNumber} submitted for approval`, { variant: 'success' });
       setRevisionComments('');
       reset();
-      navigate(buildAgreementDetailPath(data.agreementGroupId));
+      navigate(buildAgreementDetailPath(data.agreementId));
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to submit edited version', { variant: 'error' });
     } finally {
@@ -319,15 +354,18 @@ export default function AgreementEditPage() {
     return 'review';
   })();
 
-  const versionLabel = sourceAgreement
-    ? `V${sourceAgreement.versionNumber} — ${sourceAgreement.approvalStatus}`
-    : '';
+  const agreementTabLabel = state.agreementName
+    || sourceAgreement?.agreementName
+    || 'New Agreement';
+
+  const submitButtonLabel = isFreshDraftWizard ? 'Submit & Exit' : 'Submit for Approval';
 
   const STEP_COMPONENTS = [
     <Step1Setup
       state={state}
       updateFields={updateFields}
       updateProductRules={updateProductRules}
+      groupFieldsLocked={Boolean(draftAgreementId)}
     />,
     <Step2Agreements
       state={state}
@@ -357,47 +395,21 @@ export default function AgreementEditPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-      <Paper
-        elevation={0}
-        sx={{
-          mb: 3,
-          p: { xs: 2.5, md: 3 },
-          borderRadius: 3.5,
-          border: '1px solid rgba(226, 232, 240, 0.8)',
-          boxShadow: '0 4px 24px rgba(15, 23, 42, 0.05)',
-          background: `linear-gradient(120deg, #fff 40%, ${alpha(BRAND.red, 0.03)} 100%)`,
-        }}
-      >
-        <Typography sx={{
-          fontSize: '0.72rem', fontWeight: 600, color: BRAND.red,
-          textTransform: 'uppercase', letterSpacing: '0.1em', mb: 0.75,
-        }}>
-          {isFreshDraftWizard ? 'New Draft' : 'Edit Agreement'}
-        </Typography>
-        <Typography sx={{ fontSize: { xs: '1.35rem', md: '1.6rem' }, fontWeight: 800, color: BRAND.textPrimary, letterSpacing: '-0.5px' }}>
-          {state.agreementName || sourceAgreement.agreementName || sourceAgreement.agreementNumber}
-        </Typography>
-        <Typography sx={{ mt: 0.5, fontSize: '0.9rem', color: '#64748B' }}>
-          {sourceAgreement.agreementNumber} · {versionLabel}
-          {isFreshDraftWizard ? ' — complete details or create another' : ' — submit when ready for approval'}
-        </Typography>
-      </Paper>
-
       <WizardLayout
         activeStep={state.step}
+        agreementTabLabel={agreementTabLabel}
+        submitButtonLabel={submitButtonLabel}
         footerMode={footerMode}
         onNext={isFreshDraftWizard ? handleSetupNext : handleRevisionNext}
         onBack={handleBack}
         onCancel={() => navigate(
-          sourceAgreement.agreementGroupId
-            ? buildAgreementDetailPath(sourceAgreement.agreementGroupId)
+          sourceAgreement.agreementId
+            ? buildAgreementDetailPath(sourceAgreement.agreementId)
             : ROUTES.AGREEMENTS,
         )}
-        onSaveDraft={handleSaveDraft}
         onSaveAndCreateAnother={handleSaveAndCreateAnother}
         onFinishAndExit={handleFinishAndExit}
         onSubmitForApproval={handleSubmitForApproval}
-        showSaveDraft={sourceAgreement.approvalStatus === 'DRAFT'}
         isSavingDraft={savingDraft}
         isSavingLoop={savingLoop}
         isSubmitting={submitting}

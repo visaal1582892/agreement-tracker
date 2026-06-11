@@ -11,25 +11,24 @@ import java.util.Optional;
 
 public interface AgreementSaleTargetRepository extends JpaRepository<AgreementSaleTarget, Long> {
 
-    List<AgreementSaleTarget> findByAgreementId(Long agreementId);
+    List<AgreementSaleTarget> findByAgreementVersionId(Long agreementVersionId);
 
-    Optional<AgreementSaleTarget> findByAgreementIdAndTimePeriodIdAndSlabId(
-            Long agreementId, Long timePeriodId, Long slabId);
+    Optional<AgreementSaleTarget> findByAgreementVersionIdAndTimePeriodIdAndSlabId(
+            Long agreementVersionId, Long timePeriodId, Long slabId);
 
     @Modifying
     @Query("DELETE FROM AgreementSaleTarget t WHERE t.slab.id = :slabId")
     void deleteBySlabId(@Param("slabId") Long slabId);
 
     @Modifying
-    @Query("DELETE FROM AgreementSaleTarget t WHERE t.agreement.id = :agreementId")
-    void deleteByAgreementId(@Param("agreementId") Long agreementId);
+    @Query("DELETE FROM AgreementSaleTarget t WHERE t.agreementVersion.id = :agreementVersionId")
+    void deleteByAgreementVersionId(@Param("agreementVersionId") Long agreementVersionId);
 
     @Modifying
-    @Query("DELETE FROM AgreementSaleTarget t WHERE t.agreement.id = :agreementId "
+    @Query("DELETE FROM AgreementSaleTarget t WHERE t.agreementVersion.id = :agreementVersionId "
             + "AND t.timePeriod.id = :timePeriodId AND t.slab.id = :slabId")
-    void deleteByAgreementIdAndTimePeriodIdAndSlabId(
-            @Param("agreementId") Long agreementId,
+    void deleteByAgreementVersionIdAndTimePeriodIdAndSlabId(
+            @Param("agreementVersionId") Long agreementVersionId,
             @Param("timePeriodId") Long timePeriodId,
             @Param("slabId") Long slabId);
 }
-

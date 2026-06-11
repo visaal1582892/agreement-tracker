@@ -5,9 +5,8 @@ import com.medplus.agreement_tracker_backend.dto.request.InitiateTransferRequest
 import com.medplus.agreement_tracker_backend.dto.request.ResolveActionRequest;
 import com.medplus.agreement_tracker_backend.dto.request.TerminateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementActionRequestResponse;
-import com.medplus.agreement_tracker_backend.entity.Agreement;
 import com.medplus.agreement_tracker_backend.entity.AgreementActionRequest;
-import com.medplus.agreement_tracker_backend.entity.AgreementGroup;
+import com.medplus.agreement_tracker_backend.entity.AgreementVersion;
 import com.medplus.agreement_tracker_backend.entity.User;
 import com.medplus.agreement_tracker_backend.enums.ActionRequestStatus;
 import com.medplus.agreement_tracker_backend.enums.ActionRequestType;
@@ -16,10 +15,11 @@ import com.medplus.agreement_tracker_backend.exception.BusinessException;
 import com.medplus.agreement_tracker_backend.exception.ResourceNotFoundException;
 import com.medplus.agreement_tracker_backend.exception.UnauthorizedException;
 import com.medplus.agreement_tracker_backend.repository.AgreementActionRequestRepository;
-import com.medplus.agreement_tracker_backend.repository.AgreementRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementVersionRepository;
 import com.medplus.agreement_tracker_backend.repository.UserRepository;
 import com.medplus.agreement_tracker_backend.service.AgreementActionRequestService;
 import com.medplus.agreement_tracker_backend.service.AgreementService;
+import com.medplus.agreement_tracker_backend.service.CompanyAgreementGroupService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -35,22 +35,23 @@ import java.time.LocalDateTime;
 public class AgreementActionRequestServiceImpl implements AgreementActionRequestService {
 
     private final AgreementActionRequestRepository actionRequestRepository;
-    private final AgreementRepository agreementRepository;
+    private final AgreementVersionRepository agreementVersionRepository;
     private final UserRepository userRepository;
     private final AgreementService agreementService;
+    private final CompanyAgreementGroupService companyAgreementGroupService;
 
     @Override
     @Transactional
-    public AgreementActionRequestResponse initiateTransfer(Long agreementId, InitiateTransferRequest request,
+    public AgreementActionRequestResponse initiateTransfer(Long agreementVersionId, InitiateTransferRequest request,
                                                            Long currentUserId, boolean isAdmin) {
         if (isAdmin) {
             throw new BusinessException("Admin transfers must use the direct transfer endpoint");
         }
 
-        Agreement agreement = loadAgreement(agreementId);
-        validateNoPendingRequest(agreement.getAgreementGroup().getId());
+        AgreementVersion version = loadVersion(agreementVersionId);
+        validateNoPendingRequest(version.getAgreement().getId());
 
-        Long currentOwnerId = agreement.getOwner().getId();
+        Long currentOwnerId = version.getAgreement().getOwner().getId();
         if (!currentOwnerId.equals(currentUserId)) {
             throw new UnauthorizedException("Only the owner can request ownership transfer");
         }
@@ -66,7 +67,7 @@ public class AgreementActionRequestServiceImpl implements AgreementActionRequest
                 .orElseThrow(() -> new ResourceNotFoundException("User", currentUserId));
 
         AgreementActionRequest actionRequest = AgreementActionRequest.builder()
-                .agreement(agreement)
+                .agreementVersion(version)
                 .actionType(ActionRequestType.TRANSFER)
                 .status(ActionRequestStatus.PENDING)
                 .requestedBy(requestedBy)
@@ -79,15 +80,15 @@ public class AgreementActionRequestServiceImpl implements AgreementActionRequest
 
     @Override
     @Transactional
-    public AgreementActionRequestResponse initiateTerminate(Long agreementId, InitiateTerminateRequest request,
+    public AgreementActionRequestResponse initiateTerminate(Long agreementVersionId, InitiateTerminateRequest request,
                                                             Long currentUserId) {
-        Agreement agreement = loadAgreement(agreementId);
-        validateNoPendingRequest(agreement.getAgreementGroup().getId());
+        AgreementVersion version = loadVersion(agreementVersionId);
+        validateNoPendingRequest(version.getAgreement().getId());
 
-        if (agreement.getApprovalStatus() != ApprovalStatus.APPROVED) {
+        if (version.getApprovalStatus() != ApprovalStatus.APPROVED) {
             throw new BusinessException("Only APPROVED agreements can be terminated");
         }
-        if (agreement.getTerminationDate() != null) {
+        if (version.getTerminationDate() != null) {
             throw new BusinessException("Agreement is already terminated");
         }
 
@@ -95,7 +96,7 @@ public class AgreementActionRequestServiceImpl implements AgreementActionRequest
                 .orElseThrow(() -> new ResourceNotFoundException("User", currentUserId));
 
         AgreementActionRequest actionRequest = AgreementActionRequest.builder()
-                .agreement(agreement)
+                .agreementVersion(version)
                 .actionType(ActionRequestType.TERMINATE)
                 .status(ActionRequestStatus.PENDING)
                 .requestedBy(requestedBy)
@@ -135,26 +136,31 @@ public class AgreementActionRequestServiceImpl implements AgreementActionRequest
             actionRequest.setApproverComments(request.approverComments().trim());
         }
 
-        Agreement agreement = actionRequest.getAgreement();
         if (Boolean.TRUE.equals(request.approved())) {
             actionRequest.setStatus(ActionRequestStatus.APPROVED);
             actionRequestRepository.save(actionRequest);
 
-            if (actionRequest.getActionType() == ActionRequestType.TRANSFER) {
-                agreementService.transferOwnership(
-                        agreement.getId(),
+            switch (actionRequest.getActionType()) {
+                case TRANSFER -> agreementService.transferOwnership(
+                        actionRequest.getAgreementVersion().getId(),
                         actionRequest.getTargetUser().getId(),
                         approverId,
                         false,
                         null);
-            } else {
-                LocalDate terminationDate = actionRequest.getRequestedTerminationDate() != null
-                        ? actionRequest.getRequestedTerminationDate()
-                        : LocalDate.now();
-                agreementService.terminate(
-                        agreement.getId(),
-                        new TerminateAgreementRequest(terminationDate, actionRequest.getReasonComments()),
-                        approverId);
+                case TERMINATE -> {
+                    AgreementVersion version = actionRequest.getAgreementVersion();
+                    LocalDate terminationDate = actionRequest.getRequestedTerminationDate() != null
+                            ? actionRequest.getRequestedTerminationDate()
+                            : LocalDate.now();
+                    agreementService.terminate(
+                            version.getId(),
+                            new TerminateAgreementRequest(terminationDate, actionRequest.getReasonComments()),
+                            approverId);
+                }
+                case DELETE_GROUP -> companyAgreementGroupService.executeApprovedGroupDeletion(
+                        actionRequest.getCompanyAgreementGroup().getId(),
+                        approverId,
+                        actionRequest.getReasonComments());
             }
         } else {
             actionRequest.setStatus(ActionRequestStatus.REJECTED);
@@ -172,14 +178,14 @@ public class AgreementActionRequestServiceImpl implements AgreementActionRequest
                 .map(this::toResponse);
     }
 
-    private Agreement loadAgreement(Long agreementId) {
-        return agreementRepository.findById(agreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
+    private AgreementVersion loadVersion(Long agreementVersionId) {
+        return agreementVersionRepository.findById(agreementVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
     }
 
-    private void validateNoPendingRequest(Long agreementGroupId) {
+    private void validateNoPendingRequest(Long agreementId) {
         actionRequestRepository
-                .findFirstByAgreement_AgreementGroup_IdAndStatus(agreementGroupId, ActionRequestStatus.PENDING)
+                .findFirstByAgreementVersion_Agreement_IdAndStatus(agreementId, ActionRequestStatus.PENDING)
                 .ifPresent(existing -> {
                     throw new BusinessException(
                             "A pending " + existing.getActionType().name().toLowerCase()
@@ -188,15 +194,41 @@ public class AgreementActionRequestServiceImpl implements AgreementActionRequest
     }
 
     private AgreementActionRequestResponse toResponse(AgreementActionRequest r) {
-        Agreement agreement = r.getAgreement();
-        AgreementGroup group = agreement.getAgreementGroup();
+        if (r.getActionType() == ActionRequestType.DELETE_GROUP) {
+            var group = r.getCompanyAgreementGroup();
+            return new AgreementActionRequestResponse(
+                    r.getId(),
+                    null,
+                    null,
+                    group.getId(),
+                    group.getName(),
+                    group.getCompany().getCompanyName(),
+                    r.getActionType(),
+                    r.getStatus(),
+                    r.getRequestedBy().getId(),
+                    r.getRequestedBy().getFullName(),
+                    null,
+                    null,
+                    r.getReasonComments(),
+                    null,
+                    r.getApproverComments(),
+                    r.getResolvedBy() != null ? r.getResolvedBy().getId() : null,
+                    r.getResolvedBy() != null ? r.getResolvedBy().getFullName() : null,
+                    r.getCreatedAt(),
+                    r.getResolvedAt()
+            );
+        }
+
+        AgreementVersion version = r.getAgreementVersion();
+        var parent = version.getAgreement();
+        var cag = parent.getCompanyAgreementGroup();
         return new AgreementActionRequestResponse(
                 r.getId(),
-                agreement.getId(),
-                group.getId(),
-                group.getAgreementNumber(),
-                agreement.getAgreementName(),
-                group.getCompany() != null ? group.getCompany().getCompanyName() : null,
+                parent.getId(),
+                version.getId(),
+                null,
+                parent.getAgreementName(),
+                cag.getCompany().getCompanyName(),
                 r.getActionType(),
                 r.getStatus(),
                 r.getRequestedBy().getId(),

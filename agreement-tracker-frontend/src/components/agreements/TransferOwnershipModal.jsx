@@ -51,7 +51,7 @@ export default function TransferOwnershipModal({
     if (!agreementId || !selectedUser?.id || !comments.trim()) return;
     setSubmitting(true);
     try {
-      await axiosInstance.post(ENDPOINTS.AGREEMENT_REQUEST_TRANSFER(agreementId), {
+      await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_REQUEST_TRANSFER(agreementId), {
         newOwnerId: selectedUser.id,
         comments: comments.trim(),
       });

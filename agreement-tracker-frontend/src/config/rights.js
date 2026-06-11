@@ -17,7 +17,9 @@ export const RIGHTS = {
 export const ROUTE_RIGHTS = {
   '/': [RIGHTS.DASHBOARD_VIEW],
   '/agreements': [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL],
+  '/agreements/groups': [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL],
   '/agreements/new': [RIGHTS.AGREEMENT_CREATE],
+  '/agreements/wizard': [RIGHTS.AGREEMENT_CREATE, RIGHTS.AGREEMENT_EDIT],
   '/approvals': [RIGHTS.AGREEMENT_APPROVE],
   '/admin/users': [RIGHTS.ADMIN_USERS],
   '/master': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
@@ -34,7 +36,13 @@ export const ROUTE_RIGHTS = {
 
 export function rightsForPath(pathname) {
   if (ROUTE_RIGHTS[pathname]) return ROUTE_RIGHTS[pathname];
-  if (pathname.startsWith('/agreements/groups/')) {
+  if (/^\/agreements\/groups\/\d+/.test(pathname)) {
+    return [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL];
+  }
+  if (pathname === '/agreements/wizard' || /^\/agreements\/\d+\/edit/.test(pathname)) {
+    return [RIGHTS.AGREEMENT_CREATE, RIGHTS.AGREEMENT_EDIT];
+  }
+  if (/^\/agreements\/\d+/.test(pathname)) {
     return [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL];
   }
   const prefix = Object.keys(ROUTE_RIGHTS)

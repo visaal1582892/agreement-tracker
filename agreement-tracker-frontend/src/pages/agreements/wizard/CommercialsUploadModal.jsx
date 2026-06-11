@@ -55,7 +55,7 @@ function formatTargetValue(value) {
 }
 
 export default function CommercialsUploadModal({
-  open,
+  open = true,
   onClose,
   agreementId,
   slabs,
@@ -63,6 +63,8 @@ export default function CommercialsUploadModal({
   expiryDate,
   selectedFrequencies,
   onFrequenciesChange,
+  readOnly = false,
+  embedded = false,
 }) {
   const { enqueueSnackbar } = useSnackbar();
   const [previewRows, setPreviewRows] = useState([]);
@@ -74,8 +76,10 @@ export default function CommercialsUploadModal({
   const [savedFlash, setSavedFlash] = useState(null);
   const inputRef = useRef(null);
 
+  const isActive = embedded || open;
+
   const loadPreview = useCallback(async () => {
-    if (!agreementId || !open) return;
+    if (!agreementId || !isActive) return;
     setLoadingPreview(true);
     try {
       const data = await fetchCommercialTargetsPreview(agreementId);
@@ -85,17 +89,17 @@ export default function CommercialsUploadModal({
     } finally {
       setLoadingPreview(false);
     }
-  }, [agreementId, open, enqueueSnackbar]);
+  }, [agreementId, isActive, enqueueSnackbar]);
 
   useEffect(() => {
-    if (open) {
+    if (isActive) {
       loadPreview();
     } else {
       setEditingCell(null);
       setEditValue('');
       setSavedFlash(null);
     }
-  }, [open, loadPreview]);
+  }, [isActive, loadPreview]);
 
   useEffect(() => {
     if (editingCell && inputRef.current) {
@@ -159,6 +163,7 @@ export default function CommercialsUploadModal({
   };
 
   const startEdit = (timePeriodId, slabId, currentValue) => {
+    if (readOnly) return;
     setEditingCell({ timePeriodId, slabId });
     setEditValue(currentValue != null ? String(currentValue) : '');
   };
@@ -207,10 +212,9 @@ export default function CommercialsUploadModal({
 
   const getCellValue = (row, slabId) => row.targets?.[slabId] ?? row.targets?.[String(slabId)];
 
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
-      <DialogTitle fontWeight={700}>Upload / View Commercials</DialogTitle>
-      <DialogContent dividers sx={{ p: 0 }}>
+  const body = (
+    <>
+        {!readOnly && (
         <Box sx={{ p: 2.5, borderBottom: '1px solid #E2E8F0', bgcolor: '#FAFBFC' }}>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
             <FormControl size="small" sx={{ minWidth: 260 }}>
@@ -261,8 +265,9 @@ export default function CommercialsUploadModal({
             </Button>
           </Box>
         </Box>
+        )}
 
-        <Box sx={{ p: 2.5, minHeight: 320, maxHeight: '60vh', overflow: 'auto' }}>
+        <Box sx={{ p: embedded ? 0 : 2.5, minHeight: embedded ? 200 : 320, maxHeight: embedded ? 'none' : '60vh', overflow: 'auto' }}>
           {loadingPreview ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
               <CircularProgress />
@@ -324,7 +329,7 @@ export default function CommercialsUploadModal({
                               py: 0.75,
                               textAlign: 'right',
                               borderBottom: '1px solid #F1F5F9',
-                              cursor: 'cell',
+                              cursor: readOnly ? 'default' : 'cell',
                               transition: 'box-shadow 0.25s ease',
                               boxShadow: isFlashing ? 'inset 0 0 0 2px #22C55E' : 'none',
                               bgcolor: isFlashing ? 'rgba(34, 197, 94, 0.08)' : 'transparent',
@@ -362,12 +367,24 @@ export default function CommercialsUploadModal({
             </Box>
           )}
 
-          {previewRows.length > 0 && (
+          {previewRows.length > 0 && !readOnly && (
             <Alert severity="info" sx={{ mt: 2 }}>
               Double-click any cell to edit. Changes save automatically on Enter or when you click away.
             </Alert>
           )}
         </Box>
+    </>
+  );
+
+  if (embedded) {
+    return body;
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
+      <DialogTitle fontWeight={700}>Upload / View Commercials</DialogTitle>
+      <DialogContent dividers sx={{ p: 0 }}>
+        {body}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={onClose} variant="outlined">Close</Button>

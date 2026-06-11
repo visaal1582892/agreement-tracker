@@ -24,11 +24,12 @@ import { buildAgreementEditPath } from '../../utils/agreementNavigation';
 import { approveAgreement, rejectAgreement, submitAgreementForApproval } from '../../store/slices/agreementSlice';
 import TransferOwnershipModal from '../../components/agreements/TransferOwnershipModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import CommercialsUploadModal from './wizard/CommercialsUploadModal';
 import dayjs from 'dayjs';
 
-export default function AgreementDetailPage({ embeddedGroupId, onActionComplete } = {}) {
-  const { groupId: routeGroupId } = useParams();
-  const groupId = embeddedGroupId ?? routeGroupId;
+export default function AgreementDetailPage({ embeddedAgreementId, onActionComplete } = {}) {
+  const { agreementId: routeAgreementId } = useParams();
+  const agreementId = embeddedAgreementId ?? routeAgreementId;
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { enqueueSnackbar } = useSnackbar();
@@ -49,13 +50,14 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
   const transferModal = useModal();
   const submitModal = useModal();
   const [terminateData, setTerminateData] = useState({ comments: '', requestedTerminationDate: '' });
+  const [slabs, setSlabs] = useState([]);
 
   const loadVersionDetail = useCallback(async (versionId) => {
     if (!versionId) return null;
     try {
       const [agrRes, tlRes] = await Promise.all([
-        axiosInstance.get(ENDPOINTS.AGREEMENT_BY_ID(versionId)),
-        axiosInstance.get(ENDPOINTS.AGREEMENT_TIMELINE(versionId)),
+        axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_BY_ID(versionId)),
+        axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_TIMELINE(versionId)),
       ]);
       setAgreement(agrRes.data);
       setTimeline(tlRes.data);
@@ -84,12 +86,12 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
   }, []);
 
   const load = async (preferredVersionId, { silent = false } = {}) => {
-    if (!groupId || groupId === 'undefined') return;
+    if (!agreementId || agreementId === 'undefined') return;
     if (!silent) setLoading(true);
     try {
       const [groupRes, versionsRes] = await Promise.all([
-        axiosInstance.get(ENDPOINTS.AGREEMENT_GROUP_BY_ID(groupId)),
-        axiosInstance.get(ENDPOINTS.AGREEMENT_VERSIONS(groupId)),
+        axiosInstance.get(ENDPOINTS.AGREEMENT_BY_ID(agreementId)),
+        axiosInstance.get(ENDPOINTS.AGREEMENT_VERSIONS(agreementId)),
       ]);
       setGroup(groupRes.data);
       setVersions(versionsRes.data);
@@ -115,19 +117,36 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
   };
 
   useEffect(() => {
-    if (!groupId || groupId === 'undefined') return;
+    if (!agreementId || agreementId === 'undefined') return;
     setGroup(null);
     setVersions([]);
     setAgreement(null);
     setTimeline([]);
     setSelectedVersionId(null);
     load();
-  }, [groupId]);
+  }, [agreementId]);
 
   useEffect(() => {
     if (!selectedVersionId) return;
     loadVersionDetail(selectedVersionId);
   }, [selectedVersionId, loadVersionDetail]);
+
+  useEffect(() => {
+    if (!selectedVersionId || agreement?.commercialStructure !== 'SLAB') {
+      setSlabs([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_SLABS(selectedVersionId));
+        if (!cancelled) setSlabs(Array.isArray(data) ? data : []);
+      } catch {
+        if (!cancelled) setSlabs([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedVersionId, agreement?.commercialStructure]);
 
   const refreshAfterMutation = async (updated, versionId = selectedVersionId) => {
     applyVersionPatch(updated);
@@ -162,8 +181,8 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
 
   const handleNewVersion = async () => {
     try {
-      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_NEW_VERSION(groupId));
-      await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(data.id));
+      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_NEW_VERSION(agreementId));
+      await axiosInstance.put(ENDPOINTS.AGREEMENT_VERSION_SUBMIT(data.id));
       const msg = agreement?.approvalStatus === 'REJECTED'
         ? `Revision V${data.versionNumber} submitted for approval`
         : `New version V${data.versionNumber} submitted for approval`;
@@ -182,7 +201,7 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
       if (terminateData.requestedTerminationDate) {
         payload.requestedTerminationDate = terminateData.requestedTerminationDate;
       }
-      await axiosInstance.post(ENDPOINTS.AGREEMENT_REQUEST_TERMINATE(selectedVersionId), payload);
+      await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_REQUEST_TERMINATE(selectedVersionId), payload);
       enqueueSnackbar('Termination request submitted to Approver.', { variant: 'success' });
       terminateModal.close();
       setTerminateData({ comments: '', requestedTerminationDate: '' });
@@ -269,14 +288,22 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
     return entry.action;
   };
 
-  const displayName = agreement?.agreementName || group?.agreementName || group?.agreementNumber;
+  const displayName = agreement?.agreementName || group?.agreementName || 'Agreement';
 
   const pendingRequest = agreement?.pendingActionRequest;
   const pendingActionLabel = pendingRequest?.actionType === 'TRANSFER' ? 'Transfer' : 'Terminate';
 
-  if (!groupId || groupId === 'undefined') {
+  const invalidAgreementId = !agreementId
+    || agreementId === 'undefined'
+    || agreementId === 'new'
+    || agreementId === 'groups'
+    || Number.isNaN(Number(agreementId));
+
+  if (invalidAgreementId) {
     return (
-      <Typography color="text.secondary">Select an agreement to review</Typography>
+      <Alert severity="error" sx={{ mt: 2 }}>
+        Invalid agreement link. Return to Agreements and try again.
+      </Alert>
     );
   }
 
@@ -284,7 +311,7 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
 
   return (
     <Box>
-      {!embeddedGroupId && (
+      {!embeddedAgreementId && (
         <Breadcrumbs separator={<NavigateNext fontSize="small" />} sx={{ mb: 1 }}>
           <MuiLink
             component="button"
@@ -300,7 +327,7 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
         </Breadcrumbs>
       )}
 
-      {!embeddedGroupId && (
+      {!embeddedAgreementId && (
         <Button
           variant="text"
           color="inherit"
@@ -317,7 +344,7 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
         <Box>
           <Typography variant="h5" fontWeight={700}>{displayName}</Typography>
           <Typography variant="body2" color="text.secondary">
-            {group?.agreementNumber}{group?.companyName ? ` · ${group.companyName}` : ''}
+            {[group?.companyAgreementGroupName, group?.companyName].filter(Boolean).join(' · ')}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -429,35 +456,59 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
                 </AccordionDetails>
               </Accordion>
 
-              <Accordion defaultExpanded elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Typography fontWeight={600}>Agreement Details</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, sm: 6 }}><Typography variant="caption" color="text.secondary">Agreement Name</Typography><Typography variant="body2" fontWeight={600}>{agreement.agreementName || '—'}</Typography></Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}><Typography variant="caption" color="text.secondary">Agreement No.</Typography><Typography variant="body2">{agreement.agreementNumber || '—'}</Typography></Grid>
-                    <Grid size={{ xs: 6, sm: 3 }}><Typography variant="caption" color="text.secondary">Income Type</Typography><Typography variant="body2">{agreement.incomeTypeName || '—'}</Typography></Grid>
-                    <Grid size={{ xs: 6, sm: 3 }}><Typography variant="caption" color="text.secondary">Agreement Type</Typography><Typography variant="body2">{agreement.agreementTypeName || '—'}</Typography></Grid>
-                    <Grid size={{ xs: 6, sm: 3 }}><Typography variant="caption" color="text.secondary">Start Date</Typography><Typography variant="body2">{agreement.startDate ? dayjs(agreement.startDate).format('DD MMM YYYY') : '—'}</Typography></Grid>
-                    <Grid size={{ xs: 6, sm: 3 }}><Typography variant="caption" color="text.secondary">Expiry Date</Typography><Typography variant="body2">{agreement.expiryDate ? dayjs(agreement.expiryDate).format('DD MMM YYYY') : '—'}</Typography></Grid>
+              <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                <Typography fontWeight={600} sx={{ mb: 1.5 }}>Agreement Details</Typography>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <Typography variant="caption" color="text.secondary">Agreement Name</Typography>
+                    <Typography variant="body2" fontWeight={600}>{agreement.agreementName || '—'}</Typography>
                   </Grid>
-                </AccordionDetails>
-              </Accordion>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <Typography variant="caption" color="text.secondary">Company Agreement Group</Typography>
+                    <Typography variant="body2">{agreement.companyAgreementGroupName || group?.companyAgreementGroupName || '—'}</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Typography variant="caption" color="text.secondary">Income Type</Typography>
+                    <Typography variant="body2">{agreement.incomeTypeName || '—'}</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Typography variant="caption" color="text.secondary">Agreement Type</Typography>
+                    <Typography variant="body2">{agreement.agreementTypeName || group?.agreementTypeName || '—'}</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Typography variant="caption" color="text.secondary">Start Date</Typography>
+                    <Typography variant="body2">{agreement.startDate ? dayjs(agreement.startDate).format('DD MMM YYYY') : '—'}</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Typography variant="caption" color="text.secondary">Expiry Date</Typography>
+                    <Typography variant="body2">{agreement.expiryDate ? dayjs(agreement.expiryDate).format('DD MMM YYYY') : '—'}</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 6, sm: 3 }}>
+                    <Typography variant="caption" color="text.secondary">Commercial Structure</Typography>
+                    <Typography variant="body2">{agreement.commercialStructure || '—'}</Typography>
+                  </Grid>
+                  {agreement.commercialStructure === 'FLAT' && (
+                    <Grid size={{ xs: 6, sm: 3 }}>
+                      <Typography variant="caption" color="text.secondary">Commercial Value</Typography>
+                      <Typography variant="body2">₹{Number(agreement.commercialValue || 0).toLocaleString('en-IN')}</Typography>
+                    </Grid>
+                  )}
+                </Grid>
+              </Paper>
 
-              <Accordion defaultExpanded elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Typography fontWeight={600}>Commercial Structure</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 6, sm: 3 }}><Typography variant="caption" color="text.secondary">Structure</Typography><Typography variant="body2">{agreement.commercialStructure}</Typography></Grid>
-                    {agreement.commercialStructure === 'FLAT' && (
-                      <Grid size={{ xs: 6, sm: 3 }}><Typography variant="caption" color="text.secondary">Value</Typography><Typography variant="body2">₹{Number(agreement.commercialValue || 0).toLocaleString('en-IN')}</Typography></Grid>
-                    )}
-                  </Grid>
-                </AccordionDetails>
-              </Accordion>
+              {agreement.commercialStructure === 'SLAB' && (
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>Commercial Targets Matrix</Typography>
+                  <CommercialsUploadModal
+                    embedded
+                    readOnly
+                    agreementId={selectedVersionId}
+                    slabs={slabs}
+                    startDate={agreement.startDate}
+                    expiryDate={agreement.expiryDate}
+                  />
+                </Paper>
+              )}
 
               <Accordion elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
                 <AccordionSummary expandIcon={<ExpandMore />}>
@@ -633,7 +684,7 @@ export default function AgreementDetailPage({ embeddedGroupId, onActionComplete 
         open={transferModal.isOpen}
         onClose={transferModal.close}
         agreementId={selectedVersionId}
-        agreementLabel={group?.agreementNumber}
+        agreementLabel={displayName}
         onSuccess={({ immediate } = {}) => {
           transferModal.close();
           enqueueSnackbar(

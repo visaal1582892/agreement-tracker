@@ -7,6 +7,7 @@ import {
 import { Search } from '@mui/icons-material';
 import { BRAND } from '../../config/theme';
 import SearchableSelect from '../forms/SearchableSelect';
+import DateRangeFilter from '../forms/DateRangeFilter';
 import TruncatedText from './TruncatedText';
 
 /**
@@ -22,7 +23,9 @@ import TruncatedText from './TruncatedText';
  *     header: string,          // display label
  *     width?: string | number,
  *     sortable?: boolean,       // default true
- *     filterType?: 'text' | 'select' | 'searchable-select' | null,
+ *     filterType?: 'text' | 'select' | 'searchable-select' | 'date-range-picker' | null,
+ *     filterKeyFrom?: string,
+ *     filterKeyTo?: string,
  *     filterOptions?: [{ value, label } | object],  // for 'select' / 'searchable-select'
  *     onFilterSearch?: (query: string) => void,
  *     filterLoading?: boolean,
@@ -160,6 +163,7 @@ export default function DataTable({
   emptyMessage = 'No records found',
   stickyHeader = true,
   horizontalScroll = false,
+  hidePagination = false,
 }) {
   const hasFilters = columns.some((c) => c.filterType);
   const stickyOffsets = buildStickyRightOffsets(columns);
@@ -314,6 +318,15 @@ export default function DataTable({
                           disabled={false}
                         />
                       )}
+                      {col.filterType === 'date-range-picker' && (
+                        <DateRangeFilter
+                          fromKey={col.filterKeyFrom}
+                          toKey={col.filterKeyTo}
+                          filters={filters}
+                          onFilterChange={onFilterChange}
+                          label={`${col.header} range`}
+                        />
+                      )}
                     </TableCell>
                   );
                 })}
@@ -356,7 +369,7 @@ export default function DataTable({
         </Table>
       </TableContainer>
 
-      {totalCount !== undefined && (
+      {!hidePagination && totalCount !== undefined && (
         <TablePagination
           component="div"
           count={totalCount}

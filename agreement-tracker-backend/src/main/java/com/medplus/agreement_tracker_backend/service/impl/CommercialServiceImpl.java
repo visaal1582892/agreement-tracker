@@ -5,7 +5,7 @@ import com.medplus.agreement_tracker_backend.dto.request.SlabDTO;
 import com.medplus.agreement_tracker_backend.dto.request.UpsertSaleTargetRequest;
 import com.medplus.agreement_tracker_backend.dto.response.CommercialUploadResponse;
 import com.medplus.agreement_tracker_backend.dto.response.TimePeriodTargetsPreviewResponse;
-import com.medplus.agreement_tracker_backend.entity.Agreement;
+import com.medplus.agreement_tracker_backend.entity.AgreementVersion;
 import com.medplus.agreement_tracker_backend.entity.AgreementPurchaseSlab;
 import com.medplus.agreement_tracker_backend.entity.AgreementSaleTarget;
 import com.medplus.agreement_tracker_backend.entity.AgreementTimePeriod;
@@ -14,7 +14,7 @@ import com.medplus.agreement_tracker_backend.exception.IncompleteAgreementExcept
 import com.medplus.agreement_tracker_backend.exception.ResourceNotFoundException;
 import com.medplus.agreement_tracker_backend.exception.UnauthorizedException;
 import com.medplus.agreement_tracker_backend.repository.AgreementPurchaseSlabRepository;
-import com.medplus.agreement_tracker_backend.repository.AgreementRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementVersionRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementSaleTargetRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementTimePeriodRepository;
 import com.medplus.agreement_tracker_backend.service.CommercialService;
@@ -64,7 +64,7 @@ public class CommercialServiceImpl implements CommercialService {
             "YEARLY", CommercialServiceImpl::generateYearlyPeriods
     );
 
-    private final AgreementRepository agreementRepository;
+    private final AgreementVersionRepository agreementVersionRepository;
     private final AgreementPurchaseSlabRepository purchaseSlabRepository;
     private final AgreementSaleTargetRepository saleTargetRepository;
     private final AgreementTimePeriodRepository timePeriodRepository;
@@ -72,20 +72,20 @@ public class CommercialServiceImpl implements CommercialService {
     @Override
     @Transactional
     public byte[] generateCommercialTemplate(Long agreementId, CommercialTemplateRequest request, Long currentUserId) {
-        Agreement agreement = loadDraftAgreementForMutation(agreementId, currentUserId);
+        AgreementVersion version = loadDraftVersionForMutation(agreementId, currentUserId);
 
-        validateAgreementDates(agreement);
+        validateAgreementDates(version);
         validateFrequencies(request.selectedFrequencies());
 
         List<AgreementPurchaseSlab> purchaseSlabs =
-                purchaseSlabRepository.findByAgreementIdOrderByFromValueAsc(agreementId);
+                purchaseSlabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementId);
         if (purchaseSlabs.isEmpty()) {
             throw new IncompleteAgreementException(
                     "No purchase slabs found for this agreement. Add at least one slab before generating the template.");
         }
 
-        LocalDate startDate = agreement.getStartDate();
-        LocalDate expiryDate = agreement.getExpiryDate();
+        LocalDate startDate = version.getStartDate();
+        LocalDate expiryDate = version.getExpiryDate();
         List<String> groupedPeriodNames = buildGroupedPeriodNames(
                 request.selectedFrequencies(), startDate, expiryDate, currentUserId);
 
@@ -107,15 +107,15 @@ public class CommercialServiceImpl implements CommercialService {
             throw new IncompleteAgreementException("Uploaded Excel file is required.");
         }
 
-        Agreement agreement = loadDraftAgreementForMutation(agreementId, currentUserId);
+        AgreementVersion version = loadDraftVersionForMutation(agreementId, currentUserId);
 
-        List<AgreementPurchaseSlab> slabs = purchaseSlabRepository.findByAgreementIdOrderByFromValueAsc(agreementId);
+        List<AgreementPurchaseSlab> slabs = purchaseSlabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementId);
         if (slabs.isEmpty()) {
             throw new IncompleteAgreementException(
                     "No purchase slabs found for this agreement. Generate the commercial template first.");
         }
 
-        saleTargetRepository.deleteByAgreementId(agreementId);
+        saleTargetRepository.deleteByAgreementVersionId(agreementId);
 
         try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
@@ -160,7 +160,7 @@ public class CommercialServiceImpl implements CommercialService {
                     }
 
                     AgreementSaleTarget target = AgreementSaleTarget.builder()
-                            .agreement(agreement)
+                            .agreementVersion(version)
                             .timePeriod(timePeriod)
                             .slab(entry.getValue())
                             .targetValue(targetValue)
@@ -185,9 +185,9 @@ public class CommercialServiceImpl implements CommercialService {
     @Override
     @Transactional(readOnly = true)
     public List<TimePeriodTargetsPreviewResponse> getTargetsPreview(Long agreementId, Long currentUserId) {
-        loadAgreementForRead(agreementId, currentUserId);
+        loadVersionForRead(agreementId, currentUserId);
 
-        List<AgreementSaleTarget> targets = saleTargetRepository.findByAgreementId(agreementId);
+        List<AgreementSaleTarget> targets = saleTargetRepository.findByAgreementVersionId(agreementId);
         Map<Long, String> periodNames = new HashMap<>();
         Map<Long, Map<Long, BigDecimal>> periodTargets = new HashMap<>();
 
@@ -210,19 +210,19 @@ public class CommercialServiceImpl implements CommercialService {
     @Override
     @Transactional
     public void upsertSaleTarget(Long agreementId, UpsertSaleTargetRequest request, Long currentUserId) {
-        Agreement agreement = loadDraftAgreementForMutation(agreementId, currentUserId);
+        AgreementVersion version = loadDraftVersionForMutation(agreementId, currentUserId);
 
         AgreementTimePeriod timePeriod = timePeriodRepository.findById(request.timePeriodId())
                 .orElseThrow(() -> new ResourceNotFoundException("TimePeriod", request.timePeriodId()));
 
         AgreementPurchaseSlab slab = purchaseSlabRepository.findById(request.slabId())
                 .orElseThrow(() -> new ResourceNotFoundException("PurchaseSlab", request.slabId()));
-        if (!slab.getAgreement().getId().equals(agreementId)) {
+        if (!slab.getAgreementVersion().getId().equals(agreementId)) {
             throw new ResourceNotFoundException("PurchaseSlab", request.slabId());
         }
 
         Optional<AgreementSaleTarget> existing = saleTargetRepository
-                .findByAgreementIdAndTimePeriodIdAndSlabId(agreementId, request.timePeriodId(), request.slabId());
+                .findByAgreementVersionIdAndTimePeriodIdAndSlabId(agreementId, request.timePeriodId(), request.slabId());
 
         if (request.targetValue() == null) {
             existing.ifPresent(saleTargetRepository::delete);
@@ -238,7 +238,7 @@ public class CommercialServiceImpl implements CommercialService {
         }
 
         AgreementSaleTarget target = AgreementSaleTarget.builder()
-                .agreement(agreement)
+                .agreementVersion(version)
                 .timePeriod(timePeriod)
                 .slab(slab)
                 .targetValue(request.targetValue())
@@ -247,27 +247,27 @@ public class CommercialServiceImpl implements CommercialService {
         saleTargetRepository.save(target);
     }
 
-    private Agreement loadDraftAgreementForMutation(Long agreementId, Long userId) {
-        Agreement agreement = agreementRepository.findById(agreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
-        if (!agreement.getOwner().getId().equals(userId)) {
+    private AgreementVersion loadDraftVersionForMutation(Long agreementVersionId, Long userId) {
+        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
+        if (!version.getAgreement().getOwner().getId().equals(userId)) {
             throw new UnauthorizedException("You are not the owner of this agreement");
         }
-        if (agreement.getApprovalStatus() != ApprovalStatus.DRAFT) {
+        if (version.getApprovalStatus() != ApprovalStatus.DRAFT) {
             throw new UnauthorizedException(
                     "Commercial targets can only be modified while the agreement is in DRAFT status");
         }
-        return agreement;
+        return version;
     }
 
-    private Agreement loadAgreementForRead(Long agreementId, Long userId) {
-        Agreement agreement = agreementRepository.findById(agreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
-        if (agreement.getApprovalStatus() == ApprovalStatus.DRAFT
-                && !agreement.getOwner().getId().equals(userId)) {
-            throw new ResourceNotFoundException("Agreement", agreementId);
+    private AgreementVersion loadVersionForRead(Long agreementVersionId, Long userId) {
+        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
+        if (version.getApprovalStatus() == ApprovalStatus.DRAFT
+                && !version.getAgreement().getOwner().getId().equals(userId)) {
+            throw new ResourceNotFoundException("AgreementVersion", agreementVersionId);
         }
-        return agreement;
+        return version;
     }
 
     private Map<Integer, AgreementPurchaseSlab> mapHeaderColumns(Row headerRow, List<AgreementPurchaseSlab> slabs) {
@@ -309,12 +309,12 @@ public class CommercialServiceImpl implements CommercialService {
         }
     }
 
-    private void validateAgreementDates(Agreement agreement) {
-        if (agreement.getStartDate() == null || agreement.getExpiryDate() == null) {
+    private void validateAgreementDates(AgreementVersion version) {
+        if (version.getStartDate() == null || version.getExpiryDate() == null) {
             throw new IncompleteAgreementException(
                     "Agreement start date and expiry date are required to generate a commercial template.");
         }
-        if (agreement.getExpiryDate().isBefore(agreement.getStartDate())) {
+        if (version.getExpiryDate().isBefore(version.getStartDate())) {
             throw new IncompleteAgreementException(
                     "Agreement expiry date must be on or after the start date.");
         }

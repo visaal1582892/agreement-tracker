@@ -3,15 +3,15 @@ import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
 import { normalizePageResponse } from '../../utils/pageResponse';
 
-export const fetchAgreementGroups = createAsyncThunk(
-  'agreements/fetchGroups',
+export const fetchAgreements = createAsyncThunk(
+  'agreements/fetchAll',
   async ({ page = 0, size = 20, scope = 'MY', sortBy, sortDir, ...params } = {}, { rejectWithValue }) => {
     try {
       const query = { page, size, scope, ...params };
       if (sortBy) {
         query.sort = `${sortBy},${sortDir || 'asc'}`;
       }
-      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_GROUPS, { params: query });
+      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENTS, { params: query });
       return normalizePageResponse(data);
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch agreements');
@@ -19,12 +19,15 @@ export const fetchAgreementGroups = createAsyncThunk(
   }
 );
 
+/** @deprecated use fetchAgreements */
+export const fetchAgreementGroups = fetchAgreements;
+
 export const submitAgreementForApproval = createAsyncThunk(
   'agreements/submit',
   async ({ agreementId, comments }, { rejectWithValue }) => {
     try {
       const body = comments?.trim() ? { comments: comments.trim() } : {};
-      const { data } = await axiosInstance.put(ENDPOINTS.AGREEMENT_SUBMIT(agreementId), body);
+      const { data } = await axiosInstance.put(ENDPOINTS.AGREEMENT_VERSION_SUBMIT(agreementId), body);
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to submit agreement');
@@ -36,7 +39,7 @@ export const approveAgreement = createAsyncThunk(
   'agreements/approve',
   async ({ agreementId, remarks = 'Approved' }, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_APPROVE(agreementId), { remarks });
+      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_APPROVE(agreementId), { remarks });
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Approval failed');
@@ -48,7 +51,7 @@ export const rejectAgreement = createAsyncThunk(
   'agreements/reject',
   async ({ agreementId, remarks }, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_REJECT(agreementId), { remarks });
+      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_REJECT(agreementId), { remarks });
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Rejection failed');
@@ -62,7 +65,7 @@ export const fetchPendingApprovals = createAsyncThunk(
     try {
       const params = { page, size };
       if (search?.trim()) params.search = search.trim();
-      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_PENDING_APPROVALS, { params });
+      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_PENDING_APPROVALS, { params });
       return normalizePageResponse(data);
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch pending approvals');
@@ -99,34 +102,34 @@ export const resolveActionRequest = createAsyncThunk(
   }
 );
 
-function applyAgreementToGroups(state, agreement) {
-  if (!agreement?.agreementGroupId) return;
+function applyVersionToAgreements(state, version) {
+  if (!version?.agreementId) return;
 
-  const idx = state.groups.findIndex((g) => g.id === agreement.agreementGroupId);
+  const idx = state.agreements.findIndex((a) => a.id === version.agreementId);
   if (idx === -1) return;
 
-  const group = state.groups[idx];
-  state.groups[idx] = {
-    ...group,
-    computedStatus: agreement.computedStatus ?? group.computedStatus,
-    approvalStatus: agreement.approvalStatus ?? group.approvalStatus,
-    latestVersionId: agreement.id,
-    currentVersionNumber: agreement.versionNumber ?? group.currentVersionNumber,
-    currentVersionId: agreement.approvalStatus === 'APPROVED'
-      ? agreement.id
-      : group.currentVersionId,
-    startDate: agreement.startDate ?? group.startDate,
-    expiryDate: agreement.expiryDate ?? group.expiryDate,
-    incomeTypeName: agreement.incomeTypeName ?? group.incomeTypeName,
+  const agreement = state.agreements[idx];
+  state.agreements[idx] = {
+    ...agreement,
+    computedStatus: version.computedStatus ?? agreement.computedStatus,
+    approvalStatus: version.approvalStatus ?? agreement.approvalStatus,
+    latestVersionId: version.id,
+    currentVersionNumber: version.versionNumber ?? agreement.currentVersionNumber,
+    currentVersionId: version.approvalStatus === 'APPROVED'
+      ? version.id
+      : agreement.currentVersionId,
+    startDate: version.startDate ?? agreement.startDate,
+    expiryDate: version.expiryDate ?? agreement.expiryDate,
+    incomeTypeName: version.incomeTypeName ?? agreement.incomeTypeName,
   };
 }
 
-function removeFromPendingApprovals(state, agreement) {
-  if (!agreement) return;
+function removeFromPendingApprovals(state, version) {
+  if (!version) return;
 
   const before = state.pendingApprovals.length;
   state.pendingApprovals = state.pendingApprovals.filter(
-    (a) => a.id !== agreement.id && a.agreementGroupId !== agreement.agreementGroupId,
+    (a) => a.id !== version.id && a.agreementId !== version.agreementId,
   );
   const removed = before - state.pendingApprovals.length;
   if (removed > 0 && state.pendingTotal > 0) {
@@ -137,6 +140,8 @@ function removeFromPendingApprovals(state, agreement) {
 const agreementSlice = createSlice({
   name: 'agreements',
   initialState: {
+    agreements: [],
+    /** @deprecated use agreements */
     groups: [],
     totalElements: 0,
     totalPages: 0,
@@ -159,44 +164,49 @@ const agreementSlice = createSlice({
       state.error = null;
     },
     updateAgreementStatusLocal(state, { payload }) {
-      const { agreementId, groupId, newStatus } = payload;
-      const idx = state.groups.findIndex(
-        (g) => g.id === groupId || g.latestVersionId === agreementId,
+      const { agreementId, agreementVersionId, newStatus } = payload;
+      const idx = state.agreements.findIndex(
+        (a) => a.id === agreementId || a.latestVersionId === agreementVersionId,
       );
       if (idx !== -1 && newStatus) {
-        state.groups[idx].computedStatus = newStatus;
+        state.agreements[idx].computedStatus = newStatus;
       }
     },
-    updateAgreementGroupFromResponse(state, { payload: agreement }) {
-      applyAgreementToGroups(state, agreement);
-      if (agreement?.approvalStatus !== 'PENDING_APPROVAL') {
-        removeFromPendingApprovals(state, agreement);
+    updateAgreementFromVersionResponse(state, { payload: version }) {
+      applyVersionToAgreements(state, version);
+      if (version?.approvalStatus !== 'PENDING_APPROVAL') {
+        removeFromPendingApprovals(state, version);
       }
+    },
+    /** @deprecated use updateAgreementFromVersionResponse */
+    updateAgreementGroupFromResponse(state, action) {
+      agreementSlice.caseReducers.updateAgreementFromVersionResponse(state, action);
     },
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchAgreementGroups.pending, (state) => { state.loading = true; })
-      .addCase(fetchAgreementGroups.fulfilled, (state, { payload }) => {
+      .addCase(fetchAgreements.pending, (state) => { state.loading = true; })
+      .addCase(fetchAgreements.fulfilled, (state, { payload }) => {
         state.loading = false;
+        state.agreements = payload.content;
         state.groups = payload.content;
         state.totalElements = payload.totalElements;
         state.totalPages = payload.totalPages;
         state.currentPage = payload.number;
       })
-      .addCase(fetchAgreementGroups.rejected, (state, { payload }) => {
+      .addCase(fetchAgreements.rejected, (state, { payload }) => {
         state.loading = false;
         state.error = payload;
       })
       .addCase(submitAgreementForApproval.fulfilled, (state, { payload }) => {
-        applyAgreementToGroups(state, payload);
+        applyVersionToAgreements(state, payload);
       })
       .addCase(approveAgreement.fulfilled, (state, { payload }) => {
-        applyAgreementToGroups(state, payload);
+        applyVersionToAgreements(state, payload);
         removeFromPendingApprovals(state, payload);
       })
       .addCase(rejectAgreement.fulfilled, (state, { payload }) => {
-        applyAgreementToGroups(state, payload);
+        applyVersionToAgreements(state, payload);
         removeFromPendingApprovals(state, payload);
       })
       .addCase(fetchPendingApprovals.pending, (state) => { state.loading = true; })
@@ -237,6 +247,7 @@ const agreementSlice = createSlice({
 export const {
   clearAgreementError,
   updateAgreementStatusLocal,
+  updateAgreementFromVersionResponse,
   updateAgreementGroupFromResponse,
 } = agreementSlice.actions;
 export default agreementSlice.reducer;

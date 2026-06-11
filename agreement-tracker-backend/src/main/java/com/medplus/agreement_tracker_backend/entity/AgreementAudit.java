@@ -8,8 +8,8 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "agreement_audits", indexes = {
-        @Index(name = "idx_audit_group_id", columnList = "agreement_group_id"),
         @Index(name = "idx_audit_agreement_id", columnList = "agreement_id"),
+        @Index(name = "idx_audit_agreement_version_id", columnList = "agreement_version_id"),
         @Index(name = "idx_audit_created_at", columnList = "created_at")
 })
 @Getter
@@ -23,11 +23,11 @@ public class AgreementAudit {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "agreement_group_id")
-    private Long agreementGroupId;
-
     @Column(name = "agreement_id")
     private Long agreementId;
+
+    @Column(name = "agreement_version_id")
+    private Long agreementVersionId;
 
     @Column(name = "entity_type", length = 100)
     private String entityType;

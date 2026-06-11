@@ -10,11 +10,11 @@ import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
 import { submitAgreementForApproval } from '../../store/slices/agreementSlice';
 import { useAgreementPermissions } from '../../hooks/useAgreementPermissions';
-import { ROUTES } from '../../config/routes';
 import { cloneAgreementOnServer } from '../../utils/agreementClone';
 import {
   buildAgreementDetailPath,
   buildAgreementEditPath,
+  buildGroupWizardPath,
   isIncompleteDraft,
   navigateToAgreement,
 } from '../../utils/agreementNavigation';
@@ -59,16 +59,28 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
 
   const goToDetail = () => {
     setAnchor(null);
-    if (incomplete) {
-      navigate(buildAgreementEditPath(row.latestVersionId, { step: 2 }));
+    if (row.approvalStatus === 'DRAFT') {
+      const path = buildGroupWizardPath(row.companyAgreementGroupId, row.id);
+      if (path) navigate(path);
       return;
     }
-    navigate(buildAgreementDetailPath(row.id));
+    const path = buildAgreementDetailPath(row.id);
+    if (path) navigate(path);
   };
 
   const goToEdit = () => {
     setAnchor(null);
-    navigate(buildAgreementEditPath(row.latestVersionId, incomplete ? { step: 2 } : {}));
+    if (row.approvalStatus === 'DRAFT') {
+      const path = buildGroupWizardPath(
+        row.companyAgreementGroupId,
+        row.id,
+        incomplete ? { step: 2 } : {},
+      );
+      if (path) navigate(path);
+      return;
+    }
+    const path = buildAgreementEditPath(row.latestVersionId, incomplete ? { step: 2 } : {});
+    if (path) navigate(path);
   };
 
   const handleSubmitClick = () => {
@@ -110,11 +122,21 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
         onClose={() => setAnchor(null)}
         onClick={(e) => e.stopPropagation()}
       >
-        {actions.view && !incomplete && <MenuItem dense onClick={goToDetail}>View</MenuItem>}
-        {incomplete && (actions.editDraft || actions.view) && (
+        {actions.view && row.approvalStatus === 'DRAFT' && (
+          <MenuItem dense onClick={goToDetail}>Open Draft</MenuItem>
+        )}
+        {actions.view && row.approvalStatus !== 'DRAFT' && (
+          <MenuItem dense onClick={goToDetail}>View</MenuItem>
+        )}
+        {incomplete && (actions.editDraft || actions.view) && row.approvalStatus === 'DRAFT' && (
           <MenuItem dense onClick={goToEdit}>Resume Draft</MenuItem>
         )}
-        {actions.editDraft && !incomplete && <MenuItem dense onClick={goToEdit}>Edit Draft</MenuItem>}
+        {actions.editDraft && !incomplete && row.approvalStatus === 'DRAFT' && (
+          <MenuItem dense onClick={goToEdit}>Edit Draft</MenuItem>
+        )}
+        {actions.editDraft && row.approvalStatus !== 'DRAFT' && (
+          <MenuItem dense onClick={goToEdit}>Edit Draft</MenuItem>
+        )}
         {actions.editApproved && <MenuItem dense onClick={goToEdit}>Edit</MenuItem>}
         {actions.revise && <MenuItem dense onClick={goToEdit}>Revise & Resubmit</MenuItem>}
         {actions.submit && <MenuItem dense onClick={handleSubmitClick}>Submit for Approval</MenuItem>}
@@ -142,31 +164,53 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
   );
 }
 
-const buildColumns = ({ vendorOptions, incomeTypeOptions, onVendorSearch, onIncomeTypeSearch, loadingVendors, loadingIncomeTypes }) => [
-  {
-    field: 'agreementNumber',
-    header: 'Agreement No.',
-    minWidth: 140,
-    sortable: true,
-    filterType: 'text',
-    filterKey: 'agreementNumber',
-  },
+const buildColumns = ({
+  vendorOptions,
+  incomeTypeOptions,
+  companyOptions,
+  onVendorSearch,
+  onIncomeTypeSearch,
+  onCompanySearch,
+  loadingVendors,
+  loadingIncomeTypes,
+  loadingCompanies,
+  hideGroupColumn,
+  hideCompanyFilter,
+}) => [
   {
     field: 'agreementName',
     header: 'Agreement Name',
-    minWidth: 160,
-    sortable: false,
+    minWidth: 180,
+    sortable: true,
     filterType: 'text',
     filterKey: 'agreementName',
+    render: (v) => v || '—',
+  },
+  {
+    field: 'companyAgreementGroupName',
+    header: 'Agreement Group',
+    minWidth: 180,
+    sortable: false,
+    ...(hideGroupColumn ? { filterType: null } : {
+      filterType: 'text',
+      filterKey: 'agreementGroupName',
+    }),
     render: (v) => v || '—',
   },
   {
     field: 'companyName',
     header: 'Company',
     minWidth: 160,
-    sortable: true,
-    filterType: 'text',
-    filterKey: 'companyName',
+    sortable: false,
+    ...(hideCompanyFilter ? {} : {
+      filterType: 'searchable-select',
+      filterKey: 'companyId',
+      filterOptions: companyOptions,
+      onFilterSearch: onCompanySearch,
+      filterLoading: loadingCompanies,
+      getOptionLabel: (o) => o?.companyName || '',
+    }),
+    render: (v) => v || '—',
   },
   {
     field: 'vendors',
@@ -223,13 +267,23 @@ const buildColumns = ({ vendorOptions, incomeTypeOptions, onVendorSearch, onInco
   },
   {
     field: 'startDate',
-    header: 'Validity',
-    minWidth: 200,
+    header: 'Start Date',
+    minWidth: 130,
     sortable: false,
-    render: (_, row) => {
-      if (!row.startDate && !row.expiryDate) return '—';
-      return `${formatDate(row.startDate)} – ${formatDate(row.expiryDate)}`;
-    },
+    filterType: 'date-range-picker',
+    filterKeyFrom: 'startDateFrom',
+    filterKeyTo: 'startDateTo',
+    render: (v) => formatDate(v),
+  },
+  {
+    field: 'expiryDate',
+    header: 'End Date',
+    minWidth: 130,
+    sortable: false,
+    filterType: 'date-range-picker',
+    filterKeyFrom: 'endDateFrom',
+    filterKeyTo: 'endDateTo',
+    render: (v) => formatDate(v),
   },
   {
     field: 'currentVersionNumber',
@@ -285,8 +339,9 @@ export default function AgreementsTable({
   filters = {},
   onFilterChange,
   emptyMessage = 'No agreements found.',
-  hasRight,
   onRefresh,
+  hidePagination = false,
+  lockedGroupId = null,
 }) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -294,8 +349,10 @@ export default function AgreementsTable({
 
   const [vendorOptions, setVendorOptions] = useState([]);
   const [incomeTypeOptions, setIncomeTypeOptions] = useState([]);
+  const [companyOptions, setCompanyOptions] = useState([]);
   const [loadingVendors, setLoadingVendors] = useState(false);
   const [loadingIncomeTypes, setLoadingIncomeTypes] = useState(false);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [transferRow, setTransferRow] = useState(null);
 
   const searchVendors = useCallback(async (query) => {
@@ -326,10 +383,25 @@ export default function AgreementsTable({
     }
   }, []);
 
+  const searchCompanies = useCallback(async (query) => {
+    setLoadingCompanies(true);
+    try {
+      const { data } = await axiosInstance.get(ENDPOINTS.COMPANIES, {
+        params: query?.trim() ? { search: query.trim() } : {},
+      });
+      setCompanyOptions(Array.isArray(data) ? data : []);
+    } catch {
+      setCompanyOptions([]);
+    } finally {
+      setLoadingCompanies(false);
+    }
+  }, []);
+
   useEffect(() => {
     searchVendors('');
     searchIncomeTypes('');
-  }, [searchVendors, searchIncomeTypes]);
+    searchCompanies('');
+  }, [searchVendors, searchIncomeTypes, searchCompanies]);
 
   const handleSubmit = useCallback(async (agreementId, comments) => {
     try {
@@ -355,12 +427,28 @@ export default function AgreementsTable({
     () => buildColumns({
       vendorOptions,
       incomeTypeOptions,
+      companyOptions,
       onVendorSearch: searchVendors,
       onIncomeTypeSearch: searchIncomeTypes,
+      onCompanySearch: searchCompanies,
       loadingVendors,
       loadingIncomeTypes,
+      loadingCompanies,
+      hideGroupColumn: Boolean(lockedGroupId),
+      hideCompanyFilter: false,
     }),
-    [vendorOptions, incomeTypeOptions, searchVendors, searchIncomeTypes, loadingVendors, loadingIncomeTypes],
+    [
+      vendorOptions,
+      incomeTypeOptions,
+      companyOptions,
+      searchVendors,
+      searchIncomeTypes,
+      searchCompanies,
+      loadingVendors,
+      loadingIncomeTypes,
+      loadingCompanies,
+      lockedGroupId,
+    ],
   );
 
   const columnsWithActions = [
@@ -389,40 +477,41 @@ export default function AgreementsTable({
 
   return (
     <>
-    <DataTable
-      columns={columnsWithActions}
-      rows={rows}
-      loading={loading}
-      totalCount={totalCount}
-      page={page}
-      rowsPerPage={rowsPerPage}
-      onPageChange={onPageChange}
-      onRowsPerPageChange={onRowsPerPageChange}
-      onRowClick={handleRowClick}
-      sortBy={sortBy}
-      sortDir={sortDir}
-      onSort={onSort}
-      filters={filters}
-      onFilterChange={onFilterChange}
-      emptyMessage={emptyMessage}
-      horizontalScroll
-    />
-    <TransferOwnershipModal
-      open={Boolean(transferRow)}
-      onClose={() => setTransferRow(null)}
-      agreementId={transferRow?.latestVersionId}
-      agreementLabel={transferRow?.agreementNumber}
-      onSuccess={({ immediate } = {}) => {
-        enqueueSnackbar(
-          immediate ? 'Ownership transferred' : 'Transfer request submitted to Approver.',
-          { variant: 'success' },
-        );
-        setTransferRow(null);
-        if (immediate) {
-          onRefresh?.();
-        }
-      }}
-    />
+      <DataTable
+        columns={columnsWithActions}
+        rows={rows}
+        loading={loading}
+        totalCount={hidePagination ? rows.length : totalCount}
+        page={page}
+        rowsPerPage={hidePagination ? Math.max(rows.length, 1) : rowsPerPage}
+        onPageChange={hidePagination ? undefined : onPageChange}
+        onRowsPerPageChange={hidePagination ? undefined : onRowsPerPageChange}
+        onRowClick={handleRowClick}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSort={onSort}
+        filters={filters}
+        onFilterChange={onFilterChange}
+        emptyMessage={emptyMessage}
+        horizontalScroll
+        hidePagination={hidePagination}
+      />
+      <TransferOwnershipModal
+        open={Boolean(transferRow)}
+        onClose={() => setTransferRow(null)}
+        agreementId={transferRow?.latestVersionId}
+        agreementLabel={transferRow?.agreementName || 'Agreement'}
+        onSuccess={({ immediate } = {}) => {
+          enqueueSnackbar(
+            immediate ? 'Ownership transferred' : 'Transfer request submitted to Approver.',
+            { variant: 'success' },
+          );
+          setTransferRow(null);
+          if (immediate) {
+            onRefresh?.();
+          }
+        }}
+      />
     </>
   );
 }

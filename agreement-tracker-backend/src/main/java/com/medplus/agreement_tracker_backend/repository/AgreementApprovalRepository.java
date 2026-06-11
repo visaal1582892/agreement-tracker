@@ -9,5 +9,7 @@ import java.util.List;
 @Repository
 public interface AgreementApprovalRepository extends JpaRepository<AgreementApproval, Long> {
 
-    List<AgreementApproval> findByAgreementIdOrderByCreatedAtAsc(Long agreementId);
+    List<AgreementApproval> findByAgreementVersionIdOrderByCreatedAtAsc(Long agreementVersionId);
+
+    void deleteByAgreementVersionId(Long agreementVersionId);
 }

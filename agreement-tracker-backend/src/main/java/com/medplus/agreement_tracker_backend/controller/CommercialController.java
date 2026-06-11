@@ -22,7 +22,7 @@ import static com.medplus.agreement_tracker_backend.security.RightExpressions.AG
 import static com.medplus.agreement_tracker_backend.security.RightExpressions.AGREEMENT_VIEW;
 
 @RestController
-@RequestMapping("/agreements/{agreementId}/commercials")
+@RequestMapping("/agreement-versions/{agreementVersionId}/commercials")
 @RequiredArgsConstructor
 public class CommercialController {
 
@@ -31,12 +31,12 @@ public class CommercialController {
     @PostMapping("/template")
     @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<byte[]> generateTemplate(
-            @PathVariable Long agreementId,
+            @PathVariable Long agreementVersionId,
             @Valid @RequestBody CommercialTemplateRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
-        byte[] file = commercialService.generateCommercialTemplate(agreementId, request, principal.getId());
+        byte[] file = commercialService.generateCommercialTemplate(agreementVersionId, request, principal.getId());
 
-        String filename = "commercial-template-" + agreementId + ".xlsx";
+        String filename = "commercial-template-" + agreementVersionId + ".xlsx";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .contentType(MediaType.parseMediaType(
@@ -47,28 +47,28 @@ public class CommercialController {
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<CommercialUploadResponse> uploadTargets(
-            @PathVariable Long agreementId,
+            @PathVariable Long agreementVersionId,
             @RequestParam("file") MultipartFile file,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(
-                commercialService.uploadCommercialTargets(agreementId, file, principal.getId()));
+                commercialService.uploadCommercialTargets(agreementVersionId, file, principal.getId()));
     }
 
     @GetMapping("/targets/preview")
     @PreAuthorize(AGREEMENT_VIEW)
     public ResponseEntity<List<TimePeriodTargetsPreviewResponse>> getTargetsPreview(
-            @PathVariable Long agreementId,
+            @PathVariable Long agreementVersionId,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(commercialService.getTargetsPreview(agreementId, principal.getId()));
+        return ResponseEntity.ok(commercialService.getTargetsPreview(agreementVersionId, principal.getId()));
     }
 
     @PutMapping("/targets")
     @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<Void> upsertSaleTarget(
-            @PathVariable Long agreementId,
+            @PathVariable Long agreementVersionId,
             @Valid @RequestBody UpsertSaleTargetRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
-        commercialService.upsertSaleTarget(agreementId, request, principal.getId());
+        commercialService.upsertSaleTarget(agreementVersionId, request, principal.getId());
         return ResponseEntity.noContent().build();
     }
 }

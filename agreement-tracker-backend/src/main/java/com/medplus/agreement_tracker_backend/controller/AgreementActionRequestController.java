@@ -4,7 +4,7 @@ import com.medplus.agreement_tracker_backend.dto.request.InitiateTerminateReques
 import com.medplus.agreement_tracker_backend.dto.request.InitiateTransferRequest;
 import com.medplus.agreement_tracker_backend.dto.request.ResolveActionRequest;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementActionRequestResponse;
-import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
+import com.medplus.agreement_tracker_backend.dto.response.AgreementVersionResponse;
 import com.medplus.agreement_tracker_backend.dto.response.PagedResponse;
 import com.medplus.agreement_tracker_backend.enums.RightCode;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;
@@ -29,33 +29,33 @@ public class AgreementActionRequestController {
     private final AgreementActionRequestService actionRequestService;
     private final AgreementService agreementService;
 
-    @PostMapping("/agreements/{agreementId}/requests/transfer")
+    @PostMapping("/agreement-versions/{agreementVersionId}/requests/transfer")
     @PreAuthorize("hasAnyAuthority('ADMIN_USERS', 'AGREEMENT_EDIT')")
     public ResponseEntity<?> initiateTransfer(
-            @PathVariable Long agreementId,
+            @PathVariable Long agreementVersionId,
             @Valid @RequestBody InitiateTransferRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
         boolean isAdmin = principal.hasRight(RightCode.ADMIN_USERS.name());
         if (isAdmin) {
-            AgreementResponse result = agreementService.transferOwnership(
-                    agreementId, request.newOwnerId(), principal.getId(), true, request.comments());
+            AgreementVersionResponse result = agreementService.transferOwnership(
+                    agreementVersionId, request.newOwnerId(), principal.getId(), true, request.comments());
             return ResponseEntity.ok(result);
         }
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(actionRequestService.initiateTransfer(agreementId, request, principal.getId(), false));
+                .body(actionRequestService.initiateTransfer(agreementVersionId, request, principal.getId(), false));
     }
 
-    @PostMapping("/agreements/{agreementId}/requests/terminate")
+    @PostMapping("/agreement-versions/{agreementVersionId}/requests/terminate")
     @PreAuthorize(AGREEMENT_EDIT)
     public ResponseEntity<AgreementActionRequestResponse> initiateTerminate(
-            @PathVariable Long agreementId,
+            @PathVariable Long agreementVersionId,
             @Valid @RequestBody InitiateTerminateRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(actionRequestService.initiateTerminate(agreementId, request, principal.getId()));
+                .body(actionRequestService.initiateTerminate(agreementVersionId, request, principal.getId()));
     }
 
-    @PutMapping("/agreements/requests/{requestId}/resolve")
+    @PutMapping("/agreement-versions/requests/{requestId}/resolve")
     @PreAuthorize(AGREEMENT_APPROVE)
     public ResponseEntity<AgreementActionRequestResponse> resolveRequest(
             @PathVariable Long requestId,
@@ -65,7 +65,7 @@ public class AgreementActionRequestController {
                 actionRequestService.resolveRequest(requestId, request, principal.getId()));
     }
 
-    @GetMapping("/agreements/requests/pending")
+    @GetMapping("/agreement-versions/requests/pending")
     @PreAuthorize(AGREEMENT_APPROVE)
     public ResponseEntity<PagedResponse<AgreementActionRequestResponse>> getPendingRequests(
             @RequestParam(required = false) String search,

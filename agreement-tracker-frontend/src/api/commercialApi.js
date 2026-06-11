@@ -1,52 +1,55 @@
 import axiosInstance from './axiosInstance';
 import { ENDPOINTS } from '../config/endpoints';
 
-export async function fetchPurchaseSlabs(agreementId) {
-  const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_SLABS(agreementId));
+export async function fetchPurchaseSlabs(agreementVersionId) {
+  const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_SLABS(agreementVersionId));
   return data;
 }
 
-export async function createPurchaseSlab(agreementId, payload) {
-  const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_SLABS(agreementId), payload);
+export async function createPurchaseSlab(agreementVersionId, payload) {
+  const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_SLABS(agreementVersionId), payload);
   return data;
 }
 
-export async function updatePurchaseSlab(agreementId, slabId, payload) {
-  const { data } = await axiosInstance.put(ENDPOINTS.AGREEMENT_SLAB(agreementId, slabId), payload);
+export async function updatePurchaseSlab(agreementVersionId, slabId, payload) {
+  const { data } = await axiosInstance.put(
+    ENDPOINTS.AGREEMENT_VERSION_SLAB(agreementVersionId, slabId),
+    payload,
+  );
   return data;
 }
 
-export async function deletePurchaseSlab(agreementId, slabId) {
-  await axiosInstance.delete(ENDPOINTS.AGREEMENT_SLAB(agreementId, slabId));
+export async function deletePurchaseSlab(agreementVersionId, slabId) {
+  await axiosInstance.delete(ENDPOINTS.AGREEMENT_VERSION_SLAB(agreementVersionId, slabId));
 }
 
-export async function generateCommercialTemplate(agreementId, payload) {
+export async function generateCommercialTemplate(agreementVersionId, payload) {
   const { data } = await axiosInstance.post(
-    ENDPOINTS.COMMERCIAL_TEMPLATE(agreementId),
+    ENDPOINTS.COMMERCIAL_TEMPLATE(agreementVersionId),
     payload,
     { responseType: 'blob' },
   );
   return data;
 }
 
-export async function uploadCommercialTargets(agreementId, file) {
+export async function uploadCommercialTargets(agreementVersionId, file) {
   const formData = new FormData();
   formData.append('file', file);
   const { data } = await axiosInstance.post(
-    ENDPOINTS.COMMERCIAL_UPLOAD(agreementId),
+    ENDPOINTS.COMMERCIAL_UPLOAD(agreementVersionId),
     formData,
     { headers: { 'Content-Type': 'multipart/form-data' } },
   );
   return data;
 }
 
-export async function fetchCommercialTargetsPreview(agreementId) {
-  const { data } = await axiosInstance.get(ENDPOINTS.COMMERCIAL_TARGETS_PREVIEW(agreementId));
+export async function fetchCommercialTargetsPreview(agreementVersionId) {
+  const { data } = await axiosInstance.get(ENDPOINTS.COMMERCIAL_TARGETS_PREVIEW(agreementVersionId));
   return data;
 }
 
-export async function upsertSaleTarget(agreementId, payload) {
-  await axiosInstance.put(ENDPOINTS.COMMERCIAL_TARGETS(agreementId), payload);
+export async function upsertSaleTarget(agreementVersionId, payload) {
+  await axiosInstance.put(ENDPOINTS.COMMERCIAL_TARGETS(agreementVersionId), payload);
 }
 
 export function downloadBlob(blob, filename) {

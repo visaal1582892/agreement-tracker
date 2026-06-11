@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "agreement_reminders", indexes = {
-        @Index(name = "idx_reminder_agreement_id", columnList = "agreement_id"),
+        @Index(name = "idx_reminder_agreement_version_id", columnList = "agreement_version_id"),
         @Index(name = "idx_reminder_sent_to", columnList = "sent_to_user_id")
 })
 @Getter
@@ -24,8 +24,8 @@ public class AgreementReminder extends AuditableEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "agreement_id", nullable = false)
-    private Agreement agreement;
+    @JoinColumn(name = "agreement_version_id", nullable = false)
+    private AgreementVersion agreementVersion;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "reminder_type", nullable = false, length = 20)

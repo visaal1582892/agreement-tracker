@@ -6,7 +6,7 @@ import lombok.*;
 
 @Entity
 @Table(name = "agreement_manufacturers", indexes = {
-        @Index(name = "idx_am_agreement_id", columnList = "agreement_id"),
+        @Index(name = "idx_am_agreement_version_id", columnList = "agreement_version_id"),
         @Index(name = "idx_am_manufacturer_id", columnList = "manufacturer_id")
 })
 @Getter
@@ -21,8 +21,8 @@ public class AgreementManufacturer extends AuditableEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "agreement_id", nullable = false)
-    private Agreement agreement;
+    @JoinColumn(name = "agreement_version_id", nullable = false)
+    private AgreementVersion agreementVersion;
 
     @Column(name = "manufacturer_id", nullable = false)
     private Long manufacturerId;

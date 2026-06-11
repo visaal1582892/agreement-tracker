@@ -5,46 +5,82 @@ import com.medplus.agreement_tracker_backend.dto.request.DraftAgreementItemReque
 import com.medplus.agreement_tracker_backend.dto.request.DraftCommercialsPayload;
 import com.medplus.agreement_tracker_backend.dto.request.DraftDetailsPayload;
 import com.medplus.agreement_tracker_backend.dto.request.EditAgreementRequest;
+import com.medplus.agreement_tracker_backend.dto.request.ProductRulesPayload;
 import com.medplus.agreement_tracker_backend.dto.request.RuleDTO;
 import com.medplus.agreement_tracker_backend.dto.request.TerminateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.UpdateDraftRequest;
-import com.medplus.agreement_tracker_backend.dto.request.ProductRulesPayload;
-import com.medplus.agreement_tracker_backend.dto.response.AgreementGroupResponse;
 import com.medplus.agreement_tracker_backend.dto.response.AgreementResponse;
+import com.medplus.agreement_tracker_backend.dto.response.AgreementVersionResponse;
 import com.medplus.agreement_tracker_backend.dto.response.ApprovalTimelineResponse;
 import com.medplus.agreement_tracker_backend.dto.response.BulkAgreementCreateResponse;
+import com.medplus.agreement_tracker_backend.dto.response.BulkGroupSubmitResponse;
+import com.medplus.agreement_tracker_backend.dto.response.CompanyAgreementGroupResponse;
 import com.medplus.agreement_tracker_backend.dto.response.PendingActionRequestInfo;
-import com.medplus.agreement_tracker_backend.entity.*;
+import com.medplus.agreement_tracker_backend.entity.Agreement;
+import com.medplus.agreement_tracker_backend.entity.AgreementActionRequest;
+import com.medplus.agreement_tracker_backend.entity.AgreementApproval;
+import com.medplus.agreement_tracker_backend.entity.AgreementAudit;
+import com.medplus.agreement_tracker_backend.entity.AgreementComputedProduct;
+import com.medplus.agreement_tracker_backend.entity.AgreementDivisionRule;
+import com.medplus.agreement_tracker_backend.entity.AgreementManufacturer;
+import com.medplus.agreement_tracker_backend.entity.AgreementProductRule;
+import com.medplus.agreement_tracker_backend.entity.AgreementType;
+import com.medplus.agreement_tracker_backend.entity.AgreementVendor;
+import com.medplus.agreement_tracker_backend.entity.AgreementVersion;
+import com.medplus.agreement_tracker_backend.entity.CompanyAgreementGroup;
+import com.medplus.agreement_tracker_backend.entity.CompanyMaster;
+import com.medplus.agreement_tracker_backend.entity.IncomeType;
+import com.medplus.agreement_tracker_backend.entity.ProductMaster;
+import com.medplus.agreement_tracker_backend.entity.User;
+import com.medplus.agreement_tracker_backend.entity.VendorMaster;
+import com.medplus.agreement_tracker_backend.enums.ActionRequestStatus;
 import com.medplus.agreement_tracker_backend.enums.ApprovalAction;
 import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
-import com.medplus.agreement_tracker_backend.enums.ActionRequestStatus;
 import com.medplus.agreement_tracker_backend.enums.CommercialStructure;
 import com.medplus.agreement_tracker_backend.enums.RuleType;
 import com.medplus.agreement_tracker_backend.exception.BusinessException;
 import com.medplus.agreement_tracker_backend.exception.IncompleteAgreementException;
 import com.medplus.agreement_tracker_backend.exception.ResourceNotFoundException;
 import com.medplus.agreement_tracker_backend.exception.UnauthorizedException;
-import com.medplus.agreement_tracker_backend.repository.*;
-import com.medplus.agreement_tracker_backend.repository.AgreementGroupSpec;
+import com.medplus.agreement_tracker_backend.repository.AgreementActionRequestRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementApprovalRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementAuditRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementComputedProductRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementDivisionRuleRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementManufacturerRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementProductRuleRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementPurchaseSlabRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementSaleTargetRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementSpec;
+import com.medplus.agreement_tracker_backend.repository.AgreementTypeRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementVendorRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementVersionRepository;
+import com.medplus.agreement_tracker_backend.repository.CompanyAgreementGroupRepository;
+import com.medplus.agreement_tracker_backend.repository.IncomeTypeRepository;
+import com.medplus.agreement_tracker_backend.repository.ProductMasterRepository;
+import com.medplus.agreement_tracker_backend.repository.UserRepository;
+import com.medplus.agreement_tracker_backend.repository.VendorMasterRepository;
+import com.medplus.agreement_tracker_backend.service.AgreementService;
+import com.medplus.agreement_tracker_backend.service.CompanyAgreementGroupService;
+import com.medplus.agreement_tracker_backend.util.AgreementStatusResolver;
 import com.medplus.agreement_tracker_backend.validation.Step1Validation;
 import com.medplus.agreement_tracker_backend.validation.Step2Validation;
-import org.springframework.security.access.AccessDeniedException;
-import com.medplus.agreement_tracker_backend.service.AgreementService;
-import com.medplus.agreement_tracker_backend.util.AgreementNumberGenerator;
-import com.medplus.agreement_tracker_backend.util.AgreementStatusResolver;
-import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Validator;
-import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -54,36 +90,96 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 public class AgreementServiceImpl implements AgreementService {
 
-    private final AgreementGroupRepository groupRepository;
     private final AgreementRepository agreementRepository;
+    private final AgreementVersionRepository agreementVersionRepository;
+    private final CompanyAgreementGroupRepository companyAgreementGroupRepository;
+    private final CompanyAgreementGroupService companyAgreementGroupService;
     private final AgreementVendorRepository vendorRepository;
     private final AgreementManufacturerRepository manufacturerRuleRepository;
     private final AgreementDivisionRuleRepository divisionRuleRepository;
     private final AgreementProductRuleRepository productRuleRepository;
+    private final AgreementPurchaseSlabRepository purchaseSlabRepository;
+    private final AgreementSaleTargetRepository saleTargetRepository;
     private final AgreementComputedProductRepository computedProductRepository;
     private final AgreementApprovalRepository approvalRepository;
     private final AgreementAuditRepository auditRepository;
     private final AgreementActionRequestRepository actionRequestRepository;
     private final UserRepository userRepository;
-    private final CompanyMasterRepository companyRepository;
     private final IncomeTypeRepository incomeTypeRepository;
     private final AgreementTypeRepository agreementTypeRepository;
     private final VendorMasterRepository vendorMasterRepository;
     private final ProductMasterRepository productMasterRepository;
-    private final UserCompanyAssignmentRepository companyAssignmentRepository;
-    private final AgreementNumberGenerator numberGenerator;
     private final AgreementStatusResolver statusResolver;
+    private final TransactionTemplate groupSubmitTransactionTemplate;
     private final Validator validator;
+
+    private static final DateTimeFormatter AGREEMENT_NAME_DATE_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final String DRAFT_AGREEMENT_NAME_PLACEHOLDER = "Draft - Pending Details";
+
+    public AgreementServiceImpl(
+            AgreementRepository agreementRepository,
+            AgreementVersionRepository agreementVersionRepository,
+            CompanyAgreementGroupRepository companyAgreementGroupRepository,
+            CompanyAgreementGroupService companyAgreementGroupService,
+            AgreementVendorRepository vendorRepository,
+            AgreementManufacturerRepository manufacturerRuleRepository,
+            AgreementDivisionRuleRepository divisionRuleRepository,
+            AgreementProductRuleRepository productRuleRepository,
+            AgreementPurchaseSlabRepository purchaseSlabRepository,
+            AgreementSaleTargetRepository saleTargetRepository,
+            AgreementComputedProductRepository computedProductRepository,
+            AgreementApprovalRepository approvalRepository,
+            AgreementAuditRepository auditRepository,
+            AgreementActionRequestRepository actionRequestRepository,
+            UserRepository userRepository,
+            IncomeTypeRepository incomeTypeRepository,
+            AgreementTypeRepository agreementTypeRepository,
+            VendorMasterRepository vendorMasterRepository,
+            ProductMasterRepository productMasterRepository,
+            AgreementStatusResolver statusResolver,
+            PlatformTransactionManager transactionManager,
+            Validator validator) {
+        this.agreementRepository = agreementRepository;
+        this.agreementVersionRepository = agreementVersionRepository;
+        this.companyAgreementGroupRepository = companyAgreementGroupRepository;
+        this.companyAgreementGroupService = companyAgreementGroupService;
+        this.vendorRepository = vendorRepository;
+        this.manufacturerRuleRepository = manufacturerRuleRepository;
+        this.divisionRuleRepository = divisionRuleRepository;
+        this.productRuleRepository = productRuleRepository;
+        this.purchaseSlabRepository = purchaseSlabRepository;
+        this.saleTargetRepository = saleTargetRepository;
+        this.computedProductRepository = computedProductRepository;
+        this.approvalRepository = approvalRepository;
+        this.auditRepository = auditRepository;
+        this.actionRequestRepository = actionRequestRepository;
+        this.userRepository = userRepository;
+        this.incomeTypeRepository = incomeTypeRepository;
+        this.agreementTypeRepository = agreementTypeRepository;
+        this.vendorMasterRepository = vendorMasterRepository;
+        this.productMasterRepository = productMasterRepository;
+        this.statusResolver = statusResolver;
+        this.groupSubmitTransactionTemplate = new TransactionTemplate(transactionManager);
+        this.validator = validator;
+    }
 
     @Override
     @Transactional
     public BulkAgreementCreateResponse createDraft(CreateAgreementRequest request, Long currentUserId) {
         User owner = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", currentUserId));
-        CompanyMaster company = resolveCompany(request.companyId());
+
+        CompanyAgreementGroup cag = resolveCompanyAgreementGroup(
+                request.companyId(),
+                request.companyAgreementGroupId(),
+                request.newCompanyAgreementGroupName(),
+                currentUserId);
+
+        if (!cag.isActive()) {
+            throw new BusinessException("Cannot add agreements to an inactive group.");
+        }
 
         List<Long> vendorIds = request.vendorIds() != null ? request.vendorIds() : List.of();
         ProductRulesPayload rulesPayload = request.productRules() != null
@@ -96,54 +192,53 @@ public class AgreementServiceImpl implements AgreementService {
                 ? request.agreements()
                 : List.of(new DraftAgreementItemRequest(null, null));
 
-        List<AgreementResponse> created = new ArrayList<>();
-        Long primaryGroupId = null;
+        List<AgreementVersionResponse> created = new ArrayList<>();
+        Long primaryAgreementId = null;
 
         for (DraftAgreementItemRequest item : items) {
-            String agreementNumber = numberGenerator.generate();
-            AgreementGroup group = AgreementGroup.builder()
-                    .company(company)
-                    .agreementNumber(agreementNumber)
+            Agreement parent = Agreement.builder()
+                    .companyAgreementGroup(cag)
+                    .agreementName(DRAFT_AGREEMENT_NAME_PLACEHOLDER)
+                    .owner(owner)
                     .isActive(true)
                     .build();
-            group.setCreatedByUserId(currentUserId);
-            group = groupRepository.save(group);
+            parent.setCreatedByUserId(currentUserId);
+            parent = agreementRepository.save(parent);
 
-            Agreement agreement = buildDraftAgreement(
-                    item, owner, group, currentUserId, request.agreementName());
-            agreement = agreementRepository.save(agreement);
+            AgreementVersion version = buildDraftVersion(item, owner, parent, 1, currentUserId);
+            validateUniqueIncomeTypeInGroup(parent, version);
+            version = agreementVersionRepository.save(version);
+            syncAgreementName(parent, version, currentUserId);
 
-            replaceVendors(agreement, vendorIds, currentUserId);
-            replaceRulesAndComputeProducts(agreement, manufacturerIds, divisionRules, productRules, currentUserId);
+            replaceVendors(version, vendorIds, currentUserId);
+            replaceRulesAndComputeProducts(version, manufacturerIds, divisionRules, productRules, currentUserId);
 
-            recordAudit(group.getId(), agreement.getId(), "AGREEMENT_CREATED", null, agreementNumber, currentUserId);
+            recordAudit(parent.getId(), version.getId(), "AGREEMENT_CREATED", null, null, currentUserId);
 
-            if (primaryGroupId == null) {
-                primaryGroupId = group.getId();
+            if (primaryAgreementId == null) {
+                primaryAgreementId = parent.getId();
             }
-            created.add(toAgreementResponse(agreement));
+            created.add(toVersionResponse(version));
         }
 
-        return new BulkAgreementCreateResponse(created, primaryGroupId);
+        return new BulkAgreementCreateResponse(created, primaryAgreementId);
     }
 
     @Override
     @Transactional
-    public AgreementResponse createNewVersion(Long agreementGroupId, Long currentUserId) {
-        AgreementGroup group = groupRepository.findById(agreementGroupId)
-                .orElseThrow(() -> new ResourceNotFoundException("AgreementGroup", agreementGroupId));
+    public AgreementVersionResponse createNewVersion(Long agreementId, Long currentUserId) {
+        Agreement parent = agreementRepository.findById(agreementId)
+                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
 
-        Agreement source = resolveNewVersionSource(group);
+        AgreementVersion source = resolveNewVersionSource(parent);
         loadAndValidateOwnership(source.getId(), currentUserId);
 
-        Integer maxVersion = agreementRepository.findMaxVersionByGroupId(agreementGroupId);
-        User owner = userRepository.findById(currentUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("User", currentUserId));
+        Integer maxVersion = agreementVersionRepository.findMaxVersionByAgreementId(agreementId);
+        User owner = parent.getOwner();
 
-        Agreement newVersion = Agreement.builder()
-                .agreementGroup(group)
+        AgreementVersion newVersion = AgreementVersion.builder()
+                .agreement(parent)
                 .versionNumber(maxVersion + 1)
-                .agreementName(source.getAgreementName())
                 .owner(owner)
                 .incomeType(source.getIncomeType())
                 .agreementType(source.getAgreementType())
@@ -156,47 +251,48 @@ public class AgreementServiceImpl implements AgreementService {
                 .notes(source.getNotes())
                 .build();
         newVersion.setCreatedByUserId(currentUserId);
-        newVersion = agreementRepository.save(newVersion);
+        newVersion = agreementVersionRepository.save(newVersion);
 
         copyVendors(source.getId(), newVersion, currentUserId);
         copyRulesAndComputed(source.getId(), newVersion, currentUserId);
 
-        recordAudit(group.getId(), newVersion.getId(), "NEW_VERSION_CREATED",
+        recordAudit(parent.getId(), newVersion.getId(), "NEW_VERSION_CREATED",
                 String.valueOf(source.getVersionNumber()), String.valueOf(newVersion.getVersionNumber()), currentUserId);
 
-        return toAgreementResponse(newVersion);
+        return toVersionResponse(newVersion);
     }
 
     @Override
     @Transactional
-    public AgreementResponse createVersionedEdit(Long sourceAgreementId, EditAgreementRequest request, Long currentUserId) {
-        Agreement source = agreementRepository.findById(sourceAgreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", sourceAgreementId));
+    public AgreementVersionResponse createVersionedEdit(Long sourceAgreementVersionId, EditAgreementRequest request,
+                                                        Long currentUserId) {
+        AgreementVersion source = agreementVersionRepository.findById(sourceAgreementVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", sourceAgreementVersionId));
 
         if (source.getApprovalStatus() != ApprovalStatus.APPROVED
                 && source.getApprovalStatus() != ApprovalStatus.REJECTED) {
             throw new BusinessException("Can only create a versioned edit from APPROVED or REJECTED agreements");
         }
 
-        loadAndValidateOwnership(sourceAgreementId, currentUserId);
+        loadAndValidateOwnership(sourceAgreementVersionId, currentUserId);
 
-        AgreementGroup group = source.getAgreementGroup();
-        Integer maxVersion = agreementRepository.findMaxVersionByGroupId(group.getId());
-        Agreement latest = agreementRepository.findByAgreementGroupIdAndVersionNumber(group.getId(), maxVersion)
-                .orElseThrow(() -> new BusinessException("No agreement version exists for this group"));
+        Agreement parent = source.getAgreement();
+        Integer maxVersion = agreementVersionRepository.findMaxVersionByAgreementId(parent.getId());
+        AgreementVersion latest = agreementVersionRepository
+                .findByAgreementIdAndVersionNumber(parent.getId(), maxVersion)
+                .orElseThrow(() -> new BusinessException("No agreement version exists for this agreement"));
 
         if (latest.getApprovalStatus() == ApprovalStatus.DRAFT
-                && latest.getOwner().getId().equals(currentUserId)) {
+                && parent.getOwner().getId().equals(currentUserId)) {
             throw new BusinessException("A draft version already exists — update it in place");
         }
 
-        User owner = userRepository.findById(currentUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("User", currentUserId));
+        User owner = parent.getOwner();
 
         DraftAgreementItemRequest item = new DraftAgreementItemRequest(request.details(), request.commercials());
-        Agreement newVersion = buildDraftAgreement(
-                item, owner, group, maxVersion + 1, currentUserId, resolveDraftAgreementName(request.agreementName(), source));
-        newVersion = agreementRepository.save(newVersion);
+        AgreementVersion newVersion = buildDraftVersion(item, owner, parent, maxVersion + 1, currentUserId);
+        validateUniqueIncomeTypeInGroup(parent, newVersion);
+        newVersion = agreementVersionRepository.save(newVersion);
 
         List<Long> vendorIds = request.vendorIds() != null ? request.vendorIds() : List.of();
         ProductRulesPayload rulesPayload = request.productRules() != null
@@ -208,16 +304,16 @@ public class AgreementServiceImpl implements AgreementService {
         replaceVendors(newVersion, vendorIds, currentUserId);
         replaceRulesAndComputeProducts(newVersion, manufacturerIds, divisionRules, productRules, currentUserId);
 
-        recordAudit(group.getId(), newVersion.getId(), "VERSIONED_EDIT_CREATED",
+        recordAudit(parent.getId(), newVersion.getId(), "VERSIONED_EDIT_CREATED",
                 String.valueOf(source.getVersionNumber()), String.valueOf(newVersion.getVersionNumber()), currentUserId);
 
-        return toAgreementResponse(newVersion);
+        return toVersionResponse(newVersion);
     }
 
     @Override
     @Transactional
-    public AgreementResponse updateDraft(Long agreementId, UpdateDraftRequest request, Long currentUserId,
-                                         boolean validateStep1, boolean validateStep2) {
+    public AgreementVersionResponse updateDraft(Long agreementVersionId, UpdateDraftRequest request, Long currentUserId,
+                                                boolean validateStep1, boolean validateStep2) {
         if (validateStep1) {
             var violations = validator.validate(request, Step1Validation.class);
             if (!violations.isEmpty()) {
@@ -233,29 +329,28 @@ public class AgreementServiceImpl implements AgreementService {
             validateStep2Fields(request);
         }
 
-        Agreement agreement = loadAndValidateOwnership(agreementId, currentUserId);
-        if (agreement.getApprovalStatus() != ApprovalStatus.DRAFT) {
+        AgreementVersion version = loadAndValidateOwnership(agreementVersionId, currentUserId);
+        if (version.getApprovalStatus() != ApprovalStatus.DRAFT) {
             throw new BusinessException("Only DRAFT agreements can be updated via draft save");
         }
 
-        AgreementGroup group = agreement.getAgreementGroup();
+        Agreement parent = version.getAgreement();
+
         if (request.companyId() != null) {
-            CompanyMaster company = resolveCompany(request.companyId());
-            group.setCompany(company);
-            group.setUpdatedByUserId(currentUserId);
-            groupRepository.save(group);
+            Long currentCompanyId = parent.getCompanyAgreementGroup().getCompany().getId();
+            if (!request.companyId().equals(currentCompanyId)) {
+                throw new BusinessException("Company cannot be changed after the agreement draft is created");
+            }
         }
 
-        if (request.agreementName() != null && !request.agreementName().isBlank()) {
-            agreement.setAgreementName(request.agreementName().trim());
-        }
-
-        applyDraftFields(agreement, request.details(), request.commercials());
-        agreement.setUpdatedByUserId(currentUserId);
-        agreement = agreementRepository.save(agreement);
+        applyDraftFields(version, request.details(), request.commercials());
+        validateUniqueIncomeTypeInGroup(parent, version);
+        version.setUpdatedByUserId(currentUserId);
+        version = agreementVersionRepository.save(version);
+        syncAgreementName(parent, version, currentUserId);
 
         if (request.vendorIds() != null) {
-            replaceVendors(agreement, request.vendorIds(), currentUserId);
+            replaceVendors(version, request.vendorIds(), currentUserId);
         }
 
         if (request.productRules() != null) {
@@ -263,52 +358,556 @@ public class AgreementServiceImpl implements AgreementService {
             List<Long> manufacturerIds = rulesPayload.manufacturers() != null ? rulesPayload.manufacturers() : List.of();
             List<RuleDTO> divisionRules = rulesPayload.divisionRules() != null ? rulesPayload.divisionRules() : List.of();
             List<RuleDTO> productRules = rulesPayload.productRules() != null ? rulesPayload.productRules() : List.of();
-            replaceRulesAndComputeProducts(agreement, manufacturerIds, divisionRules, productRules, currentUserId);
+            replaceRulesAndComputeProducts(version, manufacturerIds, divisionRules, productRules, currentUserId);
         }
 
-        recordAudit(group.getId(), agreement.getId(), "DRAFT_UPDATED", null, null, currentUserId);
-        return toAgreementResponse(agreement);
+        recordAudit(parent.getId(), version.getId(), "DRAFT_UPDATED", null, null, currentUserId);
+        return toVersionResponse(version);
     }
 
     @Override
     @Transactional
-    public AgreementResponse cloneAgreement(Long sourceAgreementId, Long currentUserId) {
-        Agreement source = loadAndValidateOwnership(sourceAgreementId, currentUserId);
-        AgreementGroup sourceGroup = source.getAgreementGroup();
-        CompanyMaster company = sourceGroup.getCompany();
-        if (company == null) {
-            throw new BusinessException("Cannot clone: source agreement has no company");
-        }
+    public AgreementVersionResponse cloneAgreement(Long sourceAgreementVersionId, Long currentUserId) {
+        AgreementVersion source = loadAndValidateOwnership(sourceAgreementVersionId, currentUserId);
+        Agreement sourceParent = source.getAgreement();
+        CompanyAgreementGroup cag = sourceParent.getCompanyAgreementGroup();
 
         User owner = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", currentUserId));
 
-        String agreementNumber = numberGenerator.generate();
-        AgreementGroup group = AgreementGroup.builder()
-                .company(company)
-                .agreementNumber(agreementNumber)
+        Agreement parent = Agreement.builder()
+                .companyAgreementGroup(cag)
+                .agreementName(DRAFT_AGREEMENT_NAME_PLACEHOLDER)
+                .owner(owner)
                 .isActive(true)
                 .build();
-        group.setCreatedByUserId(currentUserId);
-        group = groupRepository.save(group);
+        parent.setCreatedByUserId(currentUserId);
+        parent = agreementRepository.save(parent);
 
-        Agreement clone = Agreement.builder()
-                .agreementGroup(group)
+        AgreementVersion clone = AgreementVersion.builder()
+                .agreement(parent)
                 .versionNumber(1)
-                .agreementName(agreementNumber)
                 .owner(owner)
                 .approvalStatus(ApprovalStatus.DRAFT)
                 .build();
         clone.setCreatedByUserId(currentUserId);
-        clone = agreementRepository.save(clone);
+        clone = agreementVersionRepository.save(clone);
 
         copyVendors(source.getId(), clone, currentUserId);
         copyRulesAndComputed(source.getId(), clone, currentUserId);
 
-        recordAudit(group.getId(), clone.getId(), "AGREEMENT_CLONED",
-                String.valueOf(sourceAgreementId), agreementNumber, currentUserId);
+        recordAudit(parent.getId(), clone.getId(), "AGREEMENT_CLONED",
+                String.valueOf(sourceAgreementVersionId), null, currentUserId);
 
-        return toAgreementResponse(clone);
+        return toVersionResponse(clone);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AgreementVersionResponse getAgreementVersionById(Long agreementVersionId, Long currentUserId) {
+        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
+        enforceDraftVisibility(version, currentUserId);
+        return toVersionResponse(version);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AgreementResponse getAgreementById(Long agreementId, Long currentUserId) {
+        Agreement parent = agreementRepository.findById(agreementId)
+                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
+        enforceAgreementDraftVisibility(parent, currentUserId);
+
+        List<AgreementVersion> latestBatch =
+                agreementVersionRepository.findLatestVersionsForAgreementIds(List.of(agreementId));
+        AgreementVersion latest = latestBatch.isEmpty() ? null : latestBatch.get(0);
+        AgreementVersion displayVersion = resolveVisibleLatest(parent, latest, currentUserId);
+
+        if (displayVersion == null) {
+            return toParentResponseEmpty(parent);
+        }
+
+        List<AgreementVendor> vendors = vendorRepository.findByAgreementVersionId(displayVersion.getId());
+        return toParentResponse(parent, displayVersion, vendors);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AgreementResponse> getAllAgreements(Pageable pageable, Long currentUserId, String scope,
+                                                    boolean canViewAll, Long companyId, Long companyAgreementGroupId,
+                                                    String companyAgreementGroupName, String agreementName,
+                                                    String status, String ownerName, Long vendorId, Long incomeTypeId,
+                                                    LocalDate startDateFrom, LocalDate startDateTo,
+                                                    LocalDate endDateFrom, LocalDate endDateTo) {
+        Pageable mappedPageable = mapAgreementPageable(pageable);
+        var filterSpec = AgreementSpec.withFilters(
+                        companyId, companyAgreementGroupId, companyAgreementGroupName,
+                        agreementName, status, ownerName, vendorId, incomeTypeId,
+                        startDateFrom, startDateTo, endDateFrom, endDateTo)
+                .and(AgreementSpec.draftVisibleTo(currentUserId));
+
+        var scopeSpec = "ALL".equalsIgnoreCase(scope) && canViewAll
+                ? filterSpec
+                : filterSpec.and(AgreementSpec.ownedBy(currentUserId));
+
+        Page<Agreement> parentPage = agreementRepository.findAll(scopeSpec, mappedPageable);
+
+        List<Long> agreementIds = parentPage.getContent().stream().map(Agreement::getId).toList();
+        if (agreementIds.isEmpty()) {
+            return parentPage.map(this::toParentResponseEmpty);
+        }
+
+        Map<Long, AgreementVersion> latestByAgreementId = agreementVersionRepository
+                .findLatestVersionsForAgreementIds(agreementIds)
+                .stream()
+                .collect(Collectors.toMap(v -> v.getAgreement().getId(), v -> v, (a, b) -> a));
+
+        List<Long> currentVersionIds = parentPage.getContent().stream()
+                .map(Agreement::getCurrentVersionId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, AgreementVersion> currentVersionById = currentVersionIds.isEmpty()
+                ? Map.of()
+                : agreementVersionRepository.findByIdInWithDetails(currentVersionIds).stream()
+                        .collect(Collectors.toMap(AgreementVersion::getId, v -> v, (a, b) -> a));
+
+        Map<Long, AgreementVersion> visibleByAgreementId = parentPage.getContent().stream()
+                .collect(Collectors.toMap(
+                        Agreement::getId,
+                        p -> resolveListDisplayVersion(
+                                p, latestByAgreementId.get(p.getId()), currentVersionById, currentUserId),
+                        (a, b) -> a
+                ));
+
+        List<Long> visibleVersionIds = visibleByAgreementId.values().stream()
+                .filter(Objects::nonNull)
+                .map(AgreementVersion::getId)
+                .toList();
+        Map<Long, List<AgreementVendor>> vendorsByVersionId = visibleVersionIds.isEmpty()
+                ? Map.of()
+                : vendorRepository.findByAgreementVersionIdIn(visibleVersionIds)
+                        .stream()
+                        .collect(Collectors.groupingBy(v -> v.getAgreementVersion().getId()));
+
+        return parentPage.map(p -> {
+            AgreementVersion visible = visibleByAgreementId.get(p.getId());
+            List<AgreementVendor> vendors = visible != null
+                    ? vendorsByVersionId.getOrDefault(visible.getId(), List.of())
+                    : List.of();
+            return visible != null ? toParentResponse(p, visible, vendors) : toParentResponseEmpty(p);
+        });
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AgreementVersionResponse> getVersionsByAgreementId(Long agreementId, Long currentUserId) {
+        Agreement parent = agreementRepository.findById(agreementId)
+                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
+        enforceAgreementDraftVisibility(parent, currentUserId);
+
+        return agreementVersionRepository.findByAgreementId(agreementId)
+                .stream()
+                .filter(v -> v.getApprovalStatus() != ApprovalStatus.DRAFT
+                        || v.getAgreement().getOwner().getId().equals(currentUserId))
+                .sorted((a, b) -> Integer.compare(a.getVersionNumber(), b.getVersionNumber()))
+                .map(this::toVersionResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public AgreementVersionResponse transferOwnership(Long agreementVersionId, Long newOwnerUserId,
+                                                      Long performedByUserId, boolean isAdmin, String comments) {
+        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
+
+        Agreement parent = version.getAgreement();
+        Long currentOwnerId = parent.getOwner().getId();
+        if (!isAdmin && !currentOwnerId.equals(performedByUserId)) {
+            throw new UnauthorizedException("Only the owner or an admin can transfer ownership");
+        }
+
+        User newOwner = userRepository.findById(newOwnerUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", newOwnerUserId));
+
+        if (newOwnerUserId.equals(currentOwnerId)) {
+            throw new BusinessException("Agreement is already owned by this user");
+        }
+
+        String auditNewValue = isAdmin
+                ? buildAdminTransferAuditNote(newOwnerUserId, comments)
+                : String.valueOf(newOwnerUserId);
+
+        applyOwnershipTransfer(parent, newOwner, performedByUserId, auditNewValue, currentOwnerId);
+
+        AgreementVersion operationalVersion = resolveOperationalVersion(parent);
+        Long responseVersionId = operationalVersion != null ? operationalVersion.getId() : agreementVersionId;
+        return toVersionResponse(agreementVersionRepository.findById(responseVersionId).orElseThrow());
+    }
+
+    @Override
+    public BulkGroupSubmitResponse submitGroupDraftsForApproval(Long groupId, Long currentUserId) {
+        List<AgreementVersion> drafts = loadGroupDraftsForSubmit(groupId, currentUserId);
+        return groupSubmitTransactionTemplate.execute(status -> {
+            List<String> submittedNames = new ArrayList<>();
+            for (AgreementVersion version : drafts) {
+                AgreementVersion current = agreementVersionRepository.findById(version.getId())
+                        .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", version.getId()));
+                commitDraftSubmit(current, null, currentUserId);
+                Agreement parent = current.getAgreement();
+                submittedNames.add(resolveAgreementDisplayName(parent));
+            }
+            return new BulkGroupSubmitResponse(submittedNames.size(), submittedNames);
+        });
+    }
+
+    /**
+     * Read-only validation pass — no draft fields are modified.
+     * Throws {@link IncompleteAgreementException} (HTTP 400) on first failure.
+     */
+    private List<AgreementVersion> loadGroupDraftsForSubmit(Long groupId, Long currentUserId) {
+        companyAgreementGroupRepository.findById(groupId)
+                .orElseThrow(() -> new ResourceNotFoundException("CompanyAgreementGroup", groupId));
+
+        List<AgreementVersion> drafts = agreementVersionRepository.findLatestDraftVersionsByGroupId(groupId);
+        if (drafts.isEmpty()) {
+            throw new IncompleteAgreementException("No draft agreements found in this group to submit");
+        }
+
+        for (AgreementVersion version : drafts) {
+            loadAndValidateOwnership(version.getId(), currentUserId);
+            validateCompleteAgreement(version);
+        }
+        return drafts;
+    }
+
+    @Override
+    @Transactional
+    public AgreementVersionResponse submitForApproval(Long agreementVersionId, String comments, Long currentUserId) {
+        AgreementVersion version = loadAndValidateOwnership(agreementVersionId, currentUserId);
+        if (version.getVersionNumber() > 1 && (comments == null || comments.isBlank())) {
+            throw new BusinessException("Reason for edit/revision is required when submitting a revised version");
+        }
+        version = applySubmitForApproval(version, comments, currentUserId);
+        return toVersionResponse(version);
+    }
+
+    @Override
+    @Transactional
+    public AgreementVersionResponse approve(Long agreementVersionId, String remarks, Long approverId) {
+        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
+
+        if (version.getApprovalStatus() != ApprovalStatus.PENDING_APPROVAL) {
+            throw new BusinessException("Only PENDING_APPROVAL agreements can be approved");
+        }
+        if (version.getAgreement().getOwner().getId().equals(approverId)) {
+            throw new AccessDeniedException("Separation of Duties violation: Cannot approve your own agreement.");
+        }
+
+        User approver = userRepository.findById(approverId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", approverId));
+
+        ApprovalStatus before = version.getApprovalStatus();
+        version.setApprovalStatus(ApprovalStatus.APPROVED);
+        version.setApprovedBy(approver);
+        version.setApprovalDate(LocalDateTime.now());
+        version.setUpdatedByUserId(approverId);
+        version = agreementVersionRepository.save(version);
+
+        Agreement parent = version.getAgreement();
+        parent.setCurrentVersionId(version.getId());
+        parent.setUpdatedByUserId(approverId);
+        agreementRepository.save(parent);
+
+        recordApproval(version, ApprovalAction.APPROVED, remarks, before, ApprovalStatus.APPROVED, approverId);
+        recordAudit(parent.getId(), agreementVersionId, "APPROVED", before.name(), ApprovalStatus.APPROVED.name(), approverId);
+
+        return toVersionResponse(version);
+    }
+
+    @Override
+    @Transactional
+    public AgreementVersionResponse reject(Long agreementVersionId, String remarks, Long approverId) {
+        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
+
+        if (version.getApprovalStatus() != ApprovalStatus.PENDING_APPROVAL) {
+            throw new BusinessException("Only PENDING_APPROVAL agreements can be rejected");
+        }
+        if (version.getAgreement().getOwner().getId().equals(approverId)) {
+            throw new AccessDeniedException("Separation of Duties violation: Cannot approve your own agreement.");
+        }
+
+        ApprovalStatus before = version.getApprovalStatus();
+        version.setApprovalStatus(ApprovalStatus.REJECTED);
+        version.setUpdatedByUserId(approverId);
+        version = agreementVersionRepository.save(version);
+
+        recordApproval(version, ApprovalAction.REJECTED, remarks, before, ApprovalStatus.REJECTED, approverId);
+        recordAudit(version.getAgreement().getId(), agreementVersionId, "REJECTED",
+                before.name(), ApprovalStatus.REJECTED.name(), approverId);
+
+        return toVersionResponse(version);
+    }
+
+    @Override
+    @Transactional
+    public AgreementVersionResponse terminate(Long agreementVersionId, TerminateAgreementRequest request,
+                                              Long currentUserId) {
+        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
+
+        if (version.getApprovalStatus() != ApprovalStatus.APPROVED) {
+            throw new BusinessException("Only APPROVED agreements can be terminated");
+        }
+
+        version.setTerminationDate(request.terminationDate());
+        version.setTerminationReason(request.terminationReason());
+        version.setUpdatedByUserId(currentUserId);
+        version = agreementVersionRepository.save(version);
+
+        recordAudit(version.getAgreement().getId(), agreementVersionId, "TERMINATED",
+                null, request.terminationReason(), currentUserId);
+
+        return toVersionResponse(version);
+    }
+
+    @Override
+    @Transactional
+    public AgreementVersionResponse toggleInProgress(Long agreementVersionId, boolean inProgress, Long currentUserId) {
+        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
+
+        version.setInProgressFlag(inProgress);
+        version.setUpdatedByUserId(currentUserId);
+        version = agreementVersionRepository.save(version);
+
+        return toVersionResponse(version);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AgreementVersionResponse> getPendingApprovals(String search, Pageable pageable) {
+        String term = (search != null && !search.isBlank()) ? search.trim() : null;
+        return agreementVersionRepository.findAllPendingApproval(term, pageable)
+                .map(this::toVersionResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ApprovalTimelineResponse> getApprovalTimeline(Long agreementVersionId) {
+        List<ApprovalTimelineResponse> approvalEntries = approvalRepository
+                .findByAgreementVersionIdOrderByCreatedAtAsc(agreementVersionId)
+                .stream()
+                .map(a -> new ApprovalTimelineResponse(
+                        a.getId(), a.getAction(), null, a.getRemarks(),
+                        a.getApprovalStatusBefore(), a.getApprovalStatusAfter(),
+                        a.getCreatedByUserId(), resolveUserName(a.getCreatedByUserId()),
+                        a.getCreatedAt()))
+                .toList();
+
+        List<ApprovalTimelineResponse> operationalEntries = actionRequestRepository
+                .findByAgreementVersion_IdOrderByCreatedAtAsc(agreementVersionId)
+                .stream()
+                .flatMap(r -> mapActionRequestToTimeline(r).stream())
+                .toList();
+
+        List<ApprovalTimelineResponse> combined = new ArrayList<>(approvalEntries.size() + operationalEntries.size());
+        combined.addAll(approvalEntries);
+        combined.addAll(operationalEntries);
+        combined.sort((a, b) -> a.timestamp().compareTo(b.timestamp()));
+        return combined;
+    }
+
+    @Override
+    @Transactional
+    public void bulkTransferOwnership(Long fromUserId, Long toUserId, List<Long> agreementIds,
+                                      Long performedByUserId) {
+        User toUser = userRepository.findById(toUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", toUserId));
+
+        List<Agreement> agreementsToTransfer;
+        if (agreementIds != null && !agreementIds.isEmpty()) {
+            agreementsToTransfer = agreementRepository.findAllById(agreementIds).stream()
+                    .filter(a -> a.getOwner().getId().equals(fromUserId))
+                    .filter(this::isAgreementOperationallyActive)
+                    .toList();
+        } else {
+            agreementsToTransfer = agreementRepository.findByOwnerId(fromUserId, Pageable.unpaged())
+                    .stream()
+                    .filter(this::isAgreementOperationallyActive)
+                    .toList();
+        }
+
+        String auditNewValue = buildAdminTransferAuditNote(toUserId, "Bulk admin reassignment");
+        for (Agreement agreement : agreementsToTransfer) {
+            applyOwnershipTransfer(agreement, toUser, performedByUserId, auditNewValue, fromUserId);
+        }
+    }
+
+    private AgreementVersion resolveNewVersionSource(Agreement parent) {
+        Long agreementId = parent.getId();
+        Integer maxVersion = agreementVersionRepository.findMaxVersionByAgreementId(agreementId);
+        AgreementVersion latest = agreementVersionRepository
+                .findByAgreementIdAndVersionNumber(agreementId, maxVersion)
+                .orElseThrow(() -> new BusinessException("No agreement version exists for this agreement"));
+
+        if (latest.getApprovalStatus() == ApprovalStatus.REJECTED) {
+            return latest;
+        }
+
+        if (parent.getCurrentVersionId() == null) {
+            throw new BusinessException("No active version exists to create a new version from");
+        }
+
+        AgreementVersion current = agreementVersionRepository.findById(parent.getCurrentVersionId())
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", parent.getCurrentVersionId()));
+
+        if (current.getApprovalStatus() != ApprovalStatus.APPROVED) {
+            throw new BusinessException("Can only create new version from an APPROVED or REJECTED agreement");
+        }
+
+        return current;
+    }
+
+    private AgreementVersion loadAndValidateOwnership(Long agreementVersionId, Long userId) {
+        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
+        validateAgreementOwnership(version.getAgreement(), userId);
+        return version;
+    }
+
+    private void validateAgreementOwnership(Agreement agreement, Long userId) {
+        if (!agreement.getOwner().getId().equals(userId)) {
+            throw new UnauthorizedException("You are not the owner of this agreement");
+        }
+    }
+
+    private void enforceDraftVisibility(AgreementVersion version, Long currentUserId) {
+        if (version.getApprovalStatus() == ApprovalStatus.DRAFT
+                && !version.getAgreement().getOwner().getId().equals(currentUserId)) {
+            throw new ResourceNotFoundException("AgreementVersion", version.getId());
+        }
+    }
+
+    private void enforceAgreementDraftVisibility(Agreement parent, Long currentUserId) {
+        List<AgreementVersion> latestBatch =
+                agreementVersionRepository.findLatestVersionsForAgreementIds(List.of(parent.getId()));
+        AgreementVersion latest = latestBatch.isEmpty() ? null : latestBatch.get(0);
+        if (latest != null
+                && latest.getApprovalStatus() == ApprovalStatus.DRAFT
+                && !parent.getOwner().getId().equals(currentUserId)
+                && parent.getCurrentVersionId() == null) {
+            throw new ResourceNotFoundException("Agreement", parent.getId());
+        }
+    }
+
+    private AgreementVersion resolveListDisplayVersion(Agreement parent, AgreementVersion latest,
+                                                       Map<Long, AgreementVersion> currentVersionById,
+                                                       Long currentUserId) {
+        if (parent.getCurrentVersionId() != null) {
+            AgreementVersion current = currentVersionById.get(parent.getCurrentVersionId());
+            if (current != null) {
+                return current;
+            }
+        }
+        return resolveVisibleLatest(parent, latest, currentUserId);
+    }
+
+    private AgreementVersion resolveVisibleLatest(Agreement parent, AgreementVersion latest, Long currentUserId) {
+        if (latest == null) {
+            return null;
+        }
+        if (latest.getApprovalStatus() != ApprovalStatus.DRAFT
+                || parent.getOwner().getId().equals(currentUserId)) {
+            return latest;
+        }
+        if (parent.getCurrentVersionId() != null) {
+            return agreementVersionRepository.findById(parent.getCurrentVersionId()).orElse(latest);
+        }
+        return agreementVersionRepository.findByAgreementId(parent.getId()).stream()
+                .filter(v -> v.getApprovalStatus() != ApprovalStatus.DRAFT
+                        || parent.getOwner().getId().equals(currentUserId))
+                .max((a, b) -> Integer.compare(a.getVersionNumber(), b.getVersionNumber()))
+                .orElse(null);
+    }
+
+    private AgreementVersion buildDraftVersion(DraftAgreementItemRequest item, User owner, Agreement parent,
+                                               int versionNumber, Long userId) {
+        DraftDetailsPayload details = item != null ? item.details() : null;
+        DraftCommercialsPayload commercials = item != null ? item.commercials() : null;
+
+        if (details != null && details.startDate() != null && details.expiryDate() != null
+                && details.expiryDate().isBefore(details.startDate())) {
+            throw new BusinessException("Expiry date must be on or after start date");
+        }
+
+        IncomeType incomeType = null;
+        if (details != null && details.incomeTypeId() != null) {
+            incomeType = incomeTypeRepository.findById(details.incomeTypeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("IncomeType", details.incomeTypeId()));
+        }
+        AgreementType agreementType = null;
+        if (details != null && details.agreementTypeId() != null) {
+            agreementType = agreementTypeRepository.findById(details.agreementTypeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("AgreementType", details.agreementTypeId()));
+        }
+        AgreementVersion version = AgreementVersion.builder()
+                .agreement(parent)
+                .versionNumber(versionNumber)
+                .owner(owner)
+                .incomeType(incomeType)
+                .agreementType(agreementType)
+                .commercialStructure(commercials != null ? commercials.commercialStructure() : null)
+                .commercialValue(commercials != null ? commercials.commercialValue() : null)
+                .calculationFormula(commercials != null ? commercials.calculationFormula() : null)
+                .startDate(details != null ? details.startDate() : null)
+                .expiryDate(details != null ? details.expiryDate() : null)
+                .approvalStatus(ApprovalStatus.DRAFT)
+                .notes(details != null ? details.notes() : null)
+                .build();
+        version.setCreatedByUserId(userId);
+        return version;
+    }
+
+    private void applyDraftFields(AgreementVersion version, DraftDetailsPayload details,
+                                  DraftCommercialsPayload commercials) {
+        if (details != null) {
+            if (details.startDate() != null && details.expiryDate() != null
+                    && details.expiryDate().isBefore(details.startDate())) {
+                throw new BusinessException("Expiry date must be on or after start date");
+            }
+            if (details.incomeTypeId() != null) {
+                version.setIncomeType(incomeTypeRepository.findById(details.incomeTypeId())
+                        .orElseThrow(() -> new ResourceNotFoundException("IncomeType", details.incomeTypeId())));
+            }
+            if (details.agreementTypeId() != null) {
+                version.setAgreementType(agreementTypeRepository.findById(details.agreementTypeId())
+                        .orElseThrow(() -> new ResourceNotFoundException("AgreementType", details.agreementTypeId())));
+            }
+            if (details.startDate() != null) {
+                version.setStartDate(details.startDate());
+            }
+            if (details.expiryDate() != null) {
+                version.setExpiryDate(details.expiryDate());
+            }
+            if (details.notes() != null) {
+                version.setNotes(details.notes());
+            }
+        }
+        if (commercials != null) {
+            if (commercials.commercialStructure() != null) {
+                version.setCommercialStructure(commercials.commercialStructure());
+            }
+            if (commercials.commercialValue() != null) {
+                version.setCommercialValue(commercials.commercialValue());
+            }
+            if (commercials.calculationFormula() != null) {
+                version.setCalculationFormula(commercials.calculationFormula());
+            }
+        }
     }
 
     private void validateStep1Fields(UpdateDraftRequest request) {
@@ -336,335 +935,435 @@ public class AgreementServiceImpl implements AgreementService {
         }
     }
 
-    /**
-     * APPROVED amendments copy the active approved version; rejected revisions copy the latest rejected version.
-     */
-    private Agreement resolveNewVersionSource(AgreementGroup group) {
-        Integer maxVersion = agreementRepository.findMaxVersionByGroupId(group.getId());
-        Agreement latest = agreementRepository.findByAgreementGroupIdAndVersionNumber(group.getId(), maxVersion)
-                .orElseThrow(() -> new BusinessException("No agreement version exists for this group"));
+    private void validateCompleteAgreement(AgreementVersion version) {
+        Agreement parent = version.getAgreement();
+        String agreementName = resolveAgreementDisplayName(parent);
 
-        if (latest.getApprovalStatus() == ApprovalStatus.REJECTED) {
-            return latest;
+        if (parent.getAgreementName() == null || parent.getAgreementName().isBlank()) {
+            throw validationFailure(agreementName, "Missing Agreement Name.");
         }
-
-        if (group.getCurrentVersionId() == null) {
-            throw new BusinessException("No active version exists to create a new version from");
+        if (parent.getCompanyAgreementGroup() == null
+                || parent.getCompanyAgreementGroup().getCompany() == null) {
+            throw validationFailure(agreementName, "Missing Company.");
         }
-
-        Agreement current = agreementRepository.findById(group.getCurrentVersionId())
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", group.getCurrentVersionId()));
-
-        if (current.getApprovalStatus() != ApprovalStatus.APPROVED) {
-            throw new BusinessException("Can only create new version from an APPROVED or REJECTED agreement");
+        if (version.getStartDate() == null) {
+            throw validationFailure(agreementName, "Missing Start Date.");
         }
-
-        return current;
+        if (version.getExpiryDate() == null) {
+            throw validationFailure(agreementName, "Missing Expiry Date.");
+        }
+        if (version.getIncomeType() == null) {
+            throw validationFailure(agreementName, "Missing Income Type.");
+        }
+        if (version.getAgreementType() == null) {
+            throw validationFailure(agreementName, "Missing Agreement Type.");
+        }
+        if (version.getCommercialStructure() == null) {
+            throw validationFailure(agreementName, "Missing Commercial Structure.");
+        }
+        if (version.getExpiryDate().isBefore(version.getStartDate())) {
+            throw validationFailure(agreementName, "Expiry Date must be on or after Start Date.");
+        }
+        if (version.getCommercialStructure() == CommercialStructure.FLAT
+                && version.getCommercialValue() == null) {
+            throw validationFailure(agreementName, "Missing Commercial Value for FLAT structure.");
+        }
+        if (version.getCommercialStructure() == CommercialStructure.SLAB) {
+            if (purchaseSlabRepository.findByAgreementVersionIdOrderByFromValueAsc(version.getId()).isEmpty()) {
+                throw validationFailure(agreementName, "Missing purchase slabs for SLAB structure.");
+            }
+            if (saleTargetRepository.findByAgreementVersionId(version.getId()).isEmpty()) {
+                throw validationFailure(agreementName, "Missing commercial targets for SLAB structure.");
+            }
+        }
+        if (vendorRepository.findByAgreementVersionId(version.getId()).isEmpty()) {
+            throw validationFailure(agreementName, "Missing Vendor.");
+        }
+        if (productRuleRepository.findByAgreementVersionId(version.getId()).isEmpty()) {
+            throw validationFailure(agreementName, "Missing Product selection.");
+        }
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public AgreementResponse getAgreementById(Long agreementId, Long currentUserId) {
-        Agreement agreement = agreementRepository.findById(agreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
-        enforceDraftVisibility(agreement, currentUserId);
-        return toAgreementResponse(agreement);
+    private String resolveAgreementDisplayName(Agreement parent) {
+        if (parent.getAgreementName() != null && !parent.getAgreementName().isBlank()) {
+            return parent.getAgreementName();
+        }
+        return "Agreement #" + parent.getId();
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public AgreementGroupResponse getGroupById(Long groupId, Long currentUserId) {
-        AgreementGroup group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ResourceNotFoundException("AgreementGroup", groupId));
-        enforceGroupDraftVisibility(group, currentUserId);
-        return toGroupResponse(group, currentUserId);
+    private IncompleteAgreementException validationFailure(String agreementName, String reason) {
+        return new IncompleteAgreementException(
+                "Validation failed for '" + agreementName + "': " + reason);
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public Page<AgreementGroupResponse> getAllGroups(Pageable pageable, Long currentUserId, String scope,
-                                                     boolean canViewAll, String agreementNumber,
-                                                     String companyName, String status, String ownerName,
-                                                     Long vendorId, Long incomeTypeId) {
-        Pageable mappedPageable = mapGroupPageable(pageable);
-        var filterSpec = AgreementGroupSpec.withFilters(agreementNumber, companyName, status, ownerName, vendorId, incomeTypeId)
-                .and(AgreementGroupSpec.draftVisibleTo(currentUserId));
+    private AgreementVersion applySubmitForApproval(AgreementVersion version, String comments, Long userId) {
+        if (version.getApprovalStatus() != ApprovalStatus.DRAFT) {
+            throw new BusinessException("Only DRAFT agreements can be submitted for approval");
+        }
+        validateCompleteAgreement(version);
+        return commitDraftSubmit(version, comments, userId);
+    }
 
-        var scopeSpec = "ALL".equalsIgnoreCase(scope) && canViewAll
-                ? filterSpec
-                : filterSpec.and(AgreementGroupSpec.ownedBy(currentUserId));
-
-        Page<AgreementGroup> groupPage = groupRepository.findAll(scopeSpec, mappedPageable);
-
-        List<Long> groupIds = groupPage.getContent().stream().map(AgreementGroup::getId).toList();
-        if (groupIds.isEmpty()) {
-            return groupPage.map(this::toGroupResponseEmpty);
+    /** Status transition only — caller must validate completeness first. */
+    private AgreementVersion commitDraftSubmit(AgreementVersion version, String comments, Long userId) {
+        if (version.getApprovalStatus() != ApprovalStatus.DRAFT) {
+            throw new BusinessException("Only DRAFT agreements can be submitted for approval");
         }
 
-        // Single batch query for latest agreements — eliminates N+1 per-group lookup.
-        Map<Long, Agreement> latestByGroupId = agreementRepository.findLatestVersionsForGroupIds(groupIds)
-                .stream()
-                .collect(Collectors.toMap(a -> a.getAgreementGroup().getId(), a -> a, (a, b) -> a));
+        ApprovalStatus before = version.getApprovalStatus();
+        version.setApprovalStatus(ApprovalStatus.PENDING_APPROVAL);
+        version.setUpdatedByUserId(userId);
+        version = agreementVersionRepository.save(version);
 
-        List<Long> currentVersionIds = groupPage.getContent().stream()
-                .map(AgreementGroup::getCurrentVersionId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        Map<Long, Agreement> currentVersionById = currentVersionIds.isEmpty()
-                ? Map.of()
-                : agreementRepository.findByIdInWithDetails(currentVersionIds).stream()
-                        .collect(Collectors.toMap(Agreement::getId, a -> a, (a, b) -> a));
+        String remarks = comments != null && !comments.isBlank() ? comments.trim() : null;
+        recordApproval(version, ApprovalAction.SUBMITTED, remarks, before, ApprovalStatus.PENDING_APPROVAL, userId);
+        recordAudit(version.getAgreement().getId(), version.getId(), "SUBMITTED_FOR_APPROVAL",
+                before.name(), ApprovalStatus.PENDING_APPROVAL.name(), userId);
 
-        Map<Long, Agreement> visibleByGroupId = groupPage.getContent().stream()
-                .collect(Collectors.toMap(
-                        AgreementGroup::getId,
-                        g -> resolveListDisplayVersion(
-                                g, latestByGroupId.get(g.getId()), currentVersionById, currentUserId),
-                        (a, b) -> a
-                ));
+        return version;
+    }
 
-        List<Long> agreementIds = visibleByGroupId.values().stream()
-                .filter(a -> a != null)
-                .map(Agreement::getId)
-                .toList();
-        Map<Long, List<AgreementVendor>> vendorsByAgreementId = agreementIds.isEmpty()
-                ? Map.of()
-                : vendorRepository.findByAgreementIdIn(agreementIds)
-                        .stream()
-                        .collect(Collectors.groupingBy(v -> v.getAgreement().getId()));
+    private void replaceVendors(AgreementVersion version, List<Long> vendorIds, Long userId) {
+        vendorRepository.deleteByAgreementVersionId(version.getId());
+        if (vendorIds != null && !vendorIds.isEmpty()) {
+            saveVendors(version, vendorIds, userId);
+        }
+    }
 
-        return groupPage.map(g -> {
-            Agreement visible = visibleByGroupId.get(g.getId());
-            List<AgreementVendor> vendors = visible != null
-                    ? vendorsByAgreementId.getOrDefault(visible.getId(), List.of())
-                    : List.of();
-            return toGroupResponseFromBatch(g, visible, vendors);
+    private void replaceRulesAndComputeProducts(AgreementVersion version, List<Long> manufacturerIds,
+                                                List<RuleDTO> divisionRules, List<RuleDTO> productRules,
+                                                Long userId) {
+        manufacturerRuleRepository.deleteByAgreementVersionId(version.getId());
+        divisionRuleRepository.deleteByAgreementVersionId(version.getId());
+        productRuleRepository.deleteByAgreementVersionId(version.getId());
+        computedProductRepository.deleteByAgreementVersionId(version.getId());
+        saveRulesAndComputeProducts(version, manufacturerIds, divisionRules, productRules, userId);
+    }
+
+    private void saveVendors(AgreementVersion version, List<Long> vendorIds, Long userId) {
+        List<VendorMaster> vendors = vendorMasterRepository.findByIdIn(vendorIds);
+        for (VendorMaster vendor : vendors) {
+            AgreementVendor av = AgreementVendor.builder()
+                    .agreementVersion(version)
+                    .vendorId(vendor.getId())
+                    .vendorNameSnapshot(vendor.getVendorName())
+                    .build();
+            av.setCreatedByUserId(userId);
+            vendorRepository.save(av);
+        }
+    }
+
+    private void saveRulesAndComputeProducts(AgreementVersion version, List<Long> manufacturerIds,
+                                             List<RuleDTO> divisionRules, List<RuleDTO> productRules, Long userId) {
+        List<Long> safeManufacturerIds = manufacturerIds != null ? manufacturerIds : List.of();
+        for (Long mfrId : safeManufacturerIds) {
+            AgreementManufacturer am = AgreementManufacturer.builder()
+                    .agreementVersion(version).manufacturerId(mfrId).build();
+            am.setCreatedByUserId(userId);
+            manufacturerRuleRepository.save(am);
+        }
+
+        List<RuleDTO> safeDivisionRules = divisionRules != null ? divisionRules : List.of();
+        for (RuleDTO dr : safeDivisionRules) {
+            AgreementDivisionRule adr = AgreementDivisionRule.builder()
+                    .agreementVersion(version).divisionId(dr.id())
+                    .ruleType(RuleType.valueOf(dr.ruleType())).build();
+            adr.setCreatedByUserId(userId);
+            divisionRuleRepository.save(adr);
+        }
+
+        List<RuleDTO> safeProductRules = productRules != null ? productRules : List.of();
+        for (RuleDTO pr : safeProductRules) {
+            AgreementProductRule apr = AgreementProductRule.builder()
+                    .agreementVersion(version).productId(pr.id())
+                    .ruleType(RuleType.valueOf(pr.ruleType())).build();
+            apr.setCreatedByUserId(userId);
+            productRuleRepository.save(apr);
+        }
+
+        List<Long> vendorIds = vendorRepository.findByAgreementVersionId(version.getId())
+                .stream().map(AgreementVendor::getVendorId).toList();
+        if (vendorIds.isEmpty()) {
+            return;
+        }
+
+        List<ProductMaster> baseProducts = safeManufacturerIds.isEmpty()
+                ? productMasterRepository.findByVendorIds(vendorIds)
+                : productMasterRepository.findByVendorIdsAndManufacturerIds(vendorIds, safeManufacturerIds);
+
+        List<ProductMaster> afterDivisionFilter = applyDivisionRules(baseProducts, safeDivisionRules);
+        List<ProductMaster> finalProducts = applyProductRules(afterDivisionFilter, safeProductRules);
+
+        for (ProductMaster p : finalProducts) {
+            AgreementComputedProduct acp = AgreementComputedProduct.builder()
+                    .agreementVersion(version)
+                    .productId(p.getId())
+                    .productNameSnapshot(p.getProductName())
+                    .divisionNameSnapshot(p.getDivision().getDivisionName())
+                    .manufacturerNameSnapshot(p.getManufacturer().getManufacturerName())
+                    .build();
+            acp.setCreatedByUserId(userId);
+            computedProductRepository.save(acp);
+        }
+    }
+
+    private List<ProductMaster> applyDivisionRules(List<ProductMaster> products, List<RuleDTO> rules) {
+        if (rules.isEmpty()) {
+            return products;
+        }
+        RuleType ruleType = RuleType.valueOf(rules.get(0).ruleType());
+        Set<Long> divisionIds = new HashSet<>();
+        rules.forEach(r -> divisionIds.add(r.id()));
+        if (ruleType == RuleType.INCLUDE) {
+            return products.stream().filter(p -> divisionIds.contains(p.getDivision().getId())).toList();
+        }
+        return products.stream().filter(p -> !divisionIds.contains(p.getDivision().getId())).toList();
+    }
+
+    private List<ProductMaster> applyProductRules(List<ProductMaster> products, List<RuleDTO> rules) {
+        if (rules.isEmpty()) {
+            return products;
+        }
+        RuleType ruleType = RuleType.valueOf(rules.get(0).ruleType());
+        Set<Long> productIds = new HashSet<>();
+        rules.forEach(r -> productIds.add(r.id()));
+        if (ruleType == RuleType.INCLUDE) {
+            return products.stream().filter(p -> productIds.contains(p.getId())).toList();
+        }
+        return products.stream().filter(p -> !productIds.contains(p.getId())).toList();
+    }
+
+    private void copyVendors(Long sourceVersionId, AgreementVersion target, Long userId) {
+        vendorRepository.findByAgreementVersionId(sourceVersionId).forEach(v -> {
+            AgreementVendor copy = AgreementVendor.builder()
+                    .agreementVersion(target)
+                    .vendorId(v.getVendorId())
+                    .vendorNameSnapshot(v.getVendorNameSnapshot())
+                    .build();
+            copy.setCreatedByUserId(userId);
+            vendorRepository.save(copy);
         });
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<AgreementResponse> getVersionsByGroup(Long groupId, Long currentUserId) {
-        AgreementGroup group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ResourceNotFoundException("AgreementGroup", groupId));
-        enforceGroupDraftVisibility(group, currentUserId);
-        return agreementRepository.findByAgreementGroupId(groupId)
-                .stream()
-                .filter(a -> a.getApprovalStatus() != ApprovalStatus.DRAFT
-                        || a.getOwner().getId().equals(currentUserId))
-                .sorted((a, b) -> Integer.compare(a.getVersionNumber(), b.getVersionNumber()))
-                .map(this::toAgreementResponse)
-                .toList();
+    private void copyRulesAndComputed(Long sourceVersionId, AgreementVersion target, Long userId) {
+        manufacturerRuleRepository.findByAgreementVersionId(sourceVersionId).forEach(m -> {
+            AgreementManufacturer copy = AgreementManufacturer.builder()
+                    .agreementVersion(target).manufacturerId(m.getManufacturerId()).build();
+            copy.setCreatedByUserId(userId);
+            manufacturerRuleRepository.save(copy);
+        });
+
+        divisionRuleRepository.findByAgreementVersionId(sourceVersionId).forEach(dr -> {
+            AgreementDivisionRule copy = AgreementDivisionRule.builder()
+                    .agreementVersion(target).divisionId(dr.getDivisionId()).ruleType(dr.getRuleType()).build();
+            copy.setCreatedByUserId(userId);
+            divisionRuleRepository.save(copy);
+        });
+
+        productRuleRepository.findByAgreementVersionId(sourceVersionId).forEach(pr -> {
+            AgreementProductRule copy = AgreementProductRule.builder()
+                    .agreementVersion(target).productId(pr.getProductId()).ruleType(pr.getRuleType()).build();
+            copy.setCreatedByUserId(userId);
+            productRuleRepository.save(copy);
+        });
+
+        computedProductRepository.findByAgreementVersionId(sourceVersionId).forEach(cp -> {
+            AgreementComputedProduct copy = AgreementComputedProduct.builder()
+                    .agreementVersion(target)
+                    .productId(cp.getProductId())
+                    .productNameSnapshot(cp.getProductNameSnapshot())
+                    .divisionNameSnapshot(cp.getDivisionNameSnapshot())
+                    .manufacturerNameSnapshot(cp.getManufacturerNameSnapshot())
+                    .build();
+            copy.setCreatedByUserId(userId);
+            computedProductRepository.save(copy);
+        });
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<AgreementResponse> getVersionsByAgreementId(Long agreementId, Long currentUserId) {
-        Agreement agreement = agreementRepository.findById(agreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
-        enforceDraftVisibility(agreement, currentUserId);
-        return getVersionsByGroup(agreement.getAgreementGroup().getId(), currentUserId);
+    private void recordApproval(AgreementVersion version, ApprovalAction action, String remarks,
+                                ApprovalStatus before, ApprovalStatus after, Long userId) {
+        AgreementApproval approval = AgreementApproval.builder()
+                .agreementVersion(version)
+                .action(action)
+                .remarks(remarks)
+                .approvalStatusBefore(before)
+                .approvalStatusAfter(after)
+                .build();
+        approval.setCreatedByUserId(userId);
+        approvalRepository.save(approval);
     }
 
-    @Override
-    @Transactional
-    public AgreementResponse transferOwnership(Long agreementId, Long newOwnerUserId,
-                                               Long performedByUserId, boolean isAdmin, String comments) {
-        Agreement agreement = agreementRepository.findById(agreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
-
-        Long currentOwnerId = agreement.getOwner().getId();
-        if (!isAdmin && !currentOwnerId.equals(performedByUserId)) {
-            throw new UnauthorizedException("Only the owner or an admin can transfer ownership");
-        }
-
-        User newOwner = userRepository.findById(newOwnerUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("User", newOwnerUserId));
-
-        if (newOwnerUserId.equals(currentOwnerId)) {
-            throw new BusinessException("Agreement is already owned by this user");
-        }
-
-        String auditNewValue = isAdmin
-                ? buildAdminTransferAuditNote(newOwnerUserId, comments)
-                : String.valueOf(newOwnerUserId);
-
-        Long groupId = agreement.getAgreementGroup().getId();
-        agreementRepository.findByAgreementGroupId(groupId).stream()
-                .filter(a -> a.getOwner().getId().equals(currentOwnerId))
-                .forEach(a -> {
-                    a.setOwner(newOwner);
-                    a.setUpdatedByUserId(performedByUserId);
-                    agreementRepository.save(a);
-                    recordAudit(groupId, a.getId(), "OWNERSHIP_TRANSFERRED",
-                            String.valueOf(currentOwnerId), auditNewValue, performedByUserId);
-                });
-
-        return toAgreementResponse(agreementRepository.findById(agreementId).orElseThrow());
+    private void recordAudit(Long agreementId, Long agreementVersionId, String action,
+                             String oldVal, String newVal, Long userId) {
+        AgreementAudit audit = AgreementAudit.builder()
+                .agreementId(agreementId)
+                .agreementVersionId(agreementVersionId)
+                .entityType("Agreement")
+                .action(action)
+                .oldValueJson(oldVal)
+                .newValueJson(newVal)
+                .createdByUserId(userId)
+                .build();
+        auditRepository.save(audit);
     }
 
-    private String buildAdminTransferAuditNote(Long newOwnerUserId, String comments) {
-        StringBuilder note = new StringBuilder("Admin override | newOwner=").append(newOwnerUserId);
-        if (comments != null && !comments.isBlank()) {
-            note.append(" | reason=").append(comments.trim());
-        }
-        return note.toString();
+    private AgreementVersionResponse toVersionResponse(AgreementVersion version) {
+        Agreement parent = version.getAgreement();
+        CompanyAgreementGroup cag = parent.getCompanyAgreementGroup();
+        CompanyMaster company = cag.getCompany();
+
+        List<AgreementVersionResponse.VendorSummary> vendors =
+                vendorRepository.findByAgreementVersionId(version.getId())
+                        .stream()
+                        .map(v -> new AgreementVersionResponse.VendorSummary(v.getVendorId(), v.getVendorNameSnapshot()))
+                        .toList();
+
+        List<Long> manufacturerIds = manufacturerRuleRepository.findByAgreementVersionId(version.getId())
+                .stream().map(AgreementManufacturer::getManufacturerId).toList();
+
+        List<AgreementVersionResponse.RuleSummary> divisionRules =
+                divisionRuleRepository.findByAgreementVersionId(version.getId())
+                        .stream()
+                        .map(dr -> new AgreementVersionResponse.RuleSummary(dr.getDivisionId(), dr.getRuleType().name()))
+                        .toList();
+
+        List<AgreementVersionResponse.RuleSummary> productRules =
+                productRuleRepository.findByAgreementVersionId(version.getId())
+                        .stream()
+                        .map(pr -> new AgreementVersionResponse.RuleSummary(pr.getProductId(), pr.getRuleType().name()))
+                        .toList();
+
+        List<AgreementVersionResponse.ProductSummary> products =
+                computedProductRepository.findByAgreementVersionId(version.getId())
+                        .stream()
+                        .map(p -> new AgreementVersionResponse.ProductSummary(
+                                p.getProductId(), p.getProductNameSnapshot(),
+                                p.getManufacturerNameSnapshot(), p.getDivisionNameSnapshot()))
+                        .toList();
+
+        AgreementType agreementType = version.getAgreementType();
+
+        return new AgreementVersionResponse(
+                version.getId(),
+                parent.getId(),
+                parent.getAgreementName(),
+                version.getVersionNumber(),
+                company.getId(),
+                company.getCompanyName(),
+                cag.getId(),
+                cag.getName(),
+                version.getOwner().getId(),
+                version.getOwner().getFullName(),
+                version.getIncomeType() != null ? version.getIncomeType().getId() : null,
+                version.getIncomeType() != null ? version.getIncomeType().getName() : null,
+                agreementType != null ? agreementType.getId() : null,
+                agreementType != null ? agreementType.getName() : null,
+                version.getCommercialStructure(),
+                version.getCommercialValue(),
+                version.getCalculationFormula(),
+                version.getStartDate(),
+                version.getExpiryDate(),
+                version.getApprovalStatus(),
+                statusResolver.resolve(version),
+                version.isInProgressFlag(),
+                version.getTerminationDate(),
+                version.getTerminationReason(),
+                version.getNotes(),
+                vendors,
+                manufacturerIds,
+                divisionRules,
+                productRules,
+                products,
+                resolvePendingActionRequest(parent.getId()),
+                version.getCreatedAt(),
+                version.getUpdatedAt()
+        );
     }
 
-    @Override
-    @Transactional
-    public AgreementResponse submitForApproval(Long agreementId, String comments, Long currentUserId) {
-        Agreement agreement = loadAndValidateOwnership(agreementId, currentUserId);
-        if (agreement.getVersionNumber() > 1 && (comments == null || comments.isBlank())) {
-            throw new BusinessException("Reason for edit/revision is required when submitting a revised version");
-        }
-        agreement = applySubmitForApproval(agreement, comments, currentUserId);
-        return toAgreementResponse(agreement);
-    }
+    private AgreementResponse toParentResponse(Agreement parent, AgreementVersion visible,
+                                               List<AgreementVendor> vendors) {
+        CompanyAgreementGroup cag = parent.getCompanyAgreementGroup();
+        CompanyMaster company = cag.getCompany();
 
-    private Agreement applySubmitForApproval(Agreement agreement, String comments, Long userId) {
-        if (agreement.getApprovalStatus() != ApprovalStatus.DRAFT) {
-            throw new BusinessException("Only DRAFT agreements can be submitted for approval");
-        }
-        validateCompleteAgreement(agreement);
-
-        ApprovalStatus before = agreement.getApprovalStatus();
-        agreement.setApprovalStatus(ApprovalStatus.PENDING_APPROVAL);
-        agreement.setUpdatedByUserId(userId);
-        agreement = agreementRepository.save(agreement);
-
-        String remarks = comments != null && !comments.isBlank() ? comments.trim() : null;
-        recordApproval(agreement, ApprovalAction.SUBMITTED, remarks, before, ApprovalStatus.PENDING_APPROVAL, userId);
-        recordAudit(agreement.getAgreementGroup().getId(), agreement.getId(), "SUBMITTED_FOR_APPROVAL",
-                before.name(), ApprovalStatus.PENDING_APPROVAL.name(), userId);
-
-        return agreement;
-    }
-
-    @Override
-    @Transactional
-    public AgreementResponse approve(Long agreementId, String remarks, Long approverId) {
-        Agreement agreement = agreementRepository.findById(agreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
-
-        if (agreement.getApprovalStatus() != ApprovalStatus.PENDING_APPROVAL) {
-            throw new BusinessException("Only PENDING_APPROVAL agreements can be approved");
-        }
-        if (agreement.getOwner().getId().equals(approverId)) {
-            throw new AccessDeniedException("Separation of Duties violation: Cannot approve your own agreement.");
-        }
-
-        User approver = userRepository.findById(approverId)
-                .orElseThrow(() -> new ResourceNotFoundException("User", approverId));
-
-        ApprovalStatus before = agreement.getApprovalStatus();
-        agreement.setApprovalStatus(ApprovalStatus.APPROVED);
-        agreement.setApprovedBy(approver);
-        agreement.setApprovalDate(LocalDateTime.now());
-        agreement.setUpdatedByUserId(approverId);
-        agreement = agreementRepository.save(agreement);
-
-        AgreementGroup group = agreement.getAgreementGroup();
-        group.setCurrentVersionId(agreement.getId());
-        group.setUpdatedByUserId(approverId);
-        groupRepository.save(group);
-
-        recordApproval(agreement, ApprovalAction.APPROVED, remarks, before, ApprovalStatus.APPROVED, approverId);
-        recordAudit(group.getId(), agreementId, "APPROVED", before.name(), ApprovalStatus.APPROVED.name(), approverId);
-
-        return toAgreementResponse(agreement);
-    }
-
-    @Override
-    @Transactional
-    public AgreementResponse reject(Long agreementId, String remarks, Long approverId) {
-        Agreement agreement = agreementRepository.findById(agreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
-
-        if (agreement.getApprovalStatus() != ApprovalStatus.PENDING_APPROVAL) {
-            throw new BusinessException("Only PENDING_APPROVAL agreements can be rejected");
-        }
-        if (agreement.getOwner().getId().equals(approverId)) {
-            throw new AccessDeniedException("Separation of Duties violation: Cannot approve your own agreement.");
-        }
-
-        ApprovalStatus before = agreement.getApprovalStatus();
-        agreement.setApprovalStatus(ApprovalStatus.REJECTED);
-        agreement.setUpdatedByUserId(approverId);
-        agreement = agreementRepository.save(agreement);
-
-        recordApproval(agreement, ApprovalAction.REJECTED, remarks, before, ApprovalStatus.REJECTED, approverId);
-        recordAudit(agreement.getAgreementGroup().getId(), agreementId, "REJECTED", before.name(), ApprovalStatus.REJECTED.name(), approverId);
-
-        return toAgreementResponse(agreement);
-    }
-
-    @Override
-    @Transactional
-    public AgreementResponse terminate(Long agreementId, TerminateAgreementRequest request, Long currentUserId) {
-        Agreement agreement = agreementRepository.findById(agreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
-
-        if (agreement.getApprovalStatus() != ApprovalStatus.APPROVED) {
-            throw new BusinessException("Only APPROVED agreements can be terminated");
-        }
-
-        agreement.setTerminationDate(request.terminationDate());
-        agreement.setTerminationReason(request.terminationReason());
-        agreement.setUpdatedByUserId(currentUserId);
-        agreement = agreementRepository.save(agreement);
-
-        recordAudit(agreement.getAgreementGroup().getId(), agreementId, "TERMINATED", null, request.terminationReason(), currentUserId);
-
-        return toAgreementResponse(agreement);
-    }
-
-    @Override
-    @Transactional
-    public AgreementResponse toggleInProgress(Long agreementId, boolean inProgress, Long currentUserId) {
-        Agreement agreement = agreementRepository.findById(agreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
-
-        agreement.setInProgressFlag(inProgress);
-        agreement.setUpdatedByUserId(currentUserId);
-        agreement = agreementRepository.save(agreement);
-
-        return toAgreementResponse(agreement);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Page<AgreementResponse> getPendingApprovals(String search, Pageable pageable) {
-        String term = (search != null && !search.isBlank()) ? search.trim() : null;
-        return agreementRepository.findAllPendingApproval(term, pageable)
-                .map(this::toAgreementResponse);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<ApprovalTimelineResponse> getApprovalTimeline(Long agreementId) {
-        List<ApprovalTimelineResponse> approvalEntries = approvalRepository
-                .findByAgreementIdOrderByCreatedAtAsc(agreementId)
-                .stream()
-                .map(a -> new ApprovalTimelineResponse(
-                        a.getId(), a.getAction(), null, a.getRemarks(),
-                        a.getApprovalStatusBefore(), a.getApprovalStatusAfter(),
-                        a.getCreatedByUserId(), resolveUserName(a.getCreatedByUserId()),
-                        a.getCreatedAt()))
+        List<AgreementVersionResponse.VendorSummary> vendorSummaries = vendors.stream()
+                .map(v -> new AgreementVersionResponse.VendorSummary(v.getVendorId(), v.getVendorNameSnapshot()))
                 .toList();
 
-        List<ApprovalTimelineResponse> operationalEntries = actionRequestRepository
-                .findByAgreement_IdOrderByCreatedAtAsc(agreementId)
-                .stream()
-                .flatMap(r -> mapActionRequestToTimeline(r).stream())
-                .toList();
+        List<AgreementVersion> latestBatch =
+                agreementVersionRepository.findLatestVersionsForAgreementIds(List.of(parent.getId()));
+        AgreementVersion latest = latestBatch.isEmpty() ? null : latestBatch.get(0);
 
-        List<ApprovalTimelineResponse> combined = new ArrayList<>(approvalEntries.size() + operationalEntries.size());
-        combined.addAll(approvalEntries);
-        combined.addAll(operationalEntries);
-        combined.sort((a, b) -> a.timestamp().compareTo(b.timestamp()));
-        return combined;
+        AgreementType agreementType = visible.getAgreementType();
+
+        return new AgreementResponse(
+                parent.getId(),
+                parent.getAgreementName(),
+                company.getId(),
+                company.getCompanyName(),
+                cag.getId(),
+                cag.getName(),
+                agreementType != null ? agreementType.getId() : null,
+                agreementType != null ? agreementType.getName() : null,
+                parent.getCurrentVersionId(),
+                latest != null ? latest.getId() : null,
+                visible.getVersionNumber(),
+                statusResolver.resolve(visible),
+                visible.getApprovalStatus(),
+                parent.isActive(),
+                parent.getCreatedAt(),
+                visible.getUpdatedAt(),
+                visible.getIncomeType() != null ? visible.getIncomeType().getName() : null,
+                visible.getStartDate(),
+                visible.getExpiryDate(),
+                parent.getOwner().getFullName(),
+                parent.getOwner().getId(),
+                vendorSummaries
+        );
+    }
+
+    private AgreementResponse toParentResponseEmpty(Agreement parent) {
+        CompanyAgreementGroup cag = parent.getCompanyAgreementGroup();
+        CompanyMaster company = cag != null ? cag.getCompany() : null;
+        User owner = parent.getOwner();
+        return new AgreementResponse(
+                parent.getId(),
+                parent.getAgreementName(),
+                company != null ? company.getId() : null,
+                company != null ? company.getCompanyName() : null,
+                cag != null ? cag.getId() : null,
+                cag != null ? cag.getName() : null,
+                null,
+                null,
+                parent.getCurrentVersionId(),
+                null,
+                null,
+                null,
+                null,
+                parent.isActive(),
+                parent.getCreatedAt(),
+                null,
+                null,
+                null,
+                null,
+                owner != null ? owner.getFullName() : null,
+                owner != null ? owner.getId() : null,
+                List.of()
+        );
+    }
+
+    private PendingActionRequestInfo resolvePendingActionRequest(Long agreementId) {
+        return actionRequestRepository
+                .findFirstByAgreementVersion_Agreement_IdAndStatus(agreementId, ActionRequestStatus.PENDING)
+                .map(r -> new PendingActionRequestInfo(
+                        r.getId(),
+                        r.getActionType(),
+                        r.getReasonComments(),
+                        r.getRequestedTerminationDate(),
+                        r.getTargetUser() != null ? r.getTargetUser().getId() : null,
+                        r.getTargetUser() != null ? r.getTargetUser().getFullName() : null,
+                        r.getRequestedBy().getFullName(),
+                        r.getCreatedAt()))
+                .orElse(null);
     }
 
     private List<ApprovalTimelineResponse> mapActionRequestToTimeline(AgreementActionRequest request) {
@@ -687,12 +1386,8 @@ public class AgreementServiceImpl implements AgreementService {
                     && request.getApproverComments() != null
                     ? request.getApproverComments()
                     : request.getReasonComments();
-            Long actorId = request.getResolvedBy() != null
-                    ? request.getResolvedBy().getId()
-                    : null;
-            String actorName = request.getResolvedBy() != null
-                    ? request.getResolvedBy().getFullName()
-                    : null;
+            Long actorId = request.getResolvedBy() != null ? request.getResolvedBy().getId() : null;
+            String actorName = request.getResolvedBy() != null ? request.getResolvedBy().getFullName() : null;
             entries.add(new ApprovalTimelineResponse(
                     request.getId() * 10 + 1,
                     null,
@@ -707,6 +1402,46 @@ public class AgreementServiceImpl implements AgreementService {
         return entries;
     }
 
+    private String buildAdminTransferAuditNote(Long newOwnerUserId, String comments) {
+        StringBuilder note = new StringBuilder("Admin override | newOwner=").append(newOwnerUserId);
+        if (comments != null && !comments.isBlank()) {
+            note.append(" | reason=").append(comments.trim());
+        }
+        return note.toString();
+    }
+
+    private void applyOwnershipTransfer(Agreement agreement, User newOwner, Long performedByUserId,
+                                        String auditNewValue, Long fromOwnerId) {
+        agreement.setOwner(newOwner);
+        agreement.setUpdatedByUserId(performedByUserId);
+        agreementRepository.save(agreement);
+
+        AgreementVersion operationalVersion = resolveOperationalVersion(agreement);
+        if (operationalVersion != null) {
+            operationalVersion.setOwner(newOwner);
+            operationalVersion.setUpdatedByUserId(performedByUserId);
+            agreementVersionRepository.save(operationalVersion);
+            recordAudit(agreement.getId(), operationalVersion.getId(), "OWNERSHIP_TRANSFERRED",
+                    String.valueOf(fromOwnerId), auditNewValue, performedByUserId);
+        }
+    }
+
+    private AgreementVersion resolveOperationalVersion(Agreement agreement) {
+        if (agreement.getCurrentVersionId() != null) {
+            return agreementVersionRepository.findById(agreement.getCurrentVersionId()).orElse(null);
+        }
+        return agreementVersionRepository.findByAgreementId(agreement.getId()).stream()
+                .filter(v -> v.getApprovalStatus() == ApprovalStatus.DRAFT
+                        || v.getApprovalStatus() == ApprovalStatus.PENDING_APPROVAL)
+                .max((a, b) -> Integer.compare(a.getVersionNumber(), b.getVersionNumber()))
+                .orElse(null);
+    }
+
+    private boolean isAgreementOperationallyActive(Agreement agreement) {
+        AgreementVersion operationalVersion = resolveOperationalVersion(agreement);
+        return operationalVersion == null || operationalVersion.getTerminationDate() == null;
+    }
+
     private String resolveUserName(Long userId) {
         if (userId == null) {
             return null;
@@ -714,539 +1449,15 @@ public class AgreementServiceImpl implements AgreementService {
         return userRepository.findById(userId).map(User::getFullName).orElse(null);
     }
 
-    @Override
-    @Transactional
-    public void bulkTransferOwnership(Long fromUserId, Long toUserId, List<Long> groupIds, Long performedByUserId) {
-        User toUser = userRepository.findById(toUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("User", toUserId));
-
-        List<Agreement> toTransfer;
-        if (groupIds != null && !groupIds.isEmpty()) {
-            toTransfer = groupIds.stream()
-                    .flatMap(gid -> agreementRepository.findByAgreementGroupId(gid).stream())
-                    .filter(a -> a.getOwner().getId().equals(fromUserId))
-                    .filter(a -> a.getTerminationDate() == null)
-                    .toList();
-        } else {
-            toTransfer = agreementRepository.findByOwnerId(fromUserId, Pageable.unpaged())
-                    .stream()
-                    .filter(a -> a.getTerminationDate() == null)
-                    .toList();
-        }
-
-        for (Agreement a : toTransfer) {
-            a.setOwner(toUser);
-            a.setUpdatedByUserId(performedByUserId);
-            agreementRepository.save(a);
-            recordAudit(a.getAgreementGroup().getId(), a.getId(), "OWNERSHIP_TRANSFERRED",
-                    String.valueOf(fromUserId),
-                    buildAdminTransferAuditNote(toUserId, "Bulk admin reassignment"),
-                    performedByUserId);
-        }
-    }
-
-    private Agreement loadAndValidateOwnership(Long agreementId, Long userId) {
-        Agreement agreement = agreementRepository.findById(agreementId)
-                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
-        if (!agreement.getOwner().getId().equals(userId)) {
-            throw new UnauthorizedException("You are not the owner of this agreement");
-        }
-        return agreement;
-    }
-
-    private void enforceDraftVisibility(Agreement agreement, Long currentUserId) {
-        if (agreement.getApprovalStatus() == ApprovalStatus.DRAFT
-                && !agreement.getOwner().getId().equals(currentUserId)) {
-            throw new ResourceNotFoundException("Agreement", agreement.getId());
-        }
-    }
-
-    private void enforceGroupDraftVisibility(AgreementGroup group, Long currentUserId) {
-        List<Agreement> latestBatch = agreementRepository.findLatestVersionsForGroupIds(List.of(group.getId()));
-        Agreement latest = latestBatch.isEmpty() ? null : latestBatch.get(0);
-        if (latest != null
-                && latest.getApprovalStatus() == ApprovalStatus.DRAFT
-                && !latest.getOwner().getId().equals(currentUserId)
-                && group.getCurrentVersionId() == null) {
-            throw new ResourceNotFoundException("AgreementGroup", group.getId());
-        }
-    }
-
-    private Agreement resolveListDisplayVersion(AgreementGroup group, Agreement latest,
-                                                Map<Long, Agreement> currentVersionById,
-                                                Long currentUserId) {
-        if (group.getCurrentVersionId() != null) {
-            Agreement current = currentVersionById.get(group.getCurrentVersionId());
-            if (current != null) {
-                return current;
-            }
-        }
-        return resolveVisibleLatest(group, latest, currentUserId);
-    }
-
-    private Agreement resolveVisibleLatest(AgreementGroup group, Agreement latest, Long currentUserId) {
-        if (latest == null) {
-            return null;
-        }
-        if (latest.getApprovalStatus() != ApprovalStatus.DRAFT
-                || latest.getOwner().getId().equals(currentUserId)) {
-            return latest;
-        }
-        if (group.getCurrentVersionId() != null) {
-            return agreementRepository.findById(group.getCurrentVersionId()).orElse(latest);
-        }
-        return agreementRepository.findByAgreementGroupId(group.getId()).stream()
-                .filter(a -> a.getApprovalStatus() != ApprovalStatus.DRAFT
-                        || a.getOwner().getId().equals(currentUserId))
-                .max((a, b) -> Integer.compare(a.getVersionNumber(), b.getVersionNumber()))
-                .orElse(null);
-    }
-
-    private Agreement buildDraftAgreement(DraftAgreementItemRequest item, User owner,
-                                            AgreementGroup group, Long userId, String agreementName) {
-        return buildDraftAgreement(item, owner, group, 1, userId, agreementName);
-    }
-
-    private Agreement buildDraftAgreement(DraftAgreementItemRequest item, User owner,
-                                            AgreementGroup group, int versionNumber, Long userId,
-                                            String agreementName) {
-        DraftDetailsPayload details = item != null ? item.details() : null;
-        DraftCommercialsPayload commercials = item != null ? item.commercials() : null;
-
-        if (details != null && details.startDate() != null && details.expiryDate() != null
-                && details.expiryDate().isBefore(details.startDate())) {
-            throw new BusinessException("Expiry date must be on or after start date");
-        }
-
-        IncomeType incomeType = null;
-        if (details != null && details.incomeTypeId() != null) {
-            incomeType = incomeTypeRepository.findById(details.incomeTypeId())
-                    .orElseThrow(() -> new ResourceNotFoundException("IncomeType", details.incomeTypeId()));
-        }
-        AgreementType agreementType = null;
-        if (details != null && details.agreementTypeId() != null) {
-            agreementType = agreementTypeRepository.findById(details.agreementTypeId())
-                    .orElseThrow(() -> new ResourceNotFoundException("AgreementType", details.agreementTypeId()));
-        }
-
-        Agreement agreement = Agreement.builder()
-                .agreementGroup(group)
-                .versionNumber(versionNumber)
-                .agreementName(resolveDraftAgreementNameForCreate(agreementName, group.getAgreementNumber()))
-                .owner(owner)
-                .incomeType(incomeType)
-                .agreementType(agreementType)
-                .commercialStructure(commercials != null ? commercials.commercialStructure() : null)
-                .commercialValue(commercials != null ? commercials.commercialValue() : null)
-                .calculationFormula(commercials != null ? commercials.calculationFormula() : null)
-                .startDate(details != null ? details.startDate() : null)
-                .expiryDate(details != null ? details.expiryDate() : null)
-                .approvalStatus(ApprovalStatus.DRAFT)
-                .notes(details != null ? details.notes() : null)
-                .build();
-        agreement.setCreatedByUserId(userId);
-        return agreement;
-    }
-
-    private void applyDraftFields(Agreement agreement, DraftDetailsPayload details,
-                                  DraftCommercialsPayload commercials) {
-        if (details != null) {
-            if (details.startDate() != null && details.expiryDate() != null
-                    && details.expiryDate().isBefore(details.startDate())) {
-                throw new BusinessException("Expiry date must be on or after start date");
-            }
-            if (details.incomeTypeId() != null) {
-                agreement.setIncomeType(incomeTypeRepository.findById(details.incomeTypeId())
-                        .orElseThrow(() -> new ResourceNotFoundException("IncomeType", details.incomeTypeId())));
-            }
-            if (details.agreementTypeId() != null) {
-                agreement.setAgreementType(agreementTypeRepository.findById(details.agreementTypeId())
-                        .orElseThrow(() -> new ResourceNotFoundException("AgreementType", details.agreementTypeId())));
-            }
-            if (details.startDate() != null) {
-                agreement.setStartDate(details.startDate());
-            }
-            if (details.expiryDate() != null) {
-                agreement.setExpiryDate(details.expiryDate());
-            }
-            if (details.notes() != null) {
-                agreement.setNotes(details.notes());
-            }
-        }
-        if (commercials != null) {
-            if (commercials.commercialStructure() != null) {
-                agreement.setCommercialStructure(commercials.commercialStructure());
-            }
-            if (commercials.commercialValue() != null) {
-                agreement.setCommercialValue(commercials.commercialValue());
-            }
-            if (commercials.calculationFormula() != null) {
-                agreement.setCalculationFormula(commercials.calculationFormula());
-            }
-        }
-    }
-
-    private void validateCompleteAgreement(Agreement agreement) {
-        if (agreement.getAgreementName() == null || agreement.getAgreementName().isBlank()) {
-            throw new IncompleteAgreementException("Cannot submit: Agreement Name is missing.");
-        }
-        if (agreement.getAgreementGroup().getCompany() == null) {
-            throw new IncompleteAgreementException("Cannot submit: Company is missing.");
-        }
-        if (agreement.getStartDate() == null) {
-            throw new IncompleteAgreementException("Cannot submit: Start Date is missing.");
-        }
-        if (agreement.getExpiryDate() == null) {
-            throw new IncompleteAgreementException("Cannot submit: Expiry Date is missing.");
-        }
-        if (agreement.getIncomeType() == null) {
-            throw new IncompleteAgreementException("Cannot submit: Income Type is missing.");
-        }
-        if (agreement.getAgreementType() == null) {
-            throw new IncompleteAgreementException("Cannot submit: Agreement Type is missing.");
-        }
-        if (agreement.getCommercialStructure() == null) {
-            throw new IncompleteAgreementException("Cannot submit: Commercial Structure is missing.");
-        }
-        if (agreement.getExpiryDate().isBefore(agreement.getStartDate())) {
-            throw new IncompleteAgreementException("Cannot submit: Expiry Date must be on or after Start Date.");
-        }
-        if (agreement.getCommercialStructure() == CommercialStructure.FLAT
-                && agreement.getCommercialValue() == null) {
-            throw new IncompleteAgreementException("Cannot submit: Commercial Value is missing for FLAT structure.");
-        }
-        if (vendorRepository.findByAgreementId(agreement.getId()).isEmpty()) {
-            throw new IncompleteAgreementException("Cannot submit: At least one Vendor is required.");
-        }
-        if (productRuleRepository.findByAgreementId(agreement.getId()).isEmpty()) {
-            throw new IncompleteAgreementException("Cannot submit: At least one Product must be selected.");
-        }
-    }
-
-    private void replaceVendors(Agreement agreement, List<Long> vendorIds, Long userId) {
-        vendorRepository.deleteByAgreementId(agreement.getId());
-        if (vendorIds != null && !vendorIds.isEmpty()) {
-            saveVendors(agreement, vendorIds, userId);
-        }
-    }
-
-    private void replaceRulesAndComputeProducts(Agreement agreement, List<Long> manufacturerIds,
-                                                List<RuleDTO> divisionRules, List<RuleDTO> productRules,
-                                                Long userId) {
-        manufacturerRuleRepository.deleteByAgreementId(agreement.getId());
-        divisionRuleRepository.deleteByAgreementId(agreement.getId());
-        productRuleRepository.deleteByAgreementId(agreement.getId());
-        computedProductRepository.deleteByAgreementId(agreement.getId());
-        saveRulesAndComputeProducts(agreement, manufacturerIds, divisionRules, productRules, userId);
-    }
-
-    private void saveVendors(Agreement agreement, List<Long> vendorIds, Long userId) {
-        List<VendorMaster> vendors = vendorMasterRepository.findByIdIn(vendorIds);
-        for (VendorMaster vendor : vendors) {
-            AgreementVendor av = AgreementVendor.builder()
-                    .agreement(agreement)
-                    .vendorId(vendor.getId())
-                    .vendorNameSnapshot(vendor.getVendorName())
-                    .build();
-            av.setCreatedByUserId(userId);
-            vendorRepository.save(av);
-        }
-    }
-
-    private void saveRulesAndComputeProducts(Agreement agreement, List<Long> manufacturerIds,
-                                              List<RuleDTO> divisionRules, List<RuleDTO> productRules, Long userId) {
-        List<Long> safeManufacturerIds = manufacturerIds != null ? manufacturerIds : List.of();
-        for (Long mfrId : safeManufacturerIds) {
-            AgreementManufacturer am = AgreementManufacturer.builder()
-                    .agreement(agreement).manufacturerId(mfrId).build();
-            am.setCreatedByUserId(userId);
-            manufacturerRuleRepository.save(am);
-        }
-
-        List<RuleDTO> safeDivisionRules = divisionRules != null ? divisionRules : List.of();
-        for (RuleDTO dr : safeDivisionRules) {
-            AgreementDivisionRule adr = AgreementDivisionRule.builder()
-                    .agreement(agreement).divisionId(dr.id())
-                    .ruleType(RuleType.valueOf(dr.ruleType())).build();
-            adr.setCreatedByUserId(userId);
-            divisionRuleRepository.save(adr);
-        }
-
-        List<RuleDTO> safeProductRules = productRules != null ? productRules : List.of();
-        for (RuleDTO pr : safeProductRules) {
-            AgreementProductRule apr = AgreementProductRule.builder()
-                    .agreement(agreement).productId(pr.id())
-                    .ruleType(RuleType.valueOf(pr.ruleType())).build();
-            apr.setCreatedByUserId(userId);
-            productRuleRepository.save(apr);
-        }
-
-        List<Long> vendorIds = vendorRepository.findByAgreementId(agreement.getId())
-                .stream().map(AgreementVendor::getVendorId).toList();
-        if (vendorIds.isEmpty()) return;
-
-        List<ProductMaster> baseProducts = safeManufacturerIds.isEmpty()
-                ? productMasterRepository.findByVendorIds(vendorIds)
-                : productMasterRepository.findByVendorIdsAndManufacturerIds(vendorIds, safeManufacturerIds);
-
-        List<ProductMaster> afterDivisionFilter = applyDivisionRules(baseProducts, safeDivisionRules);
-        List<ProductMaster> finalProducts = applyProductRules(afterDivisionFilter, safeProductRules);
-
-        for (ProductMaster p : finalProducts) {
-            AgreementComputedProduct acp = AgreementComputedProduct.builder()
-                    .agreement(agreement)
-                    .productId(p.getId())
-                    .productNameSnapshot(p.getProductName())
-                    .divisionNameSnapshot(p.getDivision().getDivisionName())
-                    .manufacturerNameSnapshot(p.getManufacturer().getManufacturerName())
-                    .build();
-            acp.setCreatedByUserId(userId);
-            computedProductRepository.save(acp);
-        }
-    }
-
-    private List<ProductMaster> applyDivisionRules(List<ProductMaster> products, List<RuleDTO> rules) {
-        if (rules.isEmpty()) return products;
-        RuleType ruleType = RuleType.valueOf(rules.get(0).ruleType());
-        Set<Long> divisionIds = new HashSet<>();
-        rules.forEach(r -> divisionIds.add(r.id()));
-        if (ruleType == RuleType.INCLUDE) {
-            return products.stream().filter(p -> divisionIds.contains(p.getDivision().getId())).toList();
-        }
-        return products.stream().filter(p -> !divisionIds.contains(p.getDivision().getId())).toList();
-    }
-
-    private List<ProductMaster> applyProductRules(List<ProductMaster> products, List<RuleDTO> rules) {
-        if (rules.isEmpty()) return products;
-        RuleType ruleType = RuleType.valueOf(rules.get(0).ruleType());
-        Set<Long> productIds = new HashSet<>();
-        rules.forEach(r -> productIds.add(r.id()));
-        if (ruleType == RuleType.INCLUDE) {
-            return products.stream().filter(p -> productIds.contains(p.getId())).toList();
-        }
-        return products.stream().filter(p -> !productIds.contains(p.getId())).toList();
-    }
-
-    private void copyVendors(Long sourceAgreementId, Agreement target, Long userId) {
-        vendorRepository.findByAgreementId(sourceAgreementId).forEach(v -> {
-            AgreementVendor copy = AgreementVendor.builder()
-                    .agreement(target)
-                    .vendorId(v.getVendorId())
-                    .vendorNameSnapshot(v.getVendorNameSnapshot())
-                    .build();
-            copy.setCreatedByUserId(userId);
-            vendorRepository.save(copy);
-        });
-    }
-
-    private void copyRulesAndComputed(Long sourceAgreementId, Agreement target, Long userId) {
-        manufacturerRuleRepository.findByAgreementId(sourceAgreementId).forEach(m -> {
-            AgreementManufacturer copy = AgreementManufacturer.builder()
-                    .agreement(target).manufacturerId(m.getManufacturerId()).build();
-            copy.setCreatedByUserId(userId);
-            manufacturerRuleRepository.save(copy);
-        });
-
-        divisionRuleRepository.findByAgreementId(sourceAgreementId).forEach(dr -> {
-            AgreementDivisionRule copy = AgreementDivisionRule.builder()
-                    .agreement(target).divisionId(dr.getDivisionId()).ruleType(dr.getRuleType()).build();
-            copy.setCreatedByUserId(userId);
-            divisionRuleRepository.save(copy);
-        });
-
-        productRuleRepository.findByAgreementId(sourceAgreementId).forEach(pr -> {
-            AgreementProductRule copy = AgreementProductRule.builder()
-                    .agreement(target).productId(pr.getProductId()).ruleType(pr.getRuleType()).build();
-            copy.setCreatedByUserId(userId);
-            productRuleRepository.save(copy);
-        });
-
-        computedProductRepository.findByAgreementId(sourceAgreementId).forEach(cp -> {
-            AgreementComputedProduct copy = AgreementComputedProduct.builder()
-                    .agreement(target)
-                    .productId(cp.getProductId())
-                    .productNameSnapshot(cp.getProductNameSnapshot())
-                    .divisionNameSnapshot(cp.getDivisionNameSnapshot())
-                    .manufacturerNameSnapshot(cp.getManufacturerNameSnapshot())
-                    .build();
-            copy.setCreatedByUserId(userId);
-            computedProductRepository.save(copy);
-        });
-    }
-
-    private void recordApproval(Agreement agreement, ApprovalAction action, String remarks,
-                                 ApprovalStatus before, ApprovalStatus after, Long userId) {
-        AgreementApproval approval = AgreementApproval.builder()
-                .agreement(agreement)
-                .action(action)
-                .remarks(remarks)
-                .approvalStatusBefore(before)
-                .approvalStatusAfter(after)
-                .build();
-        approval.setCreatedByUserId(userId);
-        approvalRepository.save(approval);
-    }
-
-    private void recordAudit(Long groupId, Long agreementId, String action, String oldVal, String newVal, Long userId) {
-        AgreementAudit audit = AgreementAudit.builder()
-                .agreementGroupId(groupId)
-                .agreementId(agreementId)
-                .entityType("Agreement")
-                .action(action)
-                .oldValueJson(oldVal)
-                .newValueJson(newVal)
-                .createdByUserId(userId)
-                .build();
-        auditRepository.save(audit);
-    }
-
-    private AgreementResponse toAgreementResponse(Agreement a) {
-        List<AgreementResponse.VendorSummary> vendors = vendorRepository.findByAgreementId(a.getId())
-                .stream()
-                .map(v -> new AgreementResponse.VendorSummary(v.getVendorId(), v.getVendorNameSnapshot()))
-                .toList();
-
-        List<Long> manufacturerIds = manufacturerRuleRepository.findByAgreementId(a.getId())
-                .stream().map(AgreementManufacturer::getManufacturerId).toList();
-
-        List<AgreementResponse.RuleSummary> divisionRules = divisionRuleRepository.findByAgreementId(a.getId())
-                .stream()
-                .map(dr -> new AgreementResponse.RuleSummary(dr.getDivisionId(), dr.getRuleType().name()))
-                .toList();
-
-        List<AgreementResponse.RuleSummary> productRules = productRuleRepository.findByAgreementId(a.getId())
-                .stream()
-                .map(pr -> new AgreementResponse.RuleSummary(pr.getProductId(), pr.getRuleType().name()))
-                .toList();
-
-        List<AgreementResponse.ProductSummary> products = computedProductRepository.findByAgreementId(a.getId())
-                .stream()
-                .map(p -> new AgreementResponse.ProductSummary(
-                        p.getProductId(), p.getProductNameSnapshot(),
-                        p.getManufacturerNameSnapshot(), p.getDivisionNameSnapshot()))
-                .toList();
-
-        return new AgreementResponse(
-                a.getId(),
-                a.getAgreementGroup().getId(),
-                a.getAgreementGroup().getAgreementNumber(),
-                a.getAgreementName(),
-                a.getVersionNumber(),
-                companyIdOf(a.getAgreementGroup()),
-                companyNameOf(a.getAgreementGroup()),
-                a.getOwner().getId(),
-                a.getOwner().getFullName(),
-                a.getIncomeType() != null ? a.getIncomeType().getId() : null,
-                a.getIncomeType() != null ? a.getIncomeType().getName() : null,
-                a.getAgreementType() != null ? a.getAgreementType().getId() : null,
-                a.getAgreementType() != null ? a.getAgreementType().getName() : null,
-                a.getCommercialStructure(),
-                a.getCommercialValue(),
-                a.getCalculationFormula(),
-                a.getStartDate(),
-                a.getExpiryDate(),
-                a.getApprovalStatus(),
-                statusResolver.resolve(a),
-                a.isInProgressFlag(),
-                a.getTerminationDate(),
-                a.getTerminationReason(),
-                a.getNotes(),
-                vendors,
-                manufacturerIds,
-                divisionRules,
-                productRules,
-                products,
-                resolvePendingActionRequest(a),
-                a.getCreatedAt(),
-                a.getUpdatedAt()
-        );
-    }
-
-    private PendingActionRequestInfo resolvePendingActionRequest(Agreement a) {
-        return actionRequestRepository
-                .findFirstByAgreement_AgreementGroup_IdAndStatus(
-                        a.getAgreementGroup().getId(), ActionRequestStatus.PENDING)
-                .map(r -> new PendingActionRequestInfo(
-                        r.getId(),
-                        r.getActionType(),
-                        r.getReasonComments(),
-                        r.getRequestedTerminationDate(),
-                        r.getTargetUser() != null ? r.getTargetUser().getId() : null,
-                        r.getTargetUser() != null ? r.getTargetUser().getFullName() : null,
-                        r.getRequestedBy().getFullName(),
-                        r.getCreatedAt()))
-                .orElse(null);
-    }
-
-    /**
-     * Builds AgreementGroupResponse from pre-fetched batch data — no additional DB calls.
-     * Used by getAllGroups() to eliminate N+1 queries.
-     */
-    private AgreementGroupResponse toGroupResponseFromBatch(AgreementGroup g, Agreement latest,
-                                                            List<AgreementVendor> vendors) {
-        if (latest == null) {
-            return toGroupResponseEmpty(g);
-        }
-        List<AgreementResponse.VendorSummary> vendorSummaries = vendors.stream()
-                .map(v -> new AgreementResponse.VendorSummary(v.getVendorId(), v.getVendorNameSnapshot()))
-                .toList();
-        return new AgreementGroupResponse(
-                g.getId(),
-                g.getAgreementNumber(),
-                latest.getAgreementName(),
-                companyIdOf(g),
-                companyNameOf(g),
-                g.getCurrentVersionId(),
-                latest.getId(),
-                latest.getVersionNumber(),
-                statusResolver.resolve(latest),
-                latest.getApprovalStatus(),
-                g.isActive(),
-                g.getCreatedAt(),
-                latest.getUpdatedAt(),
-                latest.getIncomeType() != null ? latest.getIncomeType().getName() : null,
-                latest.getStartDate(),
-                latest.getExpiryDate(),
-                latest.getOwner().getFullName(),
-                latest.getOwner().getId(),
-                vendorSummaries
-        );
-    }
-
-    /** Used for single-group detail fetch — still calls toAgreementResponse (acceptable for single record). */
-    private AgreementGroupResponse toGroupResponse(AgreementGroup g, Long currentUserId) {
-        List<Agreement> latestBatch = agreementRepository.findLatestVersionsForGroupIds(List.of(g.getId()));
-        Agreement latest = latestBatch.isEmpty() ? null : latestBatch.get(0);
-        Agreement displayVersion = resolveVisibleLatest(g, latest, currentUserId);
-        if (displayVersion == null) {
-            return toGroupResponseEmpty(g);
-        }
-        AgreementResponse vr = toAgreementResponse(displayVersion);
-        return new AgreementGroupResponse(
-                g.getId(), g.getAgreementNumber(), vr.agreementName(), companyIdOf(g), companyNameOf(g),
-                g.getCurrentVersionId(), displayVersion.getId(), vr.versionNumber(), vr.computedStatus(),
-                vr.approvalStatus(), g.isActive(), g.getCreatedAt(), vr.updatedAt(),
-                vr.incomeTypeName(), vr.startDate(), vr.expiryDate(), vr.ownerName(), vr.ownerId(), vr.vendors()
-        );
-    }
-
-    private AgreementGroupResponse toGroupResponseEmpty(AgreementGroup g) {
-        return new AgreementGroupResponse(
-                g.getId(), g.getAgreementNumber(), null, companyIdOf(g), companyNameOf(g),
-                null, null, null, null, null, g.isActive(), g.getCreatedAt(), null,
-                null, null, null, null, null, List.of()
-        );
-    }
-
-    private Pageable mapGroupPageable(Pageable pageable) {
+    private Pageable mapAgreementPageable(Pageable pageable) {
         if (pageable.getSort().isUnsorted()) {
             return pageable;
         }
         List<Sort.Order> orders = pageable.getSort().stream()
                 .map(order -> {
                     String property = switch (order.getProperty()) {
-                        case "companyName" -> "company.companyName";
-                        case "agreementNumber" -> "agreementNumber";
+                        case "companyName", "companyAgreementGroupName" -> "createdAt";
+                        case "agreementName" -> "agreementName";
                         case "createdAt" -> "createdAt";
                         default -> order.getProperty();
                     };
@@ -1256,40 +1467,47 @@ public class AgreementServiceImpl implements AgreementService {
         return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(orders));
     }
 
-    private void validateAgreementName(String agreementName) {
-        if (agreementName == null || agreementName.isBlank()) {
-            throw new BusinessException("Agreement name is required");
+    private void syncAgreementName(Agreement parent, AgreementVersion version, Long userId) {
+        regenerateAgreementName(parent, version);
+        parent.setUpdatedByUserId(userId);
+        agreementRepository.save(parent);
+    }
+
+    private void regenerateAgreementName(Agreement parent, AgreementVersion version) {
+        if (version.getIncomeType() == null || version.getStartDate() == null) {
+            if (parent.getAgreementName() == null || parent.getAgreementName().isBlank()) {
+                parent.setAgreementName(DRAFT_AGREEMENT_NAME_PLACEHOLDER);
+            }
+            return;
+        }
+        CompanyAgreementGroup cag = parent.getCompanyAgreementGroup();
+        String generatedName = cag.getName()
+                + " - "
+                + version.getIncomeType().getName()
+                + " - "
+                + version.getStartDate().format(AGREEMENT_NAME_DATE_FORMAT);
+        parent.setAgreementName(generatedName);
+    }
+
+    private void validateUniqueIncomeTypeInGroup(Agreement parent, AgreementVersion version) {
+        if (version.getIncomeType() == null) {
+            return;
+        }
+        Long groupId = parent.getCompanyAgreementGroup().getId();
+        Long incomeTypeId = version.getIncomeType().getId();
+        long duplicates = agreementVersionRepository.countLatestVersionsWithIncomeTypeInGroupExcludingAgreement(
+                groupId, incomeTypeId, parent.getId());
+        if (duplicates > 0) {
+            throw new BusinessException(
+                    "An agreement with this income type already exists in the selected company agreement group");
         }
     }
 
-    private String resolveDraftAgreementNameForCreate(String requestedName, String agreementNumber) {
-        if (requestedName != null && !requestedName.isBlank()) {
-            return requestedName.trim();
-        }
-        return agreementNumber;
-    }
-
-    private CompanyMaster resolveCompany(Long companyId) {
-        if (companyId == null) {
-            return null;
-        }
-        return companyRepository.findById(companyId)
-                .orElseThrow(() -> new ResourceNotFoundException("Company", companyId));
-    }
-
-    private String resolveDraftAgreementName(String requestedName, Agreement source) {
-        if (requestedName != null) {
-            validateAgreementName(requestedName);
-            return requestedName.trim();
-        }
-        return source.getAgreementName();
-    }
-
-    private Long companyIdOf(AgreementGroup group) {
-        return group.getCompany() != null ? group.getCompany().getId() : null;
-    }
-
-    private String companyNameOf(AgreementGroup group) {
-        return group.getCompany() != null ? group.getCompany().getCompanyName() : null;
+    private CompanyAgreementGroup resolveCompanyAgreementGroup(Long companyId, Long groupId, String newName,
+                                                               Long userId) {
+        CompanyAgreementGroupResponse response =
+                companyAgreementGroupService.resolveOrCreate(companyId, groupId, newName, userId);
+        return companyAgreementGroupRepository.findById(response.id())
+                .orElseThrow(() -> new ResourceNotFoundException("CompanyAgreementGroup", response.id()));
     }
 }

@@ -108,7 +108,7 @@ export default function DashboardPage() {
       try {
         const [statsRes, groupsRes, expiringRes] = await Promise.all([
           axiosInstance.get(ENDPOINTS.DASHBOARD_STATS),
-          axiosInstance.get(ENDPOINTS.AGREEMENT_GROUPS, { params: { page: 0, size: 6 } }),
+          axiosInstance.get(ENDPOINTS.AGREEMENTS, { params: { page: 0, size: 6 } }),
           axiosInstance.get(ENDPOINTS.DASHBOARD_EXPIRING),
         ]);
         setStats(statsRes.data);
@@ -201,7 +201,7 @@ export default function DashboardPage() {
               return (
                 <Box
                   key={item.agreementId}
-                  onClick={() => navigate(`/agreements/groups/${item.agreementGroupId}`)}
+                  onClick={() => navigate(`/agreements/${item.agreementId}`)}
                   sx={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     px: 2, py: 1.5, borderRadius: 2, cursor: 'pointer',
@@ -210,7 +210,7 @@ export default function DashboardPage() {
                   }}
                 >
                   <Box>
-                    <Typography variant="body2" fontWeight={700}>{item.agreementNumber}</Typography>
+                    <Typography variant="body2" fontWeight={700}>{item.agreementName || 'Agreement'}</Typography>
                     <Typography variant="caption" color="text.secondary">
                       {item.companyName} · {item.ownerName}
                     </Typography>
@@ -230,7 +230,7 @@ export default function DashboardPage() {
         )}
       </Paper>
 
-      <Grid container spacing={2.5} alignItems="stretch">
+      <Grid container spacing={2.5} sx={{ alignItems: 'stretch' }}>
         <Grid size={{ xs: 12, lg: 8 }} sx={{ display: 'flex' }}>
           <Paper elevation={0} sx={{ ...cardSx, width: '100%', display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ ...cardHeaderSx, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -307,7 +307,7 @@ export default function DashboardPage() {
                 {recentGroups.map((g, i) => (
                   <Box key={g.id}>
                     <ListItemButton
-                      onClick={() => navigate(`/agreements/groups/${g.id}`)}
+                      onClick={() => navigate(`/agreements/${g.id}`)}
                       sx={{ px: 3, py: 1.8, '&:hover': { bgcolor: alpha(BRAND.red, 0.03) } }}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
@@ -320,7 +320,7 @@ export default function DashboardPage() {
                           <Description sx={{ fontSize: 18, color: BRAND.red }} />
                         </Box>
                         <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography variant="body2" fontWeight={600} noWrap>{g.agreementNumber}</Typography>
+                          <Typography variant="body2" fontWeight={600} noWrap>{g.agreementName || 'Agreement'}</Typography>
                           <Typography variant="caption" color="text.secondary" noWrap>{g.companyName}</Typography>
                         </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
