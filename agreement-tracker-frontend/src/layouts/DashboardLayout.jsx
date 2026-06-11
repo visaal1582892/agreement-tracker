@@ -148,33 +148,33 @@ export default function DashboardLayout() {
             </Box>
           </Box>
 
-          
-          
-          
-
-          <Box
-            onClick={(e) => setAnchorEl(e.currentTarget)}
-            sx={{
-              display: 'flex', alignItems: 'center', gap: 1.25,
-              cursor: 'pointer', borderRadius: 2, px: 1, py: 0.5,
-              '&:hover': { bgcolor: '#F8FAFC' },
-            }}
-          >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
             <NotificationBell />
             <Divider orientation="vertical" flexItem sx={{ height: 32, alignSelf: 'center', borderColor: '#E2E8F0' }} />
-            <Avatar sx={{ width: 36, height: 36, bgcolor: BRAND.red, fontSize: 15, fontWeight: 700 }}>
-              {userInitial}
-            </Avatar>
-            <Box sx={{ display: { xs: 'none', lg: 'block' } }}>
-              <Typography sx={{ fontSize: '0.875rem', fontWeight: 600, lineHeight: 1.2 }}>
-                {user?.fullName || 'User'}
-              </Typography>
-              <Typography sx={{ fontSize: '0.68rem', fontWeight: 600, color: '#94A3B8', letterSpacing: '0.04em' }}>
-                {userRole}
-              </Typography>
+
+            <Box
+              onClick={(e) => setAnchorEl(e.currentTarget)}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 1.25,
+                cursor: 'pointer', borderRadius: 2, px: 1, py: 0.5,
+                '&:hover': { bgcolor: '#F8FAFC' },
+              }}
+            >
+              <Avatar sx={{ width: 36, height: 36, bgcolor: BRAND.red, fontSize: 15, fontWeight: 700 }}>
+                {userInitial}
+              </Avatar>
+              <Box sx={{ display: { xs: 'none', lg: 'block' } }}>
+                <Typography sx={{ fontSize: '0.875rem', fontWeight: 600, lineHeight: 1.2 }}>
+                  {user?.fullName || 'User'}
+                </Typography>
+                <Typography sx={{ fontSize: '0.68rem', fontWeight: 600, color: '#94A3B8', letterSpacing: '0.04em' }}>
+                  {userRole}
+                </Typography>
+              </Box>
+              <ExpandMore sx={{ fontSize: 18, color: '#94A3B8', display: { xs: 'none', lg: 'block' } }} />
             </Box>
-            <ExpandMore sx={{ fontSize: 18, color: '#94A3B8', display: { xs: 'none', lg: 'block' } }} />
           </Box>
+
         </Toolbar>
       </AppBar>
 
