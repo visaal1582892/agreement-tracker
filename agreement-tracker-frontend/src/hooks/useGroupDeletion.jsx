@@ -64,86 +64,88 @@ export function GroupDeleteDialogs({
 }
 
 export function useGroupDeletion({ onSuccess }) {
-  const [modal, setModal] = useState(null);
-  const [group, setGroup] = useState(null);
-  const [reason, setReason] = useState('');
+  const [deleteFlow, setDeleteFlow] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [statusError, setStatusError] = useState(null);
+  const [confirmError, setConfirmError] = useState(null);
 
   const closeModal = useCallback(() => {
-    setModal(null);
-    setGroup(null);
-    setReason('');
+    setDeleteFlow(null);
+    setConfirmError(null);
+  }, []);
+
+  const setReason = useCallback((reason) => {
+    setDeleteFlow((prev) => (prev ? { ...prev, reason } : null));
   }, []);
 
   const startDelete = useCallback(async (targetGroup) => {
-    setStatusError(null);
     try {
       const { data } = await axiosInstance.get(
         ENDPOINTS.COMPANY_AGREEMENT_GROUP_DELETION_STATUS(targetGroup.id),
       );
-      switch (data.status) {
+      const status = data.status;
+
+      switch (status) {
         case 'HAS_ACTIVE':
-          setStatusError('Cannot delete group: Active agreements exist.');
-          return { blocked: true };
+          return {
+            blocked: true,
+            error: 'Cannot delete group: Active agreements exist.',
+          };
         case 'ONLY_DRAFTS':
-          setGroup(targetGroup);
-          setReason('');
-          setModal('drafts');
+          setDeleteFlow({ group: targetGroup, modal: 'drafts', reason: '' });
           return { blocked: false };
         case 'REQUIRES_APPROVAL':
-          setGroup(targetGroup);
-          setReason('');
-          setModal('approval');
+          setDeleteFlow({ group: targetGroup, modal: 'approval', reason: '' });
           return { blocked: false };
         case 'READY':
-          setGroup(targetGroup);
-          setReason('');
-          setModal('ready');
+          setDeleteFlow({ group: targetGroup, modal: 'ready', reason: '' });
           return { blocked: false };
         default:
-          setStatusError('Unable to determine deletion status for this group.');
-          return { blocked: true };
+          return {
+            blocked: true,
+            error: 'Unable to determine deletion status for this group.',
+          };
       }
     } catch (err) {
-      setStatusError(err.response?.data?.message || 'Failed to check deletion status');
-      return { blocked: true };
+      return {
+        blocked: true,
+        error: err.response?.data?.message || 'Failed to check deletion status',
+      };
     }
   }, []);
 
   const confirmDelete = useCallback(async () => {
-    if (!group?.id || !reason.trim()) return;
+    if (!deleteFlow?.group?.id || !deleteFlow.reason.trim()) return;
     setSubmitting(true);
+    setConfirmError(null);
     try {
-      if (modal === 'approval') {
+      if (deleteFlow.modal === 'approval') {
         await axiosInstance.post(
-          ENDPOINTS.COMPANY_AGREEMENT_GROUP_DELETION_REQUEST(group.id),
-          { reason: reason.trim() },
+          ENDPOINTS.COMPANY_AGREEMENT_GROUP_DELETION_REQUEST(deleteFlow.group.id),
+          { reason: deleteFlow.reason.trim() },
         );
       } else {
-        await axiosInstance.delete(ENDPOINTS.COMPANY_AGREEMENT_GROUP_BY_ID(group.id), {
-          params: { reason: reason.trim() },
+        await axiosInstance.delete(ENDPOINTS.COMPANY_AGREEMENT_GROUP_BY_ID(deleteFlow.group.id), {
+          params: { reason: deleteFlow.reason.trim() },
         });
       }
       closeModal();
-      onSuccess?.(modal === 'approval'
+      onSuccess?.(deleteFlow.modal === 'approval'
         ? 'Group deletion submitted for approval'
         : 'Group deleted successfully');
     } catch (err) {
-      setStatusError(err.response?.data?.message || 'Deletion failed');
+      setConfirmError(err.response?.data?.message || 'Deletion failed');
     } finally {
       setSubmitting(false);
     }
-  }, [group, reason, modal, closeModal, onSuccess]);
+  }, [deleteFlow, closeModal, onSuccess]);
 
   return {
-    modal,
-    group,
-    reason,
+    modal: deleteFlow?.modal ?? null,
+    group: deleteFlow?.group ?? null,
+    reason: deleteFlow?.reason ?? '',
     setReason,
     submitting,
-    statusError,
-    setStatusError,
+    confirmError,
     startDelete,
     closeModal,
     confirmDelete,

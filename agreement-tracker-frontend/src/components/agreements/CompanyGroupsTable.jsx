@@ -22,24 +22,46 @@ const formatDateTime = (d) =>
 function RowActionsMenu({ row, canDelete, onDelete, navigate }) {
   const [anchor, setAnchor] = useState(null);
 
+  const handleClose = (e) => {
+    e?.stopPropagation?.();
+    setAnchor(null);
+  };
+
   const goToDetail = (e) => {
     e.stopPropagation();
-    setAnchor(null);
+    handleClose();
     navigateToGroup(row, navigate);
   };
 
   const handleDelete = (e) => {
     e.stopPropagation();
-    setAnchor(null);
+    handleClose();
     onDelete(row);
   };
 
   return (
     <>
-      <IconButton size="small" onClick={(e) => { e.stopPropagation(); setAnchor(e.currentTarget); }}>
+      <IconButton
+        size="small"
+        onClick={(e) => {
+          e.stopPropagation();
+          setAnchor(e.currentTarget);
+        }}
+      >
         <MoreVert fontSize="small" />
       </IconButton>
-      <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
+      <Menu
+        anchorEl={anchor}
+        open={Boolean(anchor)}
+        onClose={handleClose}
+        onClick={(e) => e.stopPropagation()}
+        slotProps={{
+          backdrop: {
+            onMouseDown: (e) => e.stopPropagation(),
+            onClick: (e) => e.stopPropagation(),
+          },
+        }}
+      >
         <MenuItem dense onClick={goToDetail}>View</MenuItem>
         {canDelete && (
           <MenuItem dense onClick={handleDelete}>Delete</MenuItem>

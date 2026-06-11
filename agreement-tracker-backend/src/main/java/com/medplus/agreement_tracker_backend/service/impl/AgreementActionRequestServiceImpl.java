@@ -141,12 +141,10 @@ public class AgreementActionRequestServiceImpl implements AgreementActionRequest
             actionRequestRepository.save(actionRequest);
 
             switch (actionRequest.getActionType()) {
-                case TRANSFER -> agreementService.transferOwnership(
+                case TRANSFER -> agreementService.completeApprovedTransfer(
                         actionRequest.getAgreementVersion().getId(),
                         actionRequest.getTargetUser().getId(),
-                        approverId,
-                        false,
-                        null);
+                        approverId);
                 case TERMINATE -> {
                     AgreementVersion version = actionRequest.getAgreementVersion();
                     LocalDate terminationDate = actionRequest.getRequestedTerminationDate() != null

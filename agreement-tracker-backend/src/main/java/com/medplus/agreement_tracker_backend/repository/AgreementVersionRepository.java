@@ -122,7 +122,9 @@ public interface AgreementVersionRepository extends JpaRepository<AgreementVersi
     @Query("""
             SELECT av FROM AgreementVersion av
             JOIN FETCH av.agreement ag
-            JOIN FETCH ag.companyAgreementGroup
+            JOIN FETCH ag.owner
+            JOIN FETCH ag.companyAgreementGroup cag
+            JOIN FETCH cag.company
             JOIN FETCH av.owner
             LEFT JOIN FETCH av.incomeType
             LEFT JOIN FETCH av.agreementType
@@ -136,6 +138,15 @@ public interface AgreementVersionRepository extends JpaRepository<AgreementVersi
             ORDER BY ag.id ASC
             """)
     List<AgreementVersion> findLatestDraftVersionsByGroupId(@Param("groupId") Long groupId);
+
+    @Query("""
+            SELECT av FROM AgreementVersion av
+            JOIN FETCH av.agreement ag
+            JOIN FETCH ag.owner
+            LEFT JOIN FETCH av.owner
+            WHERE av.id = :id
+            """)
+    Optional<AgreementVersion> findByIdWithAgreementOwner(@Param("id") Long id);
 
     @Query("""
             SELECT COUNT(av) FROM AgreementVersion av

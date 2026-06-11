@@ -519,12 +519,25 @@ public class AgreementServiceImpl implements AgreementService {
     @Transactional
     public AgreementVersionResponse transferOwnership(Long agreementVersionId, Long newOwnerUserId,
                                                       Long performedByUserId, boolean isAdmin, String comments) {
+        return executeOwnershipTransfer(agreementVersionId, newOwnerUserId, performedByUserId, isAdmin, comments, false);
+    }
+
+    @Override
+    @Transactional
+    public AgreementVersionResponse completeApprovedTransfer(Long agreementVersionId, Long newOwnerUserId,
+                                                             Long approverId) {
+        return executeOwnershipTransfer(agreementVersionId, newOwnerUserId, approverId, false, null, true);
+    }
+
+    private AgreementVersionResponse executeOwnershipTransfer(Long agreementVersionId, Long newOwnerUserId,
+                                                              Long performedByUserId, boolean isAdmin, String comments,
+                                                              boolean fromApprovedRequest) {
         AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
                 .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
 
         Agreement parent = version.getAgreement();
         Long currentOwnerId = parent.getOwner().getId();
-        if (!isAdmin && !currentOwnerId.equals(performedByUserId)) {
+        if (!fromApprovedRequest && !isAdmin && !currentOwnerId.equals(performedByUserId)) {
             throw new UnauthorizedException("Only the owner or an admin can transfer ownership");
         }
 
@@ -547,6 +560,7 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     @Override
+    @Transactional
     public BulkGroupSubmitResponse submitGroupDraftsForApproval(Long groupId, Long currentUserId) {
         List<AgreementVersion> drafts = loadGroupDraftsForSubmit(groupId, currentUserId);
         return groupSubmitTransactionTemplate.execute(status -> {
@@ -576,7 +590,7 @@ public class AgreementServiceImpl implements AgreementService {
         }
 
         for (AgreementVersion version : drafts) {
-            loadAndValidateOwnership(version.getId(), currentUserId);
+            validateAgreementOwnership(version.getAgreement(), currentUserId);
             validateCompleteAgreement(version);
         }
         return drafts;
@@ -773,7 +787,7 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     private AgreementVersion loadAndValidateOwnership(Long agreementVersionId, Long userId) {
-        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
+        AgreementVersion version = agreementVersionRepository.findByIdWithAgreementOwner(agreementVersionId)
                 .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
         validateAgreementOwnership(version.getAgreement(), userId);
         return version;

@@ -57,8 +57,18 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
 
   const incomplete = isIncompleteDraft(row);
 
-  const goToDetail = () => {
+  const handleClose = (e) => {
+    e?.stopPropagation?.();
     setAnchor(null);
+  };
+
+  const withStopPropagation = (fn) => (e) => {
+    e.stopPropagation();
+    handleClose();
+    fn();
+  };
+
+  const goToDetail = () => {
     if (row.approvalStatus === 'DRAFT') {
       const path = buildGroupWizardPath(row.companyAgreementGroupId, row.id);
       if (path) navigate(path);
@@ -69,7 +79,6 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
   };
 
   const goToEdit = () => {
-    setAnchor(null);
     if (row.approvalStatus === 'DRAFT') {
       const path = buildGroupWizardPath(
         row.companyAgreementGroupId,
@@ -84,7 +93,6 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
   };
 
   const handleSubmitClick = () => {
-    setAnchor(null);
     submitModal.open();
   };
 
@@ -94,7 +102,6 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
   };
 
   const handleCloneClick = () => {
-    setAnchor(null);
     cloneModal.open();
   };
 
@@ -104,7 +111,6 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
   };
 
   const handleTransferClick = () => {
-    setAnchor(null);
     onTransfer(row);
   };
 
@@ -112,37 +118,46 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
     <>
       <IconButton
         size="small"
-        onClick={(e) => { e.stopPropagation(); setAnchor(e.currentTarget); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setAnchor(e.currentTarget);
+        }}
       >
         <MoreVert fontSize="small" />
       </IconButton>
       <Menu
         anchorEl={anchor}
         open={Boolean(anchor)}
-        onClose={() => setAnchor(null)}
+        onClose={handleClose}
         onClick={(e) => e.stopPropagation()}
+        slotProps={{
+          backdrop: {
+            onMouseDown: (e) => e.stopPropagation(),
+            onClick: (e) => e.stopPropagation(),
+          },
+        }}
       >
         {actions.view && row.approvalStatus === 'DRAFT' && (
-          <MenuItem dense onClick={goToDetail}>Open Draft</MenuItem>
+          <MenuItem dense onClick={withStopPropagation(goToDetail)}>Open Draft</MenuItem>
         )}
         {actions.view && row.approvalStatus !== 'DRAFT' && (
-          <MenuItem dense onClick={goToDetail}>View</MenuItem>
+          <MenuItem dense onClick={withStopPropagation(goToDetail)}>View</MenuItem>
         )}
         {incomplete && (actions.editDraft || actions.view) && row.approvalStatus === 'DRAFT' && (
-          <MenuItem dense onClick={goToEdit}>Resume Draft</MenuItem>
+          <MenuItem dense onClick={withStopPropagation(goToEdit)}>Resume Draft</MenuItem>
         )}
         {actions.editDraft && !incomplete && row.approvalStatus === 'DRAFT' && (
-          <MenuItem dense onClick={goToEdit}>Edit Draft</MenuItem>
+          <MenuItem dense onClick={withStopPropagation(goToEdit)}>Edit Draft</MenuItem>
         )}
         {actions.editDraft && row.approvalStatus !== 'DRAFT' && (
-          <MenuItem dense onClick={goToEdit}>Edit Draft</MenuItem>
+          <MenuItem dense onClick={withStopPropagation(goToEdit)}>Edit Draft</MenuItem>
         )}
-        {actions.editApproved && <MenuItem dense onClick={goToEdit}>Edit</MenuItem>}
-        {actions.revise && <MenuItem dense onClick={goToEdit}>Revise & Resubmit</MenuItem>}
-        {actions.submit && <MenuItem dense onClick={handleSubmitClick}>Submit for Approval</MenuItem>}
-        {actions.clone && <MenuItem dense onClick={handleCloneClick}>Clone (Copy Products)</MenuItem>}
-        {actions.transfer && <MenuItem dense onClick={handleTransferClick}>Transfer Ownership</MenuItem>}
-        {actions.approveReject && <MenuItem dense onClick={goToDetail}>Approve / Reject</MenuItem>}
+        {actions.editApproved && <MenuItem dense onClick={withStopPropagation(goToEdit)}>Edit</MenuItem>}
+        {actions.revise && <MenuItem dense onClick={withStopPropagation(goToEdit)}>Revise & Resubmit</MenuItem>}
+        {actions.submit && <MenuItem dense onClick={withStopPropagation(handleSubmitClick)}>Submit for Approval</MenuItem>}
+        {actions.clone && <MenuItem dense onClick={withStopPropagation(handleCloneClick)}>Clone (Copy Products)</MenuItem>}
+        {actions.transfer && <MenuItem dense onClick={withStopPropagation(handleTransferClick)}>Transfer Ownership</MenuItem>}
+        {actions.approveReject && <MenuItem dense onClick={withStopPropagation(goToDetail)}>Approve / Reject</MenuItem>}
       </Menu>
       <ConfirmDialog
         open={submitModal.isOpen}

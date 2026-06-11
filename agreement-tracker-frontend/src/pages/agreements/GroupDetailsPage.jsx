@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box, Typography, Paper, Chip, Breadcrumbs, Link as MuiLink, CircularProgress, Alert,
-  Button, Stack, Dialog, DialogTitle, DialogContent, DialogActions, TextField,
+  Button, Stack, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Divider,
 } from '@mui/material';
 import { NavigateNext, DeleteOutlined, EditOutlined } from '@mui/icons-material';
 import axiosInstance from '../../api/axiosInstance';
@@ -115,9 +115,8 @@ export default function GroupDetailsPage() {
   const handleDelete = async () => {
     if (!group) return;
     const result = await groupDeletion.startDelete(group);
-    if (result?.blocked && groupDeletion.statusError) {
-      enqueueSnackbar(groupDeletion.statusError, { variant: 'error' });
-      groupDeletion.setStatusError(null);
+    if (result?.error) {
+      enqueueSnackbar(result.error, { variant: 'error' });
     }
   };
 
@@ -182,74 +181,93 @@ export default function GroupDetailsPage() {
 
       <Paper
         elevation={0}
-        sx={{
-          p: 2.5,
-          mb: 3,
-          borderRadius: 2,
-          border: '1px solid',
-          borderColor: 'divider',
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 2,
-        }}
+        variant="outlined"
+        sx={{ p: 3, mb: 3, borderRadius: 2 }}
       >
-        <Box sx={{ flex: 1, minWidth: 240 }}>
-          <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
-            Company Agreement Group
-          </Typography>
-          <Typography variant="h5" fontWeight={700} sx={{ mt: 0.5, mb: 1.5 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            mb: 3,
+            position: "relative",
+          }}
+        >
+          <Typography variant="h4" fontWeight="bold">
             {group?.name || '—'}
           </Typography>
-          <Stack direction="row" flexWrap="wrap" gap={3}>
-            <Box>
-              <Typography variant="caption" color="text.secondary">Company</Typography>
-              <Typography variant="body2" fontWeight={600}>{group?.companyName || '—'}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" color="text.secondary">Created By</Typography>
-              <Typography variant="body2" fontWeight={600}>{group?.createdByName || '—'}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" color="text.secondary">Status</Typography>
-              <Box sx={{ mt: 0.25 }}>
-                <Chip
-                  size="small"
-                  label={group?.isActive ? 'Active' : 'Inactive'}
-                  color={group?.isActive ? 'success' : 'default'}
+
+          {(showDelete || showEdit) && (
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+              }}
+            >
+              {showEdit && (
+                <Button
                   variant="outlined"
-                />
-              </Box>
-            </Box>
-          </Stack>
+                  size="small"
+                  startIcon={<EditOutlined />}
+                  onClick={openRename}
+                >
+                  Edit
+                </Button>
+              )}
+
+              {showDelete && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  size="small"
+                  startIcon={<DeleteOutlined />}
+                  onClick={handleDelete}
+                >
+                  Delete
+                </Button>
+              )}
+            </Stack>
+          )}
         </Box>
 
-        {(showDelete || showEdit) && (
-          <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-            {showEdit && (
-              <Button
-                variant="outlined"
+        <Stack
+          direction="row"
+          spacing={6}
+          divider={<Divider orientation="vertical" flexItem />}
+        >
+          <Box>
+            <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
+              Company
+            </Typography>
+            <Typography variant="body1" fontWeight="medium">
+              {group?.companyName || '—'}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
+              Created By
+            </Typography>
+            <Typography variant="body1" fontWeight="medium">
+              {group?.createdByName || '—'}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
+              Status
+            </Typography>
+            <Box sx={{ mt: 0.5 }}>
+              <Chip
                 size="small"
-                startIcon={<EditOutlined />}
-                onClick={openRename}
-              >
-                Edit
-              </Button>
-            )}
-            {showDelete && (
-              <Button
+                label={group?.isActive ? 'Active' : 'Inactive'}
+                color={group?.isActive ? 'success' : 'default'}
                 variant="outlined"
-                color="error"
-                size="small"
-                startIcon={<DeleteOutlined />}
-                onClick={handleDelete}
-              >
-                Delete
-              </Button>
-            )}
-          </Stack>
-        )}
+              />
+            </Box>
+          </Box>
+        </Stack>
       </Paper>
 
       <Typography variant="h6" fontWeight={700} sx={{ mb: 1.5 }}>

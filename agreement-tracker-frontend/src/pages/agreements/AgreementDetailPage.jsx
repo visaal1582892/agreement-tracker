@@ -27,7 +27,11 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import CommercialsUploadModal from './wizard/CommercialsUploadModal';
 import dayjs from 'dayjs';
 
-export default function AgreementDetailPage({ embeddedAgreementId, onActionComplete } = {}) {
+export default function AgreementDetailPage({
+  embeddedAgreementId,
+  onActionComplete,
+  embeddedContext,
+} = {}) {
   const { agreementId: routeAgreementId } = useParams();
   const agreementId = embeddedAgreementId ?? routeAgreementId;
   const navigate = useNavigate();
@@ -293,6 +297,8 @@ export default function AgreementDetailPage({ embeddedAgreementId, onActionCompl
   const pendingRequest = agreement?.pendingActionRequest;
   const pendingActionLabel = pendingRequest?.actionType === 'TRANSFER' ? 'Transfer' : 'Terminate';
 
+  const isOperationalReview = embeddedContext === 'operational-review';
+
   const invalidAgreementId = !agreementId
     || agreementId === 'undefined'
     || agreementId === 'new'
@@ -340,6 +346,7 @@ export default function AgreementDetailPage({ embeddedAgreementId, onActionCompl
       )}
 
       {/* Header */}
+      {!isOperationalReview && (
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>
           <Typography variant="h5" fontWeight={700}>{displayName}</Typography>
@@ -363,11 +370,14 @@ export default function AgreementDetailPage({ embeddedAgreementId, onActionCompl
           {agreement && <StatusBadge status={agreement.computedStatus} />}
         </Box>
       </Box>
+      )}
 
+      {!isOperationalReview && (
       <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
         <Tab label="Details" value="details" />
         <Tab label="Version History" value="history" icon={<History sx={{ fontSize: 18 }} />} iconPosition="start" />
       </Tabs>
+      )}
 
       {isHistorical && (
         <Alert severity="info" sx={{ mb: 2 }}>
@@ -377,19 +387,19 @@ export default function AgreementDetailPage({ embeddedAgreementId, onActionCompl
         </Alert>
       )}
 
-      {isPendingRevision && (
+      {isPendingRevision && !isOperationalReview && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           Pending revision — awaiting approver review.
         </Alert>
       )}
 
-      {isDraftRevision && (
+      {isDraftRevision && !isOperationalReview && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           Draft revision — not yet submitted for approval.
         </Alert>
       )}
 
-      {pendingRequest && (
+      {pendingRequest && !isOperationalReview && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           A request to {pendingActionLabel} this agreement is currently pending approval.
           {pendingRequest.targetUserName && pendingRequest.actionType === 'TRANSFER' && (
@@ -401,7 +411,7 @@ export default function AgreementDetailPage({ embeddedAgreementId, onActionCompl
         </Alert>
       )}
 
-      {activeTab === 'history' ? (
+      {activeTab === 'history' && !isOperationalReview ? (
         <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
           <List disablePadding>
             {versions.map((v) => (
@@ -529,7 +539,7 @@ export default function AgreementDetailPage({ embeddedAgreementId, onActionCompl
         {/* Right: Timeline + Actions */}
         <Grid size={{ xs: 12, md: 4 }}>
           {/* Actions */}
-          {agreement && (
+          {agreement && !isOperationalReview && (
             <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
               <Typography variant="subtitle2" fontWeight={600} mb={1.5}>Actions</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>

@@ -223,6 +223,7 @@ function OperationalRequestDetail({ request, onResolved }) {
         <AgreementDetailPage
           key={request.agreementId}
           embeddedAgreementId={request.agreementId}
+          embeddedContext="operational-review"
         />
       )}
 

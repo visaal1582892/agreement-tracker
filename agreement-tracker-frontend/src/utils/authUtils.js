@@ -74,9 +74,10 @@ export function canRevise(ctx, agreement, { isReadOnlyView = false } = {}) {
   );
 }
 
-/** AGREEMENT_APPROVE + approvalStatus === PENDING_APPROVAL + not owner. Ignores version id vs current. */
+/** AGREEMENT_APPROVE + approvalStatus === PENDING_APPROVAL + not owner + no pending operational request. */
 export function canApprove(ctx, agreement) {
   if (!agreement?.approvalStatus) return false;
+  if (agreement.pendingActionRequest) return false;
   return (
     agreement.approvalStatus === 'PENDING_APPROVAL'
     && ctx.hasRight(RIGHTS.AGREEMENT_APPROVE)

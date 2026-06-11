@@ -151,9 +151,8 @@ export default function AgreementListPage() {
 
   const handleDeleteGroup = async (group) => {
     const result = await groupDeletion.startDelete(group);
-    if (result?.blocked && groupDeletion.statusError) {
-      enqueueSnackbar(groupDeletion.statusError, { variant: 'error' });
-      groupDeletion.setStatusError(null);
+    if (result?.error) {
+      enqueueSnackbar(result.error, { variant: 'error' });
     }
   };
 

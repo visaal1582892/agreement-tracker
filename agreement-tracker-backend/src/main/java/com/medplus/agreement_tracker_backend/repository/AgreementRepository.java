@@ -3,6 +3,7 @@ package com.medplus.agreement_tracker_backend.repository;
 import com.medplus.agreement_tracker_backend.entity.Agreement;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -17,6 +18,7 @@ public interface AgreementRepository extends JpaRepository<Agreement, Long>, Jpa
     @Query("SELECT a FROM Agreement a WHERE a.owner.id = :ownerId")
     Page<Agreement> findByOwnerId(@Param("ownerId") Long ownerId, Pageable pageable);
 
+    @EntityGraph(attributePaths = {"owner"})
     List<Agreement> findByCompanyAgreementGroupId(Long companyAgreementGroupId);
 
     boolean existsByCompanyAgreementGroupIdAndIsActiveTrue(Long companyAgreementGroupId);

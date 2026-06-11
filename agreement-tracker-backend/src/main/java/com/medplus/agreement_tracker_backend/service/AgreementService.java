@@ -44,6 +44,8 @@ public interface AgreementService {
     AgreementVersionResponse transferOwnership(Long agreementVersionId, Long newOwnerUserId, Long performedByUserId,
                                                boolean isAdmin, String comments);
 
+    AgreementVersionResponse completeApprovedTransfer(Long agreementVersionId, Long newOwnerUserId, Long approverId);
+
     AgreementVersionResponse submitForApproval(Long agreementVersionId, String comments, Long currentUserId);
 
     AgreementVersionResponse approve(Long agreementVersionId, String remarks, Long approverId);
