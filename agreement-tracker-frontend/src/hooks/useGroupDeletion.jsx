@@ -5,7 +5,6 @@ import {
 import axiosInstance from '../api/axiosInstance';
 import { ENDPOINTS } from '../config/endpoints';
 import { BRAND } from '../config/theme';
-import { RIGHTS } from '../config/rights';
 
 export function GroupDeleteDialogs({
   modal,
@@ -90,9 +89,6 @@ export function useGroupDeletion({ onSuccess }) {
             blocked: true,
             error: 'Cannot delete group: Active agreements exist.',
           };
-        case 'ONLY_DRAFTS':
-          setDeleteFlow({ group: targetGroup, modal: 'drafts', reason: '' });
-          return { blocked: false };
         case 'REQUIRES_APPROVAL':
           setDeleteFlow({ group: targetGroup, modal: 'approval', reason: '' });
           return { blocked: false };
@@ -150,11 +146,4 @@ export function useGroupDeletion({ onSuccess }) {
     closeModal,
     confirmDelete,
   };
-}
-
-export function canDeleteGroup(row, user, hasRight, isApprover) {
-  if (hasRight(RIGHTS.ADMIN_USERS)) return true;
-  if (isApprover) return true;
-  if (row.createdByUserId === user?.id) return true;
-  return false;
 }

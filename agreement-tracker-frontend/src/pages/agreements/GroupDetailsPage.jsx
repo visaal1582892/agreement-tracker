@@ -21,7 +21,6 @@ import { BRAND } from '../../config/theme';
 import {
   GroupDeleteDialogs,
   useGroupDeletion,
-  canDeleteGroup,
 } from '../../hooks/useGroupDeletion';
 
 export default function GroupDetailsPage() {
@@ -29,7 +28,7 @@ export default function GroupDetailsPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { enqueueSnackbar } = useSnackbar();
-  const { user, hasRight, isApprover } = useAuth();
+  const { hasRight } = useAuth();
   const agreementScope = hasRight(RIGHTS.AGREEMENT_VIEW_ALL) ? 'ALL' : 'MY';
 
   const [group, setGroup] = useState(null);
@@ -63,7 +62,7 @@ export default function GroupDetailsPage() {
   const groupDeletion = useGroupDeletion({
     onSuccess: (message) => {
       enqueueSnackbar(message, { variant: 'success' });
-      navigate(ROUTES.AGREEMENTS);
+      navigate(ROUTES.AGREEMENTS_GROUPS);
     },
   });
 
@@ -109,7 +108,7 @@ export default function GroupDetailsPage() {
     handlePageChange(null, 0);
   }, [groupId, handlePageChange]);
 
-  const showDelete = group && canDeleteGroup(group, user, hasRight, isApprover);
+  const showDelete = group?.canDelete === true;
   const showEdit = hasRight(RIGHTS.ADMIN_USERS);
 
   const handleDelete = async () => {
@@ -169,7 +168,7 @@ export default function GroupDetailsPage() {
           component="button"
           underline="hover"
           color="inherit"
-          onClick={() => navigate(ROUTES.AGREEMENTS)}
+          onClick={() => navigate(ROUTES.AGREEMENTS_GROUPS)}
           sx={{ fontSize: '0.875rem' }}
         >
           Agreements
@@ -289,7 +288,8 @@ export default function GroupDetailsPage() {
         onFilterChange={handleFilterChange}
         onRefresh={refreshAgreements}
         lockedGroupId={Number(groupId)}
-        onRowClick={(row) => navigateToAgreement(row, navigate)}
+        onRowClick={(row) => navigateToAgreement(row, navigate, { mode: 'group' })}
+        draftEditMode="group"
         emptyMessage="No agreements in this group."
       />
 

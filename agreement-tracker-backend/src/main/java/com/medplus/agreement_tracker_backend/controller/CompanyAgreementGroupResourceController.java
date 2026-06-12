@@ -43,7 +43,8 @@ public class CompanyAgreementGroupResourceController {
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(companyAgreementGroupService.listAll(
                 pageable, companyId, isActive, groupName, lastModifiedBy, createdBy,
-                principal.getId(), principal.hasRight(RightCode.AGREEMENT_VIEW_ALL.name())));
+                principal.getId(), principal.hasRight(RightCode.AGREEMENT_VIEW_ALL.name()),
+                principal.hasRole("APPROVER"), principal.hasRole("ACCOUNT_MANAGER")));
     }
 
     @GetMapping("/{groupId}")
@@ -52,23 +53,24 @@ public class CompanyAgreementGroupResourceController {
             @PathVariable Long groupId,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(companyAgreementGroupService.getById(
-                groupId, principal.getId(), principal.hasRight(RightCode.AGREEMENT_VIEW_ALL.name())));
+                groupId, principal.getId(), principal.hasRight(RightCode.AGREEMENT_VIEW_ALL.name()),
+                principal.hasRole("APPROVER"), principal.hasRole("ACCOUNT_MANAGER")));
     }
 
     @GetMapping("/{groupId}/deletion-status")
-    @PreAuthorize("hasAnyAuthority('AGREEMENT_CREATE', 'AGREEMENT_APPROVE', 'ADMIN_USERS')")
+    @PreAuthorize("hasAnyAuthority('AGREEMENT_CREATE', 'AGREEMENT_APPROVE')")
     public ResponseEntity<GroupDeletionStatusResponse> getDeletionStatus(
             @PathVariable Long groupId,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(companyAgreementGroupService.getDeletionStatus(
                 groupId,
                 principal.getId(),
-                principal.hasRight(RightCode.ADMIN_USERS.name()),
-                principal.hasRight(RightCode.AGREEMENT_APPROVE.name())));
+                principal.hasRole("APPROVER"),
+                principal.hasRole("ACCOUNT_MANAGER")));
     }
 
     @DeleteMapping("/{groupId}")
-    @PreAuthorize("hasAnyAuthority('AGREEMENT_CREATE', 'AGREEMENT_APPROVE', 'ADMIN_USERS')")
+    @PreAuthorize("hasAnyAuthority('AGREEMENT_CREATE', 'AGREEMENT_APPROVE')")
     public ResponseEntity<Void> deleteGroup(
             @PathVariable Long groupId,
             @RequestParam String reason,
@@ -77,8 +79,8 @@ public class CompanyAgreementGroupResourceController {
                 groupId,
                 reason,
                 principal.getId(),
-                principal.hasRight(RightCode.ADMIN_USERS.name()),
-                principal.hasRight(RightCode.AGREEMENT_APPROVE.name()));
+                principal.hasRole("APPROVER"),
+                principal.hasRole("ACCOUNT_MANAGER"));
         return ResponseEntity.noContent().build();
     }
 

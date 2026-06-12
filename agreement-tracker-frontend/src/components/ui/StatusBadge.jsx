@@ -4,7 +4,7 @@ const STATUS_CONFIG = {
   SUPERSEDED:       { label: 'Superseded',        bg: '#F1F5F9', color: '#94A3B8', dot: '#CBD5E1' },
   ACTIVE:           { label: 'Active',           bg: '#DCFCE7', color: '#15803D', dot: '#22C55E' },
   EXPIRED:          { label: 'Expired',           bg: '#FEE2E2', color: '#B91C1C', dot: '#EF4444' },
-  TERMINATED:       { label: 'Terminated',        bg: '#FEE2E2', color: '#B91C1C', dot: '#EF4444' },
+  TERMINATED:       { label: 'Terminated',        bg: '#374151', color: '#F3F4F6', dot: '#1F2937' },
   IN_PROGRESS:      { label: 'In Progress',       bg: '#FEF3C7', color: '#B45309', dot: '#F59E0B' },
   DRAFT:            { label: 'Draft',             bg: '#F1F5F9', color: '#475569', dot: '#94A3B8' },
   PENDING_APPROVAL: { label: 'Pending Approval',  bg: '#FEF3C7', color: '#B45309', dot: '#F59E0B' },

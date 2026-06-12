@@ -11,5 +11,6 @@ public record CompanyAgreementGroupResponse(
         Long createdByUserId,
         String createdByName,
         LocalDateTime lastModifiedAt,
-        String lastModifiedByName
+        String lastModifiedByName,
+        boolean canDelete
 ) {}

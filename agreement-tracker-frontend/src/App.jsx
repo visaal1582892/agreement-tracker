@@ -61,7 +61,11 @@ export default function App() {
                     </Route>
 
                     <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL]} />}>
-                      <Route path={ROUTES.AGREEMENTS} element={<AgreementListPage />} />
+                      <Route path={ROUTES.AGREEMENTS}>
+                        <Route index element={<Navigate to="groups" replace />} />
+                        <Route path="groups" element={<AgreementListPage />} />
+                        <Route path="list" element={<AgreementListPage />} />
+                      </Route>
                       <Route path={ROUTES.AGREEMENT_GROUP_DETAIL} element={<GroupDetailsPage />} />
                       <Route path={ROUTES.AGREEMENT_DETAIL} element={<AgreementDetailPage />} />
                     </Route>

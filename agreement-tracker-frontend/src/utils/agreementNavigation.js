@@ -39,17 +39,28 @@ export function buildGroupWizardPath(groupId, activeAgreementId, { step } = {}) 
   return `/agreements/wizard?${params.toString()}`;
 }
 
+export function buildDraftEditPath(row, { step, mode = 'group' } = {}) {
+  if (row?.approvalStatus !== 'DRAFT') return null;
+
+  if (mode === 'single' && row.latestVersionId) {
+    return buildAgreementEditPath(row.latestVersionId, { step });
+  }
+
+  if (!row.companyAgreementGroupId) return null;
+  return buildGroupWizardPath(row.companyAgreementGroupId, row.id, { step });
+}
+
 /**
  * Row click / primary navigation from agreements list.
- * DRAFT → group wizard editor with all drafts in tabs.
+ * DRAFT + group mode → group wizard with all draft tabs.
+ * DRAFT + single mode → single-agreement edit wizard.
  * Other statuses → read-only agreement detail page.
  */
-export function navigateToAgreement(row, navigate) {
+export function navigateToAgreement(row, navigate, { mode = 'group' } = {}) {
   if (!row?.id) return;
 
   if (row.approvalStatus === 'DRAFT') {
-    if (!row.companyAgreementGroupId) return;
-    const path = buildGroupWizardPath(row.companyAgreementGroupId, row.id);
+    const path = buildDraftEditPath(row, { mode });
     if (path) navigate(path);
     return;
   }

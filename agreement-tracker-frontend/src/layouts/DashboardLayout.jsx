@@ -24,7 +24,7 @@ const DRAWER_COLLAPSED = 72;
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: SpaceDashboardOutlined, path: ROUTES.DASHBOARD, rights: [RIGHTS.DASHBOARD_VIEW] },
-  { label: 'Agreements', icon: DescriptionOutlined, path: ROUTES.AGREEMENTS, rights: [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL] },
+  { label: 'Agreements', icon: DescriptionOutlined, path: ROUTES.AGREEMENTS_GROUPS, rights: [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL] },
   { label: 'Approvals', icon: CheckCircleOutlined, path: ROUTES.APPROVALS, rights: [RIGHTS.AGREEMENT_APPROVE] },
   { label: 'Users', icon: ManageAccountsOutlined, path: ROUTES.ADMIN_USERS, rights: [RIGHTS.ADMIN_USERS] },
   { label: 'Master Data', icon: StorageOutlined, path: ROUTES.MASTER, rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
@@ -96,7 +96,9 @@ export default function DashboardLayout() {
 
   const isActive = (path, placeholder) => {
     if (placeholder) return false;
-    return location.pathname === path || (path !== '/' && location.pathname.startsWith(path));
+    return location.pathname === path
+      || (path !== '/' && location.pathname.startsWith(`${path}/`))
+      || (path === ROUTES.AGREEMENTS_GROUPS && location.pathname.startsWith('/agreements'));
   };
 
   const userInitial = user?.fullName?.[0]?.toUpperCase() || 'U';

@@ -14,7 +14,7 @@ import { cloneAgreementOnServer } from '../../utils/agreementClone';
 import {
   buildAgreementDetailPath,
   buildAgreementEditPath,
-  buildGroupWizardPath,
+  buildDraftEditPath,
   isIncompleteDraft,
   navigateToAgreement,
 } from '../../utils/agreementNavigation';
@@ -46,10 +46,13 @@ function rowToAgreement(row) {
   };
 }
 
-function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
+function RowActionsMenu({
+  row, navigate, onSubmit, onClone, onTransfer, onDelete, draftEditMode = 'group',
+}) {
   const [anchor, setAnchor] = useState(null);
   const submitModal = useModal();
   const cloneModal = useModal();
+  const deleteModal = useModal();
   const { getListRowActions } = useAgreementPermissions();
   const actions = getListRowActions(rowToAgreement(row));
 
@@ -70,7 +73,7 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
 
   const goToDetail = () => {
     if (row.approvalStatus === 'DRAFT') {
-      const path = buildGroupWizardPath(row.companyAgreementGroupId, row.id);
+      const path = buildDraftEditPath(row, { mode: draftEditMode });
       if (path) navigate(path);
       return;
     }
@@ -80,11 +83,10 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
 
   const goToEdit = () => {
     if (row.approvalStatus === 'DRAFT') {
-      const path = buildGroupWizardPath(
-        row.companyAgreementGroupId,
-        row.id,
-        incomplete ? { step: 2 } : {},
-      );
+      const path = buildDraftEditPath(row, {
+        mode: draftEditMode,
+        step: incomplete ? 2 : undefined,
+      });
       if (path) navigate(path);
       return;
     }
@@ -110,6 +112,11 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
     onClone(row.latestVersionId);
   };
 
+  const handleDeleteConfirm = () => {
+    deleteModal.close();
+    window.setTimeout(() => onDelete(row), 0);
+  };
+
   const handleTransferClick = () => {
     onTransfer(row);
   };
@@ -118,6 +125,7 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
     <>
       <IconButton
         size="small"
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
           setAnchor(e.currentTarget);
@@ -137,26 +145,22 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
           },
         }}
       >
-        {actions.view && row.approvalStatus === 'DRAFT' && (
-          <MenuItem dense onClick={withStopPropagation(goToDetail)}>Open Draft</MenuItem>
-        )}
         {actions.view && row.approvalStatus !== 'DRAFT' && (
           <MenuItem dense onClick={withStopPropagation(goToDetail)}>View</MenuItem>
         )}
-        {incomplete && (actions.editDraft || actions.view) && row.approvalStatus === 'DRAFT' && (
-          <MenuItem dense onClick={withStopPropagation(goToEdit)}>Resume Draft</MenuItem>
-        )}
-        {actions.editDraft && !incomplete && row.approvalStatus === 'DRAFT' && (
+        {row.approvalStatus === 'DRAFT' && (actions.editDraft || actions.view) && (
           <MenuItem dense onClick={withStopPropagation(goToEdit)}>Edit Draft</MenuItem>
         )}
-        {actions.editDraft && row.approvalStatus !== 'DRAFT' && (
-          <MenuItem dense onClick={withStopPropagation(goToEdit)}>Edit Draft</MenuItem>
+        {actions.editApproved && row.computedStatus !== 'TERMINATED' && (
+          <MenuItem dense onClick={withStopPropagation(goToEdit)}>Edit</MenuItem>
         )}
-        {actions.editApproved && <MenuItem dense onClick={withStopPropagation(goToEdit)}>Edit</MenuItem>}
         {actions.revise && <MenuItem dense onClick={withStopPropagation(goToEdit)}>Revise & Resubmit</MenuItem>}
         {actions.submit && <MenuItem dense onClick={withStopPropagation(handleSubmitClick)}>Submit for Approval</MenuItem>}
         {actions.clone && <MenuItem dense onClick={withStopPropagation(handleCloneClick)}>Clone (Copy Products)</MenuItem>}
         {actions.transfer && <MenuItem dense onClick={withStopPropagation(handleTransferClick)}>Transfer Ownership</MenuItem>}
+        {row.approvalStatus === 'DRAFT' && (
+          <MenuItem dense onClick={withStopPropagation(() => deleteModal.open())}>Delete</MenuItem>
+        )}
         {actions.approveReject && <MenuItem dense onClick={withStopPropagation(goToDetail)}>Approve / Reject</MenuItem>}
       </Menu>
       <ConfirmDialog
@@ -174,6 +178,15 @@ function RowActionsMenu({ row, navigate, onSubmit, onClone, onTransfer }) {
         title="Clone Agreement"
         message="This will copy the product scope into a new draft. Proceed?"
         confirmLabel="Proceed"
+      />
+      <ConfirmDialog
+        open={deleteModal.isOpen}
+        onClose={deleteModal.close}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Draft Agreement"
+        message="This will permanently delete this draft and all associated data. This action cannot be undone."
+        confirmLabel="Delete"
+        danger
       />
     </>
   );
@@ -357,6 +370,7 @@ export default function AgreementsTable({
   onRefresh,
   hidePagination = false,
   lockedGroupId = null,
+  draftEditMode = lockedGroupId ? 'group' : 'single',
 }) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -438,6 +452,16 @@ export default function AgreementsTable({
     }
   }, [navigate, enqueueSnackbar]);
 
+  const handleDelete = useCallback(async (row) => {
+    try {
+      await axiosInstance.delete(ENDPOINTS.AGREEMENT_DELETE(row.id));
+      enqueueSnackbar('Draft agreement deleted', { variant: 'success' });
+      onRefresh?.();
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to delete draft', { variant: 'error' });
+    }
+  }, [enqueueSnackbar, onRefresh]);
+
   const columns = useMemo(
     () => buildColumns({
       vendorOptions,
@@ -466,7 +490,7 @@ export default function AgreementsTable({
     ],
   );
 
-  const columnsWithActions = [
+  const columnsWithActions = useMemo(() => [
     ...columns,
     {
       field: 'actions',
@@ -477,18 +501,23 @@ export default function AgreementsTable({
       truncate: false,
       stickyRight: true,
       render: (_, row) => (
-        <RowActionsMenu
-          row={row}
-          navigate={navigate}
-          onSubmit={handleSubmit}
-          onClone={handleClone}
-          onTransfer={setTransferRow}
-        />
+        <Box onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+          <RowActionsMenu
+            row={row}
+            navigate={navigate}
+            onSubmit={handleSubmit}
+            onClone={handleClone}
+            onTransfer={setTransferRow}
+            onDelete={handleDelete}
+            draftEditMode={draftEditMode}
+          />
+        </Box>
       ),
     },
-  ];
+  ], [columns, navigate, handleSubmit, handleClone, handleDelete, draftEditMode]);
 
-  const handleRowClick = onRowClickProp ?? ((row) => navigateToAgreement(row, navigate));
+  const handleRowClick = onRowClickProp
+    ?? ((row) => navigateToAgreement(row, navigate, { mode: draftEditMode }));
 
   return (
     <>

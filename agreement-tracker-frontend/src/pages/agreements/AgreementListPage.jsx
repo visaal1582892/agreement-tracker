@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box, Tab, Tabs, Typography, ToggleButton, ToggleButtonGroup, Button,
@@ -56,6 +56,7 @@ function buildGroupQueryParams({ page, rowsPerPage, sortBy, sortDir, filters }) 
 
 export default function AgreementListPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
   const { enqueueSnackbar } = useSnackbar();
   const { hasRight } = useAuth();
@@ -65,7 +66,9 @@ export default function AgreementListPage() {
   const showScopeToggle = canViewMy && canViewAll;
   const defaultScope = canViewMy ? FETCH_MODE.MY : FETCH_MODE.ALL;
 
-  const [pageTab, setPageTab] = useState(PAGE_TAB.GROUPS);
+  const pageTab = location.pathname.endsWith('/list')
+    ? PAGE_TAB.AGREEMENTS
+    : PAGE_TAB.GROUPS;
   const [fetchMode, setFetchMode] = useState(defaultScope);
   const [agreementFilters, setAgreementFilters] = useState({});
   const [groupFilters, setGroupFilters] = useState({ isActive: 'true' });
@@ -167,7 +170,7 @@ export default function AgreementListPage() {
   }, [pageTab, loadGroups]);
 
   const handlePageTabChange = (_, value) => {
-    setPageTab(value);
+    navigate(value === PAGE_TAB.GROUPS ? ROUTES.AGREEMENTS_GROUPS : ROUTES.AGREEMENTS_LIST);
   };
 
   const handleScopeChange = (_, value) => {

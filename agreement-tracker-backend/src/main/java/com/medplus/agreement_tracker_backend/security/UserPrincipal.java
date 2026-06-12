@@ -52,6 +52,11 @@ public class UserPrincipal implements UserDetails {
         return rights.contains(rightCode);
     }
 
+    public boolean hasRole(String roleName) {
+        return authorities.stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_" + roleName));
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return authorities;

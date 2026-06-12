@@ -20,7 +20,7 @@ export function isDraftAgreement(agreement) {
 export const HISTORICAL_STATUSES = ['SUPERSEDED', 'REJECTED', 'EXPIRED'];
 
 /** Versions where edit/submit actions are blocked (excludes REJECTED — owner may revise). */
-export const READ_ONLY_STATUSES = ['SUPERSEDED', 'EXPIRED'];
+export const READ_ONLY_STATUSES = ['SUPERSEDED', 'EXPIRED', 'TERMINATED'];
 
 export function isHistoricalAgreement(agreement) {
   return HISTORICAL_STATUSES.includes(agreement?.computedStatus);
@@ -54,9 +54,21 @@ export function canEditDraft(ctx, agreement, { isReadOnlyView = false } = {}) {
   );
 }
 
-/** Owner + AGREEMENT_EDIT + approvalStatus === APPROVED. */
+/** Owner + AGREEMENT_EDIT + approvalStatus === APPROVED + not terminated. */
 export function canEditApproved(ctx, agreement, { isReadOnlyView = false } = {}) {
   if (!agreement?.approvalStatus || blockedByReadOnly(isReadOnlyView)) return false;
+  if (agreement.computedStatus === 'TERMINATED' || agreement.terminationDate) return false;
+  return (
+    agreement.approvalStatus === 'APPROVED'
+    && isAgreementOwner(ctx.user, agreement)
+    && ctx.hasRight(RIGHTS.AGREEMENT_EDIT)
+  );
+}
+
+/** Owner + AGREEMENT_EDIT + approved current version eligible for renewal. */
+export function canRenew(ctx, agreement, { isReadOnlyView = false } = {}) {
+  if (!agreement?.approvalStatus || blockedByReadOnly(isReadOnlyView)) return false;
+  if (agreement.computedStatus === 'TERMINATED' || agreement.terminationDate) return false;
   return (
     agreement.approvalStatus === 'APPROVED'
     && isAgreementOwner(ctx.user, agreement)
@@ -112,7 +124,7 @@ export function canTransfer(ctx, agreement) {
   if (isDraftAgreement(agreement)) return false;
   if (agreement.pendingActionRequest) return false;
 
-  const blockedStatuses = ['SUPERSEDED', 'REJECTED', 'EXPIRED'];
+  const blockedStatuses = ['SUPERSEDED', 'REJECTED', 'EXPIRED', 'TERMINATED'];
   if (blockedStatuses.includes(agreement.computedStatus)) return false;
 
   const allowedStatuses = ['ACTIVE', 'PENDING_APPROVAL', 'APPROVED', 'IN_PROGRESS'];
@@ -139,6 +151,7 @@ export function getDetailPageActions(ctx, agreement, { isReadOnlyView = false } 
     approve: canApprove(ctx, agreement, options),
     reject: canReject(ctx, agreement, options),
     editApproved: canEditApproved(ctx, agreement, options),
+    renew: canRenew(ctx, agreement, options),
     revise: canRevise(ctx, agreement, options),
     terminate: canTerminate(ctx, agreement, options),
     clone: !draft && canClone(ctx, agreement),
@@ -164,6 +177,7 @@ export function canPerformAction(ctx, action, agreement, options = {}) {
     submit: canSubmit,
     editDraft: canEditDraft,
     editApproved: canEditApproved,
+    renew: canRenew,
     revise: canRevise,
     approve: canApprove,
     reject: canReject,

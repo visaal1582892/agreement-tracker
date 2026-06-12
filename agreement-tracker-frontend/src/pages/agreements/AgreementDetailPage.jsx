@@ -20,7 +20,7 @@ import { useAgreementPermissions } from '../../hooks/useAgreementPermissions';
 import { isHistoricalAgreement, isReadOnlyAgreement } from '../../utils/authUtils';
 import { ROUTES } from '../../config/routes';
 import { cloneAgreementOnServer } from '../../utils/agreementClone';
-import { buildAgreementEditPath, buildGroupWizardPath } from '../../utils/agreementNavigation';
+import { buildAgreementEditPath } from '../../utils/agreementNavigation';
 import { approveAgreement, rejectAgreement, submitAgreementForApproval } from '../../store/slices/agreementSlice';
 import TransferOwnershipModal from '../../components/agreements/TransferOwnershipModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -282,7 +282,7 @@ export default function AgreementDetailPage({
     try {
       const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_RENEW(agreementId));
       enqueueSnackbar('Renewal draft created — continue in wizard', { variant: 'success' });
-      const path = buildGroupWizardPath(data.groupId, data.agreementId);
+      const path = buildAgreementEditPath(data.versionId, { step: 2 });
       if (path) navigate(path);
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Renewal failed', { variant: 'error' });
@@ -625,7 +625,10 @@ export default function AgreementDetailPage({
                     {agreement?.inProgressFlag ? 'Clear Discussions In Progress' : 'Mark Discussions in Progress'}
                   </Button>
                 )}
-                {showLifecycleActions && (agreement?.computedStatus === 'EXPIRED' || daysToExpiry <= 90) && (
+                {showLifecycleActions
+                  && actions?.renew
+                  && agreement?.computedStatus !== 'TERMINATED'
+                  && (agreement?.computedStatus === 'EXPIRED' || daysToExpiry <= 90) && (
                   <Button
                     variant="contained"
                     fullWidth

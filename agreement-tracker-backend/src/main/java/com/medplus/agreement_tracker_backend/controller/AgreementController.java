@@ -132,6 +132,15 @@ public class AgreementController {
                 .body(agreementService.renewAgreement(id, principal.getId()));
     }
 
+    @DeleteMapping("/{id}")
+    @PreAuthorize(AGREEMENT_EDIT)
+    public ResponseEntity<Void> deleteDraftAgreement(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        agreementService.deleteDraftAgreement(id, principal.getId());
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/bulk-transfer")
     @PreAuthorize(ADMIN_USERS)
     public ResponseEntity<Void> bulkTransfer(

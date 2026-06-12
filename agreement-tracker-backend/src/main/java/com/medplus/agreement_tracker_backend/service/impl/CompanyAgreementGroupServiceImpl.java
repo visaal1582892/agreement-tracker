@@ -72,33 +72,30 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
     private final UserRepository userRepository;
     private final AgreementStatusResolver agreementStatusResolver;
 
-    private enum GroupAgreementState {
-        BLOCKING,
-        DRAFT_ONLY,
-        DELETABLE
-    }
-
     @Override
     @Transactional(readOnly = true)
     public Page<CompanyAgreementGroupResponse> listAll(
             Pageable pageable, Long companyId, Boolean isActive, String groupName,
-            String lastModifiedBy, String createdBy, Long currentUserId, boolean canViewAll) {
+            String lastModifiedBy, String createdBy, Long currentUserId, boolean canViewAll,
+            boolean isApprover, boolean isAccountManager) {
         Specification<CompanyAgreementGroup> spec = CompanyAgreementGroupSpec.withFilters(
                 companyId, isActive, groupName, lastModifiedBy, createdBy);
         if (!canViewAll) {
             spec = spec.and(CompanyAgreementGroupSpec.visibleTo(currentUserId));
         }
-        return companyAgreementGroupRepository.findAll(spec, pageable).map(this::toResponse);
+        return companyAgreementGroupRepository.findAll(spec, pageable)
+                .map(group -> toResponse(group, currentUserId, isApprover, isAccountManager));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public CompanyAgreementGroupResponse getById(Long groupId, Long currentUserId, boolean canViewAll) {
+    public CompanyAgreementGroupResponse getById(Long groupId, Long currentUserId, boolean canViewAll,
+                                                 boolean isApprover, boolean isAccountManager) {
         CompanyAgreementGroup group = loadGroup(groupId);
         if (!canViewAll) {
             enforceGroupVisibility(group, currentUserId);
         }
-        return toResponse(group);
+        return toResponse(group, currentUserId, isApprover, isAccountManager);
     }
 
     @Override
@@ -112,7 +109,7 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
             spec = spec.and(CompanyAgreementGroupSpec.visibleTo(currentUserId));
         }
         return companyAgreementGroupRepository.findAll(spec).stream()
-                .map(this::toResponse)
+                .map(group -> toResponse(group, currentUserId, false, false))
                 .toList();
     }
 
@@ -130,7 +127,7 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
             if (!existing.isActive()) {
                 throw new BusinessException("Cannot add agreements to an inactive group.");
             }
-            return toResponse(existing);
+            return toResponse(existing, userId, false, false);
         }
 
         if (!StringUtils.hasText(newName)) {
@@ -139,7 +136,7 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
 
         String trimmedName = newName.trim();
         return companyAgreementGroupRepository.findByCompanyIdAndName(companyId, trimmedName)
-                .map(this::toResponse)
+                .map(group -> toResponse(group, userId, false, false))
                 .orElseGet(() -> {
                     if (companyAgreementGroupRepository.existsByCompanyIdAndName(companyId, trimmedName)) {
                         throw new BusinessException("Company agreement group name already exists");
@@ -150,55 +147,44 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
                             .isActive(true)
                             .build();
                     created.setCreatedByUserId(userId);
-                    return toResponse(companyAgreementGroupRepository.save(created));
+                    return toResponse(companyAgreementGroupRepository.save(created), userId, false, false);
                 });
     }
 
     @Override
     @Transactional(readOnly = true)
     public GroupDeletionStatusResponse getDeletionStatus(Long groupId, Long currentUserId,
-                                                         boolean isAdmin, boolean isApprover) {
+                                                         boolean isApprover, boolean isAccountManager) {
         CompanyAgreementGroup group = loadGroup(groupId);
-        enforceDeleteAuthorization(group, currentUserId, isAdmin, isApprover);
+        enforceDeleteAuthorization(group, currentUserId, isApprover, isAccountManager);
 
-        return switch (resolveGroupAgreementState(groupId)) {
-            case BLOCKING -> new GroupDeletionStatusResponse(GroupDeletionStatus.HAS_ACTIVE);
-            case DRAFT_ONLY -> {
-                if (isAdmin || isApprover) {
-                    yield new GroupDeletionStatusResponse(GroupDeletionStatus.ONLY_DRAFTS);
-                }
-                if (isCreator(group, currentUserId)) {
-                    yield new GroupDeletionStatusResponse(GroupDeletionStatus.REQUIRES_APPROVAL);
-                }
-                throw new AccessDeniedException(
-                        "Only the group creator, an approver, or an administrator can delete this group");
-            }
-            case DELETABLE -> {
-                if (isAdmin || isApprover) {
-                    yield new GroupDeletionStatusResponse(GroupDeletionStatus.READY);
-                }
-                if (isCreator(group, currentUserId)) {
-                    yield new GroupDeletionStatusResponse(GroupDeletionStatus.REQUIRES_APPROVAL);
-                }
-                throw new AccessDeniedException(
-                        "Only the group creator, an approver, or an administrator can delete this group");
-            }
-        };
+        if (!areAllAgreementsDeletable(groupId)) {
+            return new GroupDeletionStatusResponse(GroupDeletionStatus.HAS_ACTIVE);
+        }
+
+        if (isApprover) {
+            return new GroupDeletionStatusResponse(GroupDeletionStatus.READY);
+        }
+        if (isAccountManager && isCreator(group, currentUserId)) {
+            return new GroupDeletionStatusResponse(GroupDeletionStatus.REQUIRES_APPROVAL);
+        }
+
+        throw new AccessDeniedException(
+                "Only an approver or the account manager who created this group can delete it");
     }
 
     @Override
     @Transactional
     public void deleteGroupImmediately(Long groupId, String reason, Long currentUserId,
-                                       boolean isAdmin, boolean isApprover) {
+                                       boolean isApprover, boolean isAccountManager) {
         CompanyAgreementGroup group = loadGroup(groupId);
-        enforceDeleteAuthorization(group, currentUserId, isAdmin, isApprover);
+        enforceDeleteAuthorization(group, currentUserId, isApprover, isAccountManager);
 
-        GroupAgreementState agreementState = resolveGroupAgreementState(groupId);
-        if (agreementState == GroupAgreementState.BLOCKING) {
+        if (!computeCanDelete(group, currentUserId, isApprover, isAccountManager)) {
             throw new BusinessException("Cannot delete group: Active agreements exist.");
         }
 
-        GroupDeletionStatus status = getDeletionStatus(groupId, currentUserId, isAdmin, isApprover).status();
+        GroupDeletionStatus status = getDeletionStatus(groupId, currentUserId, isApprover, isAccountManager).status();
         if (status == GroupDeletionStatus.REQUIRES_APPROVAL) {
             throw new BusinessException("Group deletion requires approval. Submit a deletion request instead.");
         }
@@ -207,7 +193,7 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
         }
 
         validateReason(reason);
-        performGroupDeletion(group, reason.trim(), currentUserId, agreementState);
+        performGroupDeletion(group, reason.trim(), currentUserId);
     }
 
     @Override
@@ -241,13 +227,12 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
     @Transactional
     public void executeApprovedGroupDeletion(Long groupId, Long approverId, String reason) {
         CompanyAgreementGroup group = loadGroup(groupId);
-        GroupAgreementState agreementState = resolveGroupAgreementState(groupId);
-        if (agreementState == GroupAgreementState.BLOCKING) {
+        if (!areAllAgreementsDeletable(groupId)) {
             throw new BusinessException("Cannot delete group: Active agreements exist.");
         }
 
         String auditReason = StringUtils.hasText(reason) ? reason.trim() : "Approved group deletion";
-        performGroupDeletion(group, auditReason, approverId, agreementState);
+        performGroupDeletion(group, auditReason, approverId);
     }
 
     @Override
@@ -264,21 +249,13 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
 
         group.setName(trimmedName);
         group.setUpdatedByUserId(currentUserId);
-        return toResponse(companyAgreementGroupRepository.save(group));
+        return toResponse(companyAgreementGroupRepository.save(group), currentUserId, false, false);
     }
 
-    private void performGroupDeletion(CompanyAgreementGroup group, String reason, Long performedByUserId,
-                                      GroupAgreementState agreementState) {
+    private void performGroupDeletion(CompanyAgreementGroup group, String reason, Long performedByUserId) {
         Long groupId = group.getId();
-        if (resolveGroupAgreementState(groupId) == GroupAgreementState.BLOCKING) {
+        if (!areAllAgreementsDeletable(groupId)) {
             throw new BusinessException("Cannot delete group: Active agreements exist.");
-        }
-
-        if (agreementState == GroupAgreementState.DRAFT_ONLY) {
-            List<Agreement> agreements = agreementRepository.findByCompanyAgreementGroupId(groupId);
-            for (Agreement agreement : agreements) {
-                hardDeleteAgreement(agreement);
-            }
         }
 
         group.setActive(false);
@@ -286,31 +263,6 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
         companyAgreementGroupRepository.save(group);
 
         recordGroupAudit(groupId, reason, performedByUserId);
-    }
-
-    private void hardDeleteAgreement(Agreement agreement) {
-        List<AgreementVersion> versions = agreementVersionRepository.findByAgreementId(agreement.getId());
-        for (AgreementVersion version : versions) {
-            hardDeleteAgreementVersion(version.getId());
-        }
-        auditRepository.deleteByAgreementId(agreement.getId());
-        agreementRepository.delete(agreement);
-    }
-
-    private void hardDeleteAgreementVersion(Long versionId) {
-        saleTargetRepository.deleteByAgreementVersionId(versionId);
-        purchaseSlabRepository.deleteByAgreementVersionId(versionId);
-        vendorRepository.deleteByAgreementVersionId(versionId);
-        manufacturerRuleRepository.deleteByAgreementVersionId(versionId);
-        divisionRuleRepository.deleteByAgreementVersionId(versionId);
-        productRuleRepository.deleteByAgreementVersionId(versionId);
-        computedProductRepository.deleteByAgreementVersionId(versionId);
-        approvalRepository.deleteByAgreementVersionId(versionId);
-        reminderRepository.deleteByAgreementVersionId(versionId);
-        documentRepository.deleteByAgreementVersionId(versionId);
-        actionRequestRepository.deleteByAgreementVersionId(versionId);
-        auditRepository.deleteByAgreementVersionId(versionId);
-        agreementVersionRepository.deleteById(versionId);
     }
 
     private void recordGroupAudit(Long groupId, String reason, Long userId) {
@@ -337,68 +289,55 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
         }
     }
 
-    private GroupAgreementState resolveGroupAgreementState(Long groupId) {
+    private boolean computeCanDelete(CompanyAgreementGroup group, Long currentUserId,
+                                     boolean isApprover, boolean isAccountManager) {
+        if (!hasDeleteRole(group, currentUserId, isApprover, isAccountManager)) {
+            return false;
+        }
+        return areAllAgreementsDeletable(group.getId());
+    }
+
+    private boolean hasDeleteRole(CompanyAgreementGroup group, Long currentUserId,
+                                  boolean isApprover, boolean isAccountManager) {
+        if (isApprover) {
+            return true;
+        }
+        return isAccountManager && isCreator(group, currentUserId);
+    }
+
+    private boolean areAllAgreementsDeletable(Long groupId) {
         List<Agreement> agreements = agreementRepository.findByCompanyAgreementGroupId(groupId);
         if (agreements.isEmpty()) {
-            return GroupAgreementState.DELETABLE;
+            return true;
         }
-
-        boolean allDraftOnly = true;
         for (Agreement agreement : agreements) {
-            GroupAgreementState agreementState = classifyAgreement(agreement);
-            if (agreementState == GroupAgreementState.BLOCKING) {
-                return GroupAgreementState.BLOCKING;
-            }
-            if (agreementState != GroupAgreementState.DRAFT_ONLY) {
-                allDraftOnly = false;
+            if (!isAgreementDeletable(agreement)) {
+                return false;
             }
         }
-
-        return allDraftOnly ? GroupAgreementState.DRAFT_ONLY : GroupAgreementState.DELETABLE;
+        return true;
     }
 
-    private GroupAgreementState classifyAgreement(Agreement agreement) {
-        if (agreement.getCurrentVersionId() != null) {
-            AgreementVersion current = agreementVersionRepository.findById(agreement.getCurrentVersionId())
-                    .orElse(null);
-            if (current != null) {
-                return mapStatusToGroupState(agreementStatusResolver.resolve(current));
-            }
+    private boolean isAgreementDeletable(Agreement agreement) {
+        AgreementVersion version = resolveAgreementVersionForStatus(agreement);
+        if (version == null) {
+            return true;
         }
+        AgreementStatus status = agreementStatusResolver.resolve(version);
+        return status == AgreementStatus.EXPIRED || status == AgreementStatus.TERMINATED;
+    }
 
+    private AgreementVersion resolveAgreementVersionForStatus(Agreement agreement) {
+        if (agreement.getCurrentVersionId() != null) {
+            return agreementVersionRepository.findById(agreement.getCurrentVersionId()).orElse(null);
+        }
         List<AgreementVersion> versions = agreementVersionRepository.findByAgreementId(agreement.getId());
         if (versions.isEmpty()) {
-            return GroupAgreementState.DELETABLE;
+            return null;
         }
-
-        boolean allDraft = versions.stream()
-                .allMatch(version -> version.getApprovalStatus() == ApprovalStatus.DRAFT);
-        if (allDraft && agreement.getCurrentVersionId() == null) {
-            return GroupAgreementState.DRAFT_ONLY;
-        }
-
-        boolean hasNonDraftHistory = versions.stream()
-                .anyMatch(version -> version.getApprovalStatus() != ApprovalStatus.DRAFT);
-        if (hasNonDraftHistory && agreement.getCurrentVersionId() == null) {
-            return GroupAgreementState.BLOCKING;
-        }
-
-        AgreementVersion latest = versions.stream()
+        return versions.stream()
                 .max((left, right) -> Integer.compare(left.getVersionNumber(), right.getVersionNumber()))
                 .orElse(null);
-        if (latest != null && latest.getApprovalStatus() == ApprovalStatus.DRAFT) {
-            return GroupAgreementState.DRAFT_ONLY;
-        }
-
-        return GroupAgreementState.BLOCKING;
-    }
-
-    private GroupAgreementState mapStatusToGroupState(AgreementStatus status) {
-        return switch (status) {
-            case TERMINATED, EXPIRED -> GroupAgreementState.DELETABLE;
-            case DRAFT -> GroupAgreementState.DRAFT_ONLY;
-            default -> GroupAgreementState.BLOCKING;
-        };
     }
 
     private void enforceGroupVisibility(CompanyAgreementGroup group, Long currentUserId) {
@@ -412,14 +351,11 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
     }
 
     private void enforceDeleteAuthorization(CompanyAgreementGroup group, Long currentUserId,
-                                            boolean isAdmin, boolean isApprover) {
-        if (isAdmin || isApprover) {
-            return;
+                                            boolean isApprover, boolean isAccountManager) {
+        if (!hasDeleteRole(group, currentUserId, isApprover, isAccountManager)) {
+            throw new AccessDeniedException(
+                    "Only an approver or the account manager who created this group can delete it");
         }
-        if (isCreator(group, currentUserId)) {
-            return;
-        }
-        throw new AccessDeniedException("Only the group creator, an approver, or an administrator can delete this group");
     }
 
     private void enforceCreatorForDeletionRequest(CompanyAgreementGroup group, Long currentUserId) {
@@ -437,7 +373,8 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
                 .orElseThrow(() -> new ResourceNotFoundException("CompanyAgreementGroup", groupId));
     }
 
-    private CompanyAgreementGroupResponse toResponse(CompanyAgreementGroup group) {
+    private CompanyAgreementGroupResponse toResponse(CompanyAgreementGroup group, Long currentUserId,
+                                                     boolean isApprover, boolean isAccountManager) {
         Long modifierUserId = group.getUpdatedByUserId() != null
                 ? group.getUpdatedByUserId()
                 : group.getCreatedByUserId();
@@ -452,7 +389,8 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
                 group.getCreatedByUserId(),
                 resolveUserName(group.getCreatedByUserId()),
                 group.getUpdatedAt(),
-                modifierName
+                modifierName,
+                computeCanDelete(group, currentUserId, isApprover, isAccountManager)
         );
     }
 

@@ -6,8 +6,6 @@ import DataTable from '../ui/DataTable';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
 import { navigateToGroup } from '../../utils/agreementNavigation';
-import { useAuth } from '../../hooks/useAuth';
-import { canDeleteGroup } from '../../hooks/useGroupDeletion';
 
 const STATUS_OPTIONS = [
   { value: 'true', label: 'Active' },
@@ -88,7 +86,6 @@ export default function CompanyGroupsTable({
   emptyMessage = 'No company agreement groups found.',
 }) {
   const navigate = useNavigate();
-  const { user, hasRight, isApprover } = useAuth();
   const [companyOptions, setCompanyOptions] = useState([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
 
@@ -109,11 +106,6 @@ export default function CompanyGroupsTable({
   useEffect(() => {
     searchCompanies('');
   }, [searchCompanies]);
-
-  const showDelete = useCallback(
-    (row) => canDeleteGroup(row, user, hasRight, isApprover),
-    [user, hasRight, isApprover],
-  );
 
   const columns = useMemo(() => [
     {
@@ -190,13 +182,13 @@ export default function CompanyGroupsTable({
       render: (_, row) => (
         <RowActionsMenu
           row={row}
-          canDelete={showDelete(row)}
+          canDelete={row.canDelete === true}
           onDelete={onDelete}
           navigate={navigate}
         />
       ),
     },
-  ], [companyOptions, searchCompanies, loadingCompanies, showDelete, onDelete, navigate]);
+  ], [companyOptions, searchCompanies, loadingCompanies, onDelete, navigate]);
 
   return (
     <DataTable

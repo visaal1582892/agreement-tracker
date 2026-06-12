@@ -66,4 +66,6 @@ public interface AgreementService {
     void bulkTransferOwnership(Long fromUserId, Long toUserId, List<Long> agreementIds, Long performedByUserId);
 
     BulkGroupSubmitResponse submitGroupDraftsForApproval(Long groupId, Long currentUserId);
+
+    void deleteDraftAgreement(Long agreementId, Long currentUserId);
 }

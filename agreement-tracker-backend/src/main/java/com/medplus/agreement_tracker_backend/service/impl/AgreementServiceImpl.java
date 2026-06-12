@@ -51,6 +51,8 @@ import com.medplus.agreement_tracker_backend.repository.AgreementComputedProduct
 import com.medplus.agreement_tracker_backend.repository.AgreementDivisionRuleRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementManufacturerRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementProductRuleRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementDocumentRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementReminderRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementPurchaseSlabRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementSaleTargetRepository;
@@ -108,6 +110,8 @@ public class AgreementServiceImpl implements AgreementService {
     private final AgreementApprovalRepository approvalRepository;
     private final AgreementAuditRepository auditRepository;
     private final AgreementActionRequestRepository actionRequestRepository;
+    private final AgreementReminderRepository reminderRepository;
+    private final AgreementDocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final IncomeTypeRepository incomeTypeRepository;
     private final AgreementTypeRepository agreementTypeRepository;
@@ -119,6 +123,10 @@ public class AgreementServiceImpl implements AgreementService {
 
     private static final DateTimeFormatter AGREEMENT_NAME_DATE_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final String DRAFT_AGREEMENT_NAME_PLACEHOLDER = "Draft - Pending Details";
+    private static final String TERMINATED_RENEW_MSG =
+            "Terminated agreements cannot be renewed. Please create a new agreement instead.";
+    private static final String TERMINATED_EDIT_MSG =
+            "Terminated agreements cannot be edited. Please create a new agreement instead.";
 
     public AgreementServiceImpl(
             AgreementRepository agreementRepository,
@@ -135,6 +143,8 @@ public class AgreementServiceImpl implements AgreementService {
             AgreementApprovalRepository approvalRepository,
             AgreementAuditRepository auditRepository,
             AgreementActionRequestRepository actionRequestRepository,
+            AgreementReminderRepository reminderRepository,
+            AgreementDocumentRepository documentRepository,
             UserRepository userRepository,
             IncomeTypeRepository incomeTypeRepository,
             AgreementTypeRepository agreementTypeRepository,
@@ -157,6 +167,8 @@ public class AgreementServiceImpl implements AgreementService {
         this.approvalRepository = approvalRepository;
         this.auditRepository = auditRepository;
         this.actionRequestRepository = actionRequestRepository;
+        this.reminderRepository = reminderRepository;
+        this.documentRepository = documentRepository;
         this.userRepository = userRepository;
         this.incomeTypeRepository = incomeTypeRepository;
         this.agreementTypeRepository = agreementTypeRepository;
@@ -233,6 +245,7 @@ public class AgreementServiceImpl implements AgreementService {
                 .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
 
         AgreementVersion source = resolveNewVersionSource(parent);
+        assertNotTerminated(source, TERMINATED_EDIT_MSG);
         loadAndValidateOwnership(source.getId(), currentUserId);
 
         Integer maxVersion = agreementVersionRepository.findMaxVersionByAgreementId(agreementId);
@@ -270,6 +283,8 @@ public class AgreementServiceImpl implements AgreementService {
                                                         Long currentUserId) {
         AgreementVersion source = agreementVersionRepository.findById(sourceAgreementVersionId)
                 .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", sourceAgreementVersionId));
+
+        assertNotTerminated(source, TERMINATED_EDIT_MSG);
 
         if (source.getApprovalStatus() != ApprovalStatus.APPROVED
                 && source.getApprovalStatus() != ApprovalStatus.REJECTED) {
@@ -704,6 +719,7 @@ public class AgreementServiceImpl implements AgreementService {
                 .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", parent.getCurrentVersionId()));
 
         loadAndValidateOwnership(version.getId(), currentUserId);
+        assertNotTerminated(version, TERMINATED_EDIT_MSG);
 
         if (version.getApprovalStatus() != ApprovalStatus.APPROVED) {
             throw new BusinessException("In-progress flag can only be toggled on approved agreements");
@@ -730,6 +746,8 @@ public class AgreementServiceImpl implements AgreementService {
 
         AgreementVersion source = agreementVersionRepository.findById(parent.getCurrentVersionId())
                 .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", parent.getCurrentVersionId()));
+
+        assertNotTerminated(source, TERMINATED_RENEW_MSG);
 
         loadAndValidateOwnership(source.getId(), currentUserId);
 
@@ -769,6 +787,63 @@ public class AgreementServiceImpl implements AgreementService {
                 parent.getId(),
                 parent.getCompanyAgreementGroup().getId()
         );
+    }
+
+    @Override
+    @Transactional
+    public void deleteDraftAgreement(Long agreementId, Long currentUserId) {
+        Agreement agreement = agreementRepository.findById(agreementId)
+                .orElseThrow(() -> new ResourceNotFoundException("Agreement", agreementId));
+
+        List<AgreementVersion> versions = agreementVersionRepository.findByAgreementId(agreementId);
+        if (versions.isEmpty()) {
+            throw new BusinessException("Agreement has no versions to delete");
+        }
+
+        boolean everApproved = versions.stream()
+                .anyMatch(version -> version.getApprovalStatus() == ApprovalStatus.APPROVED);
+        if (everApproved) {
+            throw new BusinessException("Cannot delete an agreement that has been approved");
+        }
+
+        AgreementVersion activeVersion = resolveActiveVersion(agreement, versions);
+        if (activeVersion.getApprovalStatus() != ApprovalStatus.DRAFT) {
+            throw new BusinessException("Only draft agreements can be deleted");
+        }
+
+        loadAndValidateOwnership(activeVersion.getId(), currentUserId);
+
+        for (AgreementVersion version : versions) {
+            hardDeleteAgreementVersion(version.getId());
+        }
+        auditRepository.deleteByAgreementId(agreementId);
+        agreementRepository.delete(agreement);
+    }
+
+    private AgreementVersion resolveActiveVersion(Agreement agreement, List<AgreementVersion> versions) {
+        if (agreement.getCurrentVersionId() != null) {
+            return agreementVersionRepository.findById(agreement.getCurrentVersionId())
+                    .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreement.getCurrentVersionId()));
+        }
+        return versions.stream()
+                .max((left, right) -> Integer.compare(left.getVersionNumber(), right.getVersionNumber()))
+                .orElseThrow(() -> new BusinessException("Agreement has no versions to delete"));
+    }
+
+    private void hardDeleteAgreementVersion(Long versionId) {
+        saleTargetRepository.deleteByAgreementVersionId(versionId);
+        purchaseSlabRepository.deleteByAgreementVersionId(versionId);
+        vendorRepository.deleteByAgreementVersionId(versionId);
+        manufacturerRuleRepository.deleteByAgreementVersionId(versionId);
+        divisionRuleRepository.deleteByAgreementVersionId(versionId);
+        productRuleRepository.deleteByAgreementVersionId(versionId);
+        computedProductRepository.deleteByAgreementVersionId(versionId);
+        approvalRepository.deleteByAgreementVersionId(versionId);
+        reminderRepository.deleteByAgreementVersionId(versionId);
+        documentRepository.deleteByAgreementVersionId(versionId);
+        actionRequestRepository.deleteByAgreementVersionId(versionId);
+        auditRepository.deleteByAgreementVersionId(versionId);
+        agreementVersionRepository.deleteById(versionId);
     }
 
     @Override
@@ -828,6 +903,12 @@ public class AgreementServiceImpl implements AgreementService {
         String auditNewValue = buildAdminTransferAuditNote(toUserId, "Bulk admin reassignment");
         for (Agreement agreement : agreementsToTransfer) {
             applyOwnershipTransfer(agreement, toUser, performedByUserId, auditNewValue, fromUserId);
+        }
+    }
+
+    private void assertNotTerminated(AgreementVersion version, String message) {
+        if (version.getTerminationDate() != null) {
+            throw new BusinessException(message);
         }
     }
 

@@ -13,19 +13,21 @@ public interface CompanyAgreementGroupService {
 
     Page<CompanyAgreementGroupResponse> listAll(
             Pageable pageable, Long companyId, Boolean isActive, String groupName,
-            String lastModifiedBy, String createdBy, Long currentUserId, boolean canViewAll);
+            String lastModifiedBy, String createdBy, Long currentUserId, boolean canViewAll,
+            boolean isApprover, boolean isAccountManager);
 
-    CompanyAgreementGroupResponse getById(Long groupId, Long currentUserId, boolean canViewAll);
+    CompanyAgreementGroupResponse getById(Long groupId, Long currentUserId, boolean canViewAll,
+                                          boolean isApprover, boolean isAccountManager);
 
     List<CompanyAgreementGroupResponse> listByCompanyId(Long companyId, Long currentUserId, boolean canViewAll);
 
     CompanyAgreementGroupResponse resolveOrCreate(Long companyId, Long groupId, String newName, Long userId);
 
     GroupDeletionStatusResponse getDeletionStatus(Long groupId, Long currentUserId,
-                                                  boolean isAdmin, boolean isApprover);
+                                                  boolean isApprover, boolean isAccountManager);
 
     void deleteGroupImmediately(Long groupId, String reason, Long currentUserId,
-                              boolean isAdmin, boolean isApprover);
+                                boolean isApprover, boolean isAccountManager);
 
     void submitDeletionRequest(Long groupId, GroupDeletionRequest request, Long currentUserId);
 

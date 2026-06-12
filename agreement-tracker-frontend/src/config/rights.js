@@ -62,7 +62,8 @@ export function hasAnyRequiredRight(userRights, requiredRights) {
 export function defaultRouteForRights(userRights) {
   const candidates = [
     ROUTES.DASHBOARD,
-    ROUTES.AGREEMENTS,
+    ROUTES.AGREEMENTS_GROUPS,
+    ROUTES.AGREEMENTS_LIST,
     ROUTES.APPROVALS,
     ROUTES.MASTER,
   ];

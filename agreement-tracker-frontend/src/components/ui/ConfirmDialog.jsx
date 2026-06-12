@@ -11,7 +11,11 @@ export default function ConfirmDialog({ open, onClose, onConfirm, title, message
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} variant="outlined" color="inherit" autoFocus>Cancel</Button>
         <Button
-          onClick={onConfirm}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onConfirm(e);
+          }}
           variant="contained"
           sx={{ bgcolor: danger ? 'error.main' : BRAND.green, '&:hover': { bgcolor: danger ? 'error.dark' : BRAND.greenDark } }}
         >

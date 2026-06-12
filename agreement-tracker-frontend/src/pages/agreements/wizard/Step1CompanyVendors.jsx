@@ -43,7 +43,8 @@ export default function Step1CompanyVendors({ state, updateFields, groupFieldsLo
     setLoadingGroups(true);
     try {
       const { data } = await axiosInstance.get(ENDPOINTS.COMPANY_AGREEMENT_GROUPS(companyId));
-      setGroupOptions(Array.isArray(data) ? data : []);
+      const activeGroups = (Array.isArray(data) ? data : []).filter((group) => group.isActive !== false);
+      setGroupOptions(activeGroups);
     } catch (err) {
       console.error('Failed to load company agreement groups:', err);
       setGroupOptions([]);

@@ -4,6 +4,8 @@ export const ROUTES = {
   DASHBOARD: '/',
 
   AGREEMENTS: '/agreements',
+  AGREEMENTS_GROUPS: '/agreements/groups',
+  AGREEMENTS_LIST: '/agreements/list',
   AGREEMENT_GROUP_DETAIL: '/agreements/groups/:groupId',
   AGREEMENT_CREATE: '/agreements/new',
   AGREEMENT_GROUP_WIZARD: '/agreements/wizard',
