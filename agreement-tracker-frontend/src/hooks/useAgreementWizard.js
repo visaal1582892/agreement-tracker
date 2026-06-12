@@ -18,6 +18,7 @@ export function createBlankAgreement() {
       valueType: 'FIXED',
       calculationFormula: '',
       selectedFrequencies: [],
+      slabType: 'PURCHASE',
     },
   };
 }
@@ -135,6 +136,7 @@ export function useAgreementWizard() {
           valueType: agreement.valueType ?? 'FIXED',
           calculationFormula: agreement.calculationFormula ?? '',
           selectedFrequencies: [],
+          slabType: 'PURCHASE',
         },
       },
     });

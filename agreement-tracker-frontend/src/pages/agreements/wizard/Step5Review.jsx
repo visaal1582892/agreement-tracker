@@ -3,7 +3,7 @@ import { Box, Typography, Grid, Chip } from '@mui/material';
 import dayjs from 'dayjs';
 import { useSnackbar } from 'notistack';
 import { formatTenureFromDates } from '../../../components/forms/DateRangeFields';
-import { fetchPurchaseSlabs } from '../../../api/commercialApi';
+import { fetchSlabs } from '../../../api/commercialApi';
 
 function ReviewRow({ label, value }) {
   return (
@@ -31,7 +31,7 @@ export default function Step5Review({ state, serverAgreementId }) {
     const load = async () => {
       setLoadingSlabs(true);
       try {
-        const data = await fetchPurchaseSlabs(serverAgreementId);
+        const data = await fetchSlabs(serverAgreementId);
         if (!cancelled) {
           setSlabCount(data.length);
         }
@@ -107,6 +107,10 @@ export default function Step5Review({ state, serverAgreementId }) {
               )}
               {agreement.commercials.commercialStructure === 'SLAB' && (
                 <>
+                  <ReviewRow
+                    label="Slab Type"
+                    value={agreement.commercials.slabType === 'SALE' ? 'Sale Slab' : 'Purchase Slab'}
+                  />
                   <ReviewRow
                     label="Frequencies"
                     value={agreement.commercials.selectedFrequencies?.join(', ') || '—'}

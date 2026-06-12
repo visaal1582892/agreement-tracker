@@ -97,9 +97,9 @@ public class AgreementVersion extends AuditableEntity {
 
     @OneToMany(mappedBy = "agreementVersion", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
-    private List<AgreementPurchaseSlab> purchaseSlabs = new ArrayList<>();
+    private List<AgreementSlab> slabs = new ArrayList<>();
 
     @OneToMany(mappedBy = "agreementVersion", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
-    private List<AgreementSaleTarget> saleTargets = new ArrayList<>();
+    private List<AgreementTarget> targets = new ArrayList<>();
 }

@@ -1,17 +1,18 @@
 import axiosInstance from './axiosInstance';
 import { ENDPOINTS } from '../config/endpoints';
 
-export async function fetchPurchaseSlabs(agreementVersionId) {
-  const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_SLABS(agreementVersionId));
+export async function fetchSlabs(agreementVersionId, slabType) {
+  const params = slabType ? { slabType } : {};
+  const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_SLABS(agreementVersionId), { params });
   return data;
 }
 
-export async function createPurchaseSlab(agreementVersionId, payload) {
+export async function createSlab(agreementVersionId, payload) {
   const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_SLABS(agreementVersionId), payload);
   return data;
 }
 
-export async function updatePurchaseSlab(agreementVersionId, slabId, payload) {
+export async function updateSlab(agreementVersionId, slabId, payload) {
   const { data } = await axiosInstance.put(
     ENDPOINTS.AGREEMENT_VERSION_SLAB(agreementVersionId, slabId),
     payload,
@@ -19,7 +20,7 @@ export async function updatePurchaseSlab(agreementVersionId, slabId, payload) {
   return data;
 }
 
-export async function deletePurchaseSlab(agreementVersionId, slabId) {
+export async function deleteSlab(agreementVersionId, slabId) {
   await axiosInstance.delete(ENDPOINTS.AGREEMENT_VERSION_SLAB(agreementVersionId, slabId));
 }
 
@@ -32,13 +33,14 @@ export async function generateCommercialTemplate(agreementVersionId, payload) {
   return data;
 }
 
-export async function uploadCommercialTargets(agreementVersionId, file) {
+export async function uploadCommercialTargets(agreementVersionId, file, slabType) {
   const formData = new FormData();
   formData.append('file', file);
+  const params = slabType ? { slabType } : {};
   const { data } = await axiosInstance.post(
     ENDPOINTS.COMMERCIAL_UPLOAD(agreementVersionId),
     formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
+    { headers: { 'Content-Type': 'multipart/form-data' }, params },
   );
   return data;
 }
@@ -48,8 +50,12 @@ export async function fetchCommercialTargetsPreview(agreementVersionId) {
   return data;
 }
 
-export async function upsertSaleTarget(agreementVersionId, payload) {
+export async function upsertTarget(agreementVersionId, payload) {
   await axiosInstance.put(ENDPOINTS.COMMERCIAL_TARGETS(agreementVersionId), payload);
+}
+
+export async function switchCommercialType(agreementVersionId, payload) {
+  await axiosInstance.put(ENDPOINTS.COMMERCIAL_TYPE_SWITCH(agreementVersionId), payload);
 }
 
 export function downloadBlob(blob, filename) {
@@ -76,12 +82,13 @@ export async function extractApiErrorMessage(err, fallback) {
   return data?.message || fallback;
 }
 
-export function toSlabPayload(slab) {
+export function toSlabPayload(slab, slabType) {
   return {
     fromValue: Number(slab.fromValue),
     toValue: Number(slab.toValue),
     valueType: slab.valueType,
     commercialValue: Number(slab.commercialValue),
+    slabType: slabType || slab.slabType || 'PURCHASE',
   };
 }
 

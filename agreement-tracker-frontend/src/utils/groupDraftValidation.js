@@ -1,6 +1,6 @@
 import axiosInstance from '../api/axiosInstance';
 import { ENDPOINTS } from '../config/endpoints';
-import { fetchCommercialTargetsPreview, fetchPurchaseSlabs } from '../api/commercialApi';
+import { fetchCommercialTargetsPreview, fetchSlabs } from '../api/commercialApi';
 
 export function getDraftDetailsGaps(version, { slabCount = 0, targetCount = 0 } = {}) {
   const gaps = [];
@@ -13,7 +13,7 @@ export function getDraftDetailsGaps(version, { slabCount = 0, targetCount = 0 } 
     gaps.push('Commercial Value');
   }
   if (version?.commercialStructure === 'SLAB') {
-    if (slabCount === 0) gaps.push('Purchase Slabs');
+    if (slabCount === 0) gaps.push('Slabs');
     if (targetCount === 0) gaps.push('Commercial Targets');
   }
   return gaps;
@@ -29,7 +29,7 @@ export async function loadGroupDraftReviewData(drafts) {
     let targetCount = 0;
 
     if (version.commercialStructure === 'SLAB') {
-      slabs = await fetchPurchaseSlabs(row.latestVersionId);
+      slabs = await fetchSlabs(row.latestVersionId);
       try {
         const preview = await fetchCommercialTargetsPreview(row.latestVersionId);
         targetCount = Array.isArray(preview) ? preview.length : 0;

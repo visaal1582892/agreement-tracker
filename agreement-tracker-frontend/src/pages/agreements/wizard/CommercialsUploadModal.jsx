@@ -12,7 +12,7 @@ import {
   fetchCommercialTargetsPreview,
   formatSlabLabel,
   generateCommercialTemplate,
-  upsertSaleTarget,
+  upsertTarget,
   uploadCommercialTargets,
 } from '../../../api/commercialApi';
 
@@ -59,10 +59,12 @@ export default function CommercialsUploadModal({
   onClose,
   agreementId,
   slabs,
+  slabType = 'PURCHASE',
   startDate,
   expiryDate,
   selectedFrequencies,
   onFrequenciesChange,
+  onTargetsChanged,
   readOnly = false,
   embedded = false,
 }) {
@@ -84,12 +86,13 @@ export default function CommercialsUploadModal({
     try {
       const data = await fetchCommercialTargetsPreview(agreementId);
       setPreviewRows(data);
+      onTargetsChanged?.();
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to load commercial targets', { variant: 'error' });
     } finally {
       setLoadingPreview(false);
     }
-  }, [agreementId, isActive, enqueueSnackbar]);
+  }, [agreementId, isActive, enqueueSnackbar, onTargetsChanged]);
 
   useEffect(() => {
     if (isActive) {
@@ -115,7 +118,7 @@ export default function CommercialsUploadModal({
       return false;
     }
     if (!slabs?.length) {
-      enqueueSnackbar('Add at least one purchase slab first', { variant: 'warning' });
+      enqueueSnackbar('Add at least one slab first', { variant: 'warning' });
       return false;
     }
     if (!selectedFrequencies?.length) {
@@ -129,7 +132,7 @@ export default function CommercialsUploadModal({
     if (!ensureReadyForDownload()) return;
     setDownloading(true);
     try {
-      const blob = await generateCommercialTemplate(agreementId, { selectedFrequencies });
+      const blob = await generateCommercialTemplate(agreementId, { selectedFrequencies, slabType });
       downloadBlob(blob, `commercial-template-${agreementId}.xlsx`);
       enqueueSnackbar('Commercial template downloaded', { variant: 'success' });
     } catch (err) {
@@ -149,7 +152,7 @@ export default function CommercialsUploadModal({
 
     setUploading(true);
     try {
-      const result = await uploadCommercialTargets(agreementId, file);
+      const result = await uploadCommercialTargets(agreementId, file, slabType);
       enqueueSnackbar(`Uploaded ${result.savedCount} target value(s)`, { variant: 'success' });
       await loadPreview();
     } catch (err) {
@@ -190,7 +193,7 @@ export default function CommercialsUploadModal({
     }
 
     try {
-      await upsertSaleTarget(agreementId, payload);
+      await upsertTarget(agreementId, payload);
       flashCell(timePeriodId, slabId);
       setEditingCell(null);
       setEditValue('');

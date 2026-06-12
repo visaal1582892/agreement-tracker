@@ -25,7 +25,7 @@ import com.medplus.agreement_tracker_backend.entity.AgreementComputedProduct;
 import com.medplus.agreement_tracker_backend.entity.AgreementDivisionRule;
 import com.medplus.agreement_tracker_backend.entity.AgreementManufacturer;
 import com.medplus.agreement_tracker_backend.entity.AgreementProductRule;
-import com.medplus.agreement_tracker_backend.entity.AgreementPurchaseSlab;
+import com.medplus.agreement_tracker_backend.entity.AgreementSlab;
 import com.medplus.agreement_tracker_backend.entity.AgreementType;
 import com.medplus.agreement_tracker_backend.entity.AgreementVendor;
 import com.medplus.agreement_tracker_backend.entity.AgreementVersion;
@@ -54,9 +54,9 @@ import com.medplus.agreement_tracker_backend.repository.AgreementManufacturerRep
 import com.medplus.agreement_tracker_backend.repository.AgreementProductRuleRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementDocumentRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementReminderRepository;
-import com.medplus.agreement_tracker_backend.repository.AgreementPurchaseSlabRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementSlabRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementRepository;
-import com.medplus.agreement_tracker_backend.repository.AgreementSaleTargetRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementTargetRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementSpec;
 import com.medplus.agreement_tracker_backend.repository.AgreementTypeRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementVendorRepository;
@@ -107,8 +107,8 @@ public class AgreementServiceImpl implements AgreementService {
     private final AgreementManufacturerRepository manufacturerRuleRepository;
     private final AgreementDivisionRuleRepository divisionRuleRepository;
     private final AgreementProductRuleRepository productRuleRepository;
-    private final AgreementPurchaseSlabRepository purchaseSlabRepository;
-    private final AgreementSaleTargetRepository saleTargetRepository;
+    private final AgreementSlabRepository slabRepository;
+    private final AgreementTargetRepository targetRepository;
     private final AgreementComputedProductRepository computedProductRepository;
     private final AgreementApprovalRepository approvalRepository;
     private final AgreementAuditRepository auditRepository;
@@ -141,8 +141,8 @@ public class AgreementServiceImpl implements AgreementService {
             AgreementManufacturerRepository manufacturerRuleRepository,
             AgreementDivisionRuleRepository divisionRuleRepository,
             AgreementProductRuleRepository productRuleRepository,
-            AgreementPurchaseSlabRepository purchaseSlabRepository,
-            AgreementSaleTargetRepository saleTargetRepository,
+            AgreementSlabRepository slabRepository,
+            AgreementTargetRepository targetRepository,
             AgreementComputedProductRepository computedProductRepository,
             AgreementApprovalRepository approvalRepository,
             AgreementAuditRepository auditRepository,
@@ -166,8 +166,8 @@ public class AgreementServiceImpl implements AgreementService {
         this.manufacturerRuleRepository = manufacturerRuleRepository;
         this.divisionRuleRepository = divisionRuleRepository;
         this.productRuleRepository = productRuleRepository;
-        this.purchaseSlabRepository = purchaseSlabRepository;
-        this.saleTargetRepository = saleTargetRepository;
+        this.slabRepository = slabRepository;
+        this.targetRepository = targetRepository;
         this.computedProductRepository = computedProductRepository;
         this.approvalRepository = approvalRepository;
         this.auditRepository = auditRepository;
@@ -795,7 +795,7 @@ public class AgreementServiceImpl implements AgreementService {
 
         copyVendors(source.getId(), newVersion, currentUserId);
         copyRulesAndComputed(source.getId(), newVersion, currentUserId);
-        copyPurchaseSlabs(source.getId(), newVersion, currentUserId);
+        copySlabs(source.getId(), newVersion, currentUserId);
 
         recordAudit(parent.getId(), newVersion.getId(), "AGREEMENT_RENEWED",
                 String.valueOf(source.getVersionNumber()), String.valueOf(newVersion.getVersionNumber()), currentUserId);
@@ -849,8 +849,8 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     private void hardDeleteAgreementVersion(Long versionId) {
-        saleTargetRepository.deleteByAgreementVersionId(versionId);
-        purchaseSlabRepository.deleteByAgreementVersionId(versionId);
+        targetRepository.deleteByAgreementVersionId(versionId);
+        slabRepository.deleteByAgreementVersionId(versionId);
         vendorRepository.deleteByAgreementVersionId(versionId);
         manufacturerRuleRepository.deleteByAgreementVersionId(versionId);
         divisionRuleRepository.deleteByAgreementVersionId(versionId);
@@ -1152,10 +1152,10 @@ public class AgreementServiceImpl implements AgreementService {
             throw validationFailure(agreementName, "Missing Commercial Value for FLAT structure.");
         }
         if (version.getCommercialStructure() == CommercialStructure.SLAB) {
-            if (purchaseSlabRepository.findByAgreementVersionIdOrderByFromValueAsc(version.getId()).isEmpty()) {
-                throw validationFailure(agreementName, "Missing purchase slabs for SLAB structure.");
+            if (slabRepository.findByAgreementVersionIdOrderByFromValueAsc(version.getId()).isEmpty()) {
+                throw validationFailure(agreementName, "Missing slabs for SLAB structure.");
             }
-            if (saleTargetRepository.findByAgreementVersionId(version.getId()).isEmpty()) {
+            if (targetRepository.findByAgreementVersionId(version.getId()).isEmpty()) {
                 throw validationFailure(agreementName, "Missing commercial targets for SLAB structure.");
             }
         }
@@ -1316,17 +1316,18 @@ public class AgreementServiceImpl implements AgreementService {
         return products.stream().filter(p -> !productIds.contains(p.getId())).toList();
     }
 
-    private void copyPurchaseSlabs(Long sourceVersionId, AgreementVersion target, Long userId) {
-        purchaseSlabRepository.findByAgreementVersionIdOrderByFromValueAsc(sourceVersionId).forEach(s -> {
-            AgreementPurchaseSlab copy = AgreementPurchaseSlab.builder()
+    private void copySlabs(Long sourceVersionId, AgreementVersion target, Long userId) {
+        slabRepository.findByAgreementVersionIdOrderByFromValueAsc(sourceVersionId).forEach(s -> {
+            AgreementSlab copy = AgreementSlab.builder()
                     .agreementVersion(target)
+                    .slabType(s.getSlabType())
                     .fromValue(s.getFromValue())
                     .toValue(s.getToValue())
                     .valueType(s.getValueType())
                     .commercialValue(s.getCommercialValue())
                     .build();
             copy.setCreatedByUserId(userId);
-            purchaseSlabRepository.save(copy);
+            slabRepository.save(copy);
         });
     }
 

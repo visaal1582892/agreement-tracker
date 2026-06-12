@@ -4,17 +4,20 @@ import {
   TextField, Button,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, IconButton, Alert, CircularProgress,
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
 } from '@mui/material';
 import { Add, Delete, Edit, TableChart } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { useModal } from '../../../hooks/useModal';
 import {
-  createPurchaseSlab,
-  deletePurchaseSlab,
-  fetchPurchaseSlabs,
+  createSlab,
+  deleteSlab,
+  fetchCommercialTargetsPreview,
+  fetchSlabs,
   formatSlabLabel,
+  switchCommercialType,
   toSlabPayload,
-  updatePurchaseSlab,
+  updateSlab,
   validateSlabAgainstExisting,
 } from '../../../api/commercialApi';
 import CommercialValueInput from '../../../components/forms/CommercialValueInput';
@@ -27,6 +30,11 @@ const EMPTY_DRAFT = {
   commercialValue: '',
 };
 
+const SLAB_TYPE_OPTIONS = [
+  { value: 'PURCHASE', label: 'Purchase Slab' },
+  { value: 'SALE', label: 'Sale Slab' },
+];
+
 export default function CommercialFields({
   commercials,
   onUpdate,
@@ -36,33 +44,63 @@ export default function CommercialFields({
 }) {
   const { enqueueSnackbar } = useSnackbar();
   const uploadModal = useModal();
+  const typeSwitchModal = useModal();
   const [draftSlab, setDraftSlab] = useState(EMPTY_DRAFT);
   const [editingSlabId, setEditingSlabId] = useState(null);
-  const [savedSlabs, setSavedSlabs] = useState([]);
+  const [slabs, setSlabs] = useState([]);
+  const [targetCount, setTargetCount] = useState(0);
   const [loadingSlabs, setLoadingSlabs] = useState(false);
   const [savingSlab, setSavingSlab] = useState(false);
+  const [switchingType, setSwitchingType] = useState(false);
+  const [pendingSlabType, setPendingSlabType] = useState(null);
+  const [commercialRefreshKey, setCommercialRefreshKey] = useState(0);
 
   const selectedFrequencies = commercials.selectedFrequencies || [];
+  const slabType = commercials.slabType || 'PURCHASE';
 
   const loadSlabs = useCallback(async () => {
     if (!serverAgreementId || commercials.commercialStructure !== 'SLAB') {
-      setSavedSlabs([]);
+      setSlabs([]);
       return;
     }
     setLoadingSlabs(true);
     try {
-      const data = await fetchPurchaseSlabs(serverAgreementId);
-      setSavedSlabs(data);
+      const data = await fetchSlabs(serverAgreementId, slabType);
+      setSlabs(data);
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to load slabs', { variant: 'error' });
     } finally {
       setLoadingSlabs(false);
     }
-  }, [serverAgreementId, commercials.commercialStructure, enqueueSnackbar]);
+  }, [serverAgreementId, commercials.commercialStructure, slabType, enqueueSnackbar]);
+
+  const loadTargetCount = useCallback(async () => {
+    if (!serverAgreementId || commercials.commercialStructure !== 'SLAB') {
+      setTargetCount(0);
+      return;
+    }
+    try {
+      const data = await fetchCommercialTargetsPreview(serverAgreementId);
+      setTargetCount(Array.isArray(data) ? data.length : 0);
+    } catch {
+      setTargetCount(0);
+    }
+  }, [serverAgreementId, commercials.commercialStructure]);
+
+  const refreshCommercialData = useCallback(async () => {
+    await Promise.all([loadSlabs(), loadTargetCount()]);
+    setCommercialRefreshKey((key) => key + 1);
+  }, [loadSlabs, loadTargetCount]);
 
   useEffect(() => {
     loadSlabs();
-  }, [loadSlabs]);
+    loadTargetCount();
+  }, [loadSlabs, loadTargetCount]);
+
+  useEffect(() => {
+    setEditingSlabId(null);
+    setDraftSlab(EMPTY_DRAFT);
+  }, [slabType]);
 
   const updateDraft = (field, value) => {
     setDraftSlab((prev) => ({ ...prev, [field]: value }));
@@ -71,6 +109,49 @@ export default function CommercialFields({
   const resetDraft = () => {
     setDraftSlab(EMPTY_DRAFT);
     setEditingSlabId(null);
+  };
+
+  const handleSlabTypeChange = (event) => {
+    const newType = event.target.value;
+    if (newType === slabType) return;
+
+    if (slabs.length === 0 && targetCount === 0) {
+      onUpdate({ slabType: newType });
+      return;
+    }
+
+    setPendingSlabType(newType);
+    typeSwitchModal.open();
+  };
+
+  const handleTypeSwitchCancel = () => {
+    setPendingSlabType(null);
+    typeSwitchModal.close();
+  };
+
+  const handleTypeSwitch = async (action) => {
+    if (!serverAgreementId || !pendingSlabType) return;
+
+    setSwitchingType(true);
+    try {
+      await switchCommercialType(serverAgreementId, {
+        action,
+        newSlabType: pendingSlabType,
+      });
+      onUpdate({ slabType: pendingSlabType });
+      resetDraft();
+      await refreshCommercialData();
+      enqueueSnackbar(
+        action === 'CONVERT' ? 'Slabs and targets converted' : 'Commercial data cleared',
+        { variant: 'success' },
+      );
+      setPendingSlabType(null);
+      typeSwitchModal.close();
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to switch slab type', { variant: 'error' });
+    } finally {
+      setSwitchingType(false);
+    }
   };
 
   const validateDraftSlab = () => {
@@ -86,8 +167,8 @@ export default function CommercialFields({
       enqueueSnackbar('To value must be greater than from value', { variant: 'warning' });
       return false;
     }
-    const payload = toSlabPayload(draftSlab);
-    const conflict = validateSlabAgainstExisting(savedSlabs, payload, editingSlabId);
+    const payload = toSlabPayload(draftSlab, slabType);
+    const conflict = validateSlabAgainstExisting(slabs, payload, editingSlabId);
     if (conflict) {
       enqueueSnackbar(conflict, { variant: 'warning' });
       return false;
@@ -104,16 +185,16 @@ export default function CommercialFields({
 
     setSavingSlab(true);
     try {
-      const payload = toSlabPayload(draftSlab);
+      const payload = toSlabPayload(draftSlab, slabType);
       if (editingSlabId) {
-        await updatePurchaseSlab(serverAgreementId, editingSlabId, payload);
+        await updateSlab(serverAgreementId, editingSlabId, payload);
         enqueueSnackbar('Slab updated', { variant: 'success' });
       } else {
-        await createPurchaseSlab(serverAgreementId, payload);
+        await createSlab(serverAgreementId, payload);
         enqueueSnackbar('Slab added', { variant: 'success' });
       }
       resetDraft();
-      await loadSlabs();
+      await refreshCommercialData();
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to save slab', { variant: 'error' });
     } finally {
@@ -134,12 +215,12 @@ export default function CommercialFields({
   const handleDeleteSlab = async (slabId) => {
     if (!serverAgreementId) return;
     try {
-      await deletePurchaseSlab(serverAgreementId, slabId);
+      await deleteSlab(serverAgreementId, slabId);
       if (editingSlabId === slabId) {
         resetDraft();
       }
       enqueueSnackbar('Slab deleted', { variant: 'success' });
-      await loadSlabs();
+      await refreshCommercialData();
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to delete slab', { variant: 'error' });
     }
@@ -150,8 +231,8 @@ export default function CommercialFields({
       enqueueSnackbar('Save the agreement draft first', { variant: 'warning' });
       return;
     }
-    if (!savedSlabs.length) {
-      enqueueSnackbar('Add at least one purchase slab first', { variant: 'warning' });
+    if (!slabs.length) {
+      enqueueSnackbar('Add at least one slab first', { variant: 'warning' });
       return;
     }
     uploadModal.open();
@@ -201,12 +282,32 @@ export default function CommercialFields({
 
       {commercials.commercialStructure === 'SLAB' && (
         <Box>
+          <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+            Slab Type *
+          </Typography>
+          <Box sx={{ mb: 2 }}>
+            <RadioGroup
+              row
+              value={slabType}
+              onChange={handleSlabTypeChange}
+            >
+              {SLAB_TYPE_OPTIONS.map((opt) => (
+                <FormControlLabel
+                  key={opt.value}
+                  value={opt.value}
+                  control={<Radio size="small" />}
+                  label={opt.label}
+                />
+              ))}
+            </RadioGroup>
+          </Box>
+
           <Typography variant="subtitle2" gutterBottom>Saved Slabs</Typography>
           {loadingSlabs ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
               <CircularProgress size={24} />
             </Box>
-          ) : savedSlabs.length > 0 ? (
+          ) : slabs.length > 0 ? (
             <TableContainer component={Paper} elevation={0} sx={{ mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
               <Table size="small">
                 <TableHead>
@@ -216,7 +317,7 @@ export default function CommercialFields({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {savedSlabs.map((slab) => (
+                  {slabs.map((slab) => (
                     <TableRow key={slab.id} selected={editingSlabId === slab.id}>
                       <TableCell>{formatSlabLabel(slab)}</TableCell>
                       <TableCell>
@@ -291,7 +392,7 @@ export default function CommercialFields({
             variant="contained"
             startIcon={<TableChart />}
             onClick={openUploadModal}
-            disabled={!savedSlabs.length}
+            disabled={!slabs.length}
           >
             Upload / View Commercials
           </Button>
@@ -303,15 +404,53 @@ export default function CommercialFields({
           )}
 
           <CommercialsUploadModal
+            key={commercialRefreshKey}
             open={uploadModal.isOpen}
             onClose={uploadModal.close}
             agreementId={serverAgreementId}
-            slabs={savedSlabs}
+            slabs={slabs}
+            slabType={slabType}
             startDate={startDate}
             expiryDate={expiryDate}
             selectedFrequencies={selectedFrequencies}
             onFrequenciesChange={(value) => onUpdate({ selectedFrequencies: value })}
+            onTargetsChanged={loadTargetCount}
           />
+
+          <Dialog
+            open={typeSwitchModal.isOpen}
+            onClose={switchingType ? undefined : handleTypeSwitchCancel}
+            maxWidth="sm"
+            fullWidth
+          >
+            <DialogTitle fontWeight={700}>Switch Slab Type?</DialogTitle>
+            <DialogContent>
+              <DialogContentText>
+                You already have slabs added under the current type. Do you want to convert the
+                existing slabs to the new type, or clear all existing data and switch?
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
+              <Button onClick={handleTypeSwitchCancel} disabled={switchingType}>
+                Cancel
+              </Button>
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={() => handleTypeSwitch('CLEAR')}
+                disabled={switchingType}
+              >
+                {switchingType ? <CircularProgress size={18} /> : 'Clear All Data'}
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => handleTypeSwitch('CONVERT')}
+                disabled={switchingType}
+              >
+                {switchingType ? <CircularProgress size={18} color="inherit" /> : 'Convert Existing'}
+              </Button>
+            </DialogActions>
+          </Dialog>
         </Box>
       )}
     </Box>

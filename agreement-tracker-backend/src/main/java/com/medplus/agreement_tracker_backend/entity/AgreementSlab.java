@@ -1,6 +1,7 @@
 package com.medplus.agreement_tracker_backend.entity;
 
 import com.medplus.agreement_tracker_backend.entity.base.AuditableEntity;
+import com.medplus.agreement_tracker_backend.enums.CommercialSlabType;
 import com.medplus.agreement_tracker_backend.enums.SlabValueType;
 import jakarta.persistence.*;
 import lombok.*;
@@ -8,15 +9,15 @@ import lombok.*;
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "agreement_purchase_slabs", indexes = {
-        @Index(name = "idx_aps_agreement_version_id", columnList = "agreement_version_id")
+@Table(name = "agreement_slabs", indexes = {
+        @Index(name = "idx_as_agreement_version_id", columnList = "agreement_version_id")
 })
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AgreementPurchaseSlab extends AuditableEntity {
+public class AgreementSlab extends AuditableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -25,6 +26,11 @@ public class AgreementPurchaseSlab extends AuditableEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "agreement_version_id", nullable = false)
     private AgreementVersion agreementVersion;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "slab_type", nullable = false, length = 20)
+    @Builder.Default
+    private CommercialSlabType slabType = CommercialSlabType.PURCHASE;
 
     @Column(name = "from_value", nullable = false, precision = 15, scale = 2)
     private BigDecimal fromValue;

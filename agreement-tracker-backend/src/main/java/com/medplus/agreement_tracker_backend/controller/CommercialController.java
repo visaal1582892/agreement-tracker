@@ -1,9 +1,11 @@
 package com.medplus.agreement_tracker_backend.controller;
 
 import com.medplus.agreement_tracker_backend.dto.request.CommercialTemplateRequest;
+import com.medplus.agreement_tracker_backend.dto.request.CommercialTypeSwitchRequest;
 import com.medplus.agreement_tracker_backend.dto.response.CommercialUploadResponse;
-import com.medplus.agreement_tracker_backend.dto.request.UpsertSaleTargetRequest;
+import com.medplus.agreement_tracker_backend.dto.request.UpsertTargetRequest;
 import com.medplus.agreement_tracker_backend.dto.response.TimePeriodTargetsPreviewResponse;
+import com.medplus.agreement_tracker_backend.enums.CommercialSlabType;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;
 import com.medplus.agreement_tracker_backend.service.CommercialService;
 import jakarta.validation.Valid;
@@ -49,9 +51,10 @@ public class CommercialController {
     public ResponseEntity<CommercialUploadResponse> uploadTargets(
             @PathVariable Long agreementVersionId,
             @RequestParam("file") MultipartFile file,
+            @RequestParam(required = false) CommercialSlabType slabType,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(
-                commercialService.uploadCommercialTargets(agreementVersionId, file, principal.getId()));
+                commercialService.uploadCommercialTargets(agreementVersionId, file, slabType, principal.getId()));
     }
 
     @GetMapping("/targets/preview")
@@ -64,11 +67,21 @@ public class CommercialController {
 
     @PutMapping("/targets")
     @PreAuthorize(AGREEMENT_EDIT)
-    public ResponseEntity<Void> upsertSaleTarget(
+    public ResponseEntity<Void> upsertTarget(
             @PathVariable Long agreementVersionId,
-            @Valid @RequestBody UpsertSaleTargetRequest request,
+            @Valid @RequestBody UpsertTargetRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
-        commercialService.upsertSaleTarget(agreementVersionId, request, principal.getId());
+        commercialService.upsertTarget(agreementVersionId, request, principal.getId());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/type-switch")
+    @PreAuthorize(AGREEMENT_EDIT)
+    public ResponseEntity<Void> switchCommercialType(
+            @PathVariable Long agreementVersionId,
+            @Valid @RequestBody CommercialTypeSwitchRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        commercialService.switchCommercialType(agreementVersionId, request, principal.getId());
         return ResponseEntity.noContent().build();
     }
 }

@@ -1,17 +1,18 @@
 package com.medplus.agreement_tracker_backend.service.impl;
 
 import com.medplus.agreement_tracker_backend.dto.request.SlabDTO;
-import com.medplus.agreement_tracker_backend.dto.response.PurchaseSlabResponse;
-import com.medplus.agreement_tracker_backend.entity.AgreementPurchaseSlab;
+import com.medplus.agreement_tracker_backend.dto.response.AgreementSlabResponse;
+import com.medplus.agreement_tracker_backend.entity.AgreementSlab;
 import com.medplus.agreement_tracker_backend.entity.AgreementVersion;
 import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
+import com.medplus.agreement_tracker_backend.enums.CommercialSlabType;
 import com.medplus.agreement_tracker_backend.exception.BusinessException;
 import com.medplus.agreement_tracker_backend.exception.ResourceNotFoundException;
 import com.medplus.agreement_tracker_backend.exception.UnauthorizedException;
-import com.medplus.agreement_tracker_backend.repository.AgreementPurchaseSlabRepository;
-import com.medplus.agreement_tracker_backend.repository.AgreementSaleTargetRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementSlabRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementTargetRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementVersionRepository;
-import com.medplus.agreement_tracker_backend.service.AgreementPurchaseSlabService;
+import com.medplus.agreement_tracker_backend.service.AgreementSlabService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,54 +22,59 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class AgreementPurchaseSlabServiceImpl implements AgreementPurchaseSlabService {
+public class AgreementSlabServiceImpl implements AgreementSlabService {
 
     private final AgreementVersionRepository agreementVersionRepository;
-    private final AgreementPurchaseSlabRepository purchaseSlabRepository;
-    private final AgreementSaleTargetRepository saleTargetRepository;
+    private final AgreementSlabRepository slabRepository;
+    private final AgreementTargetRepository targetRepository;
 
     @Override
     @Transactional(readOnly = true)
-    public List<PurchaseSlabResponse> listSlabs(Long agreementId, Long currentUserId) {
+    public List<AgreementSlabResponse> listSlabs(Long agreementId, CommercialSlabType slabType, Long currentUserId) {
         loadVersionForRead(agreementId, currentUserId);
-        return purchaseSlabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementId).stream()
-                .map(this::toResponse)
-                .toList();
+        List<AgreementSlab> slabs = slabType != null
+                ? slabRepository.findByAgreementVersionIdAndSlabTypeOrderByFromValueAsc(agreementId, slabType)
+                : slabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementId);
+        return slabs.stream().map(this::toResponse).toList();
     }
 
     @Override
     @Transactional
-    public PurchaseSlabResponse createSlab(Long agreementId, SlabDTO request, Long currentUserId) {
+    public AgreementSlabResponse createSlab(Long agreementId, SlabDTO request, Long currentUserId) {
         AgreementVersion version = loadDraftVersionForMutation(agreementId, currentUserId);
+        CommercialSlabType slabType = resolveSlabType(request);
         validateSlabValues(request.fromValue(), request.toValue());
-        validateSlabUniqueness(agreementId, request, null);
+        validateSlabUniqueness(agreementId, request, slabType, null);
 
-        AgreementPurchaseSlab slab = AgreementPurchaseSlab.builder()
+        AgreementSlab slab = AgreementSlab.builder()
                 .agreementVersion(version)
+                .slabType(slabType)
                 .fromValue(request.fromValue())
                 .toValue(request.toValue())
                 .valueType(request.valueType())
                 .commercialValue(request.commercialValue())
                 .build();
         slab.setCreatedByUserId(currentUserId);
-        slab = purchaseSlabRepository.save(slab);
+        slab = slabRepository.save(slab);
         return toResponse(slab);
     }
 
     @Override
     @Transactional
-    public PurchaseSlabResponse updateSlab(Long agreementId, Long slabId, SlabDTO request, Long currentUserId) {
+    public AgreementSlabResponse updateSlab(Long agreementId, Long slabId, SlabDTO request, Long currentUserId) {
         loadDraftVersionForMutation(agreementId, currentUserId);
-        AgreementPurchaseSlab slab = loadSlabForVersion(agreementId, slabId);
+        AgreementSlab slab = loadSlabForVersion(agreementId, slabId);
+        CommercialSlabType slabType = resolveSlabType(request);
         validateSlabValues(request.fromValue(), request.toValue());
-        validateSlabUniqueness(agreementId, request, slabId);
+        validateSlabUniqueness(agreementId, request, slabType, slabId);
 
+        slab.setSlabType(slabType);
         slab.setFromValue(request.fromValue());
         slab.setToValue(request.toValue());
         slab.setValueType(request.valueType());
         slab.setCommercialValue(request.commercialValue());
         slab.setUpdatedByUserId(currentUserId);
-        slab = purchaseSlabRepository.save(slab);
+        slab = slabRepository.save(slab);
         return toResponse(slab);
     }
 
@@ -76,9 +82,13 @@ public class AgreementPurchaseSlabServiceImpl implements AgreementPurchaseSlabSe
     @Transactional
     public void deleteSlab(Long agreementId, Long slabId, Long currentUserId) {
         loadDraftVersionForMutation(agreementId, currentUserId);
-        AgreementPurchaseSlab slab = loadSlabForVersion(agreementId, slabId);
-        saleTargetRepository.deleteBySlabId(slab.getId());
-        purchaseSlabRepository.delete(slab);
+        AgreementSlab slab = loadSlabForVersion(agreementId, slabId);
+        targetRepository.deleteBySlabId(slab.getId());
+        slabRepository.delete(slab);
+    }
+
+    private CommercialSlabType resolveSlabType(SlabDTO request) {
+        return request.slabType() != null ? request.slabType() : CommercialSlabType.PURCHASE;
     }
 
     private AgreementVersion loadDraftVersionForMutation(Long agreementVersionId, Long userId) {
@@ -89,7 +99,7 @@ public class AgreementPurchaseSlabServiceImpl implements AgreementPurchaseSlabSe
         }
         if (version.getApprovalStatus() != ApprovalStatus.DRAFT) {
             throw new UnauthorizedException(
-                    "Purchase slabs can only be modified while the agreement is in DRAFT status");
+                    "Slabs can only be modified while the agreement is in DRAFT status");
         }
         return version;
     }
@@ -104,11 +114,11 @@ public class AgreementPurchaseSlabServiceImpl implements AgreementPurchaseSlabSe
         return version;
     }
 
-    private AgreementPurchaseSlab loadSlabForVersion(Long agreementVersionId, Long slabId) {
-        AgreementPurchaseSlab slab = purchaseSlabRepository.findById(slabId)
-                .orElseThrow(() -> new ResourceNotFoundException("PurchaseSlab", slabId));
+    private AgreementSlab loadSlabForVersion(Long agreementVersionId, Long slabId) {
+        AgreementSlab slab = slabRepository.findById(slabId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementSlab", slabId));
         if (!slab.getAgreementVersion().getId().equals(agreementVersionId)) {
-            throw new ResourceNotFoundException("PurchaseSlab", slabId);
+            throw new ResourceNotFoundException("AgreementSlab", slabId);
         }
         return slab;
     }
@@ -122,10 +132,11 @@ public class AgreementPurchaseSlabServiceImpl implements AgreementPurchaseSlabSe
         }
     }
 
-    private void validateSlabUniqueness(Long agreementVersionId, SlabDTO request, Long excludeSlabId) {
-        List<AgreementPurchaseSlab> existing =
-                purchaseSlabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementVersionId);
-        for (AgreementPurchaseSlab slab : existing) {
+    private void validateSlabUniqueness(Long agreementVersionId, SlabDTO request,
+                                        CommercialSlabType slabType, Long excludeSlabId) {
+        List<AgreementSlab> existing = slabRepository
+                .findByAgreementVersionIdAndSlabTypeOrderByFromValueAsc(agreementVersionId, slabType);
+        for (AgreementSlab slab : existing) {
             if (excludeSlabId != null && slab.getId().equals(excludeSlabId)) {
                 continue;
             }
@@ -139,7 +150,7 @@ public class AgreementPurchaseSlabServiceImpl implements AgreementPurchaseSlabSe
         }
     }
 
-    private boolean isExactDuplicate(AgreementPurchaseSlab slab, SlabDTO request) {
+    private boolean isExactDuplicate(AgreementSlab slab, SlabDTO request) {
         return slab.getFromValue().compareTo(request.fromValue()) == 0
                 && slab.getToValue().compareTo(request.toValue()) == 0
                 && slab.getValueType() == request.valueType()
@@ -150,7 +161,7 @@ public class AgreementPurchaseSlabServiceImpl implements AgreementPurchaseSlabSe
         return from1.compareTo(to2) < 0 && from2.compareTo(to1) < 0;
     }
 
-    private String formatSlabRange(AgreementPurchaseSlab slab) {
+    private String formatSlabRange(AgreementSlab slab) {
         String range = slab.getFromValue().stripTrailingZeros().toPlainString()
                 + " - " + slab.getToValue().stripTrailingZeros().toPlainString();
         if (slab.getValueType().name().equals("PERCENTAGE")) {
@@ -159,9 +170,10 @@ public class AgreementPurchaseSlabServiceImpl implements AgreementPurchaseSlabSe
         return range + " (Fixed: " + slab.getCommercialValue().stripTrailingZeros().toPlainString() + ")";
     }
 
-    private PurchaseSlabResponse toResponse(AgreementPurchaseSlab slab) {
-        return new PurchaseSlabResponse(
+    private AgreementSlabResponse toResponse(AgreementSlab slab) {
+        return new AgreementSlabResponse(
                 slab.getId(),
+                slab.getSlabType(),
                 slab.getFromValue(),
                 slab.getToValue(),
                 slab.getValueType(),

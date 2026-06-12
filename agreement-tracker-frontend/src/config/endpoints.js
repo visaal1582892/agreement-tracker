@@ -50,6 +50,7 @@ export const ENDPOINTS = {
   COMMERCIAL_UPLOAD: (id) => `${BASE}/agreement-versions/${id}/commercials/upload`,
   COMMERCIAL_TARGETS_PREVIEW: (id) => `${BASE}/agreement-versions/${id}/commercials/targets/preview`,
   COMMERCIAL_TARGETS: (id) => `${BASE}/agreement-versions/${id}/commercials/targets`,
+  COMMERCIAL_TYPE_SWITCH: (id) => `${BASE}/agreement-versions/${id}/commercials/type-switch`,
 
   // Company agreement groups
   COMPANY_AGREEMENT_GROUPS: (companyId) => `${BASE}/companies/${companyId}/agreement-groups`,

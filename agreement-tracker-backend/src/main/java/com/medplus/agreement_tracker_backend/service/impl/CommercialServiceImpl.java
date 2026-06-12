@@ -1,21 +1,24 @@
 package com.medplus.agreement_tracker_backend.service.impl;
 
 import com.medplus.agreement_tracker_backend.dto.request.CommercialTemplateRequest;
+import com.medplus.agreement_tracker_backend.dto.request.CommercialTypeSwitchRequest;
 import com.medplus.agreement_tracker_backend.dto.request.SlabDTO;
-import com.medplus.agreement_tracker_backend.dto.request.UpsertSaleTargetRequest;
+import com.medplus.agreement_tracker_backend.dto.request.UpsertTargetRequest;
 import com.medplus.agreement_tracker_backend.dto.response.CommercialUploadResponse;
 import com.medplus.agreement_tracker_backend.dto.response.TimePeriodTargetsPreviewResponse;
 import com.medplus.agreement_tracker_backend.entity.AgreementVersion;
-import com.medplus.agreement_tracker_backend.entity.AgreementPurchaseSlab;
-import com.medplus.agreement_tracker_backend.entity.AgreementSaleTarget;
+import com.medplus.agreement_tracker_backend.entity.AgreementSlab;
+import com.medplus.agreement_tracker_backend.entity.AgreementTarget;
 import com.medplus.agreement_tracker_backend.entity.AgreementTimePeriod;
 import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
+import com.medplus.agreement_tracker_backend.enums.CommercialSlabType;
+import com.medplus.agreement_tracker_backend.enums.CommercialTypeSwitchAction;
 import com.medplus.agreement_tracker_backend.exception.IncompleteAgreementException;
 import com.medplus.agreement_tracker_backend.exception.ResourceNotFoundException;
 import com.medplus.agreement_tracker_backend.exception.UnauthorizedException;
-import com.medplus.agreement_tracker_backend.repository.AgreementPurchaseSlabRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementSlabRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementVersionRepository;
-import com.medplus.agreement_tracker_backend.repository.AgreementSaleTargetRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementTargetRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementTimePeriodRepository;
 import com.medplus.agreement_tracker_backend.service.CommercialService;
 import com.medplus.agreement_tracker_backend.util.ExcelCellReader;
@@ -65,8 +68,8 @@ public class CommercialServiceImpl implements CommercialService {
     );
 
     private final AgreementVersionRepository agreementVersionRepository;
-    private final AgreementPurchaseSlabRepository purchaseSlabRepository;
-    private final AgreementSaleTargetRepository saleTargetRepository;
+    private final AgreementSlabRepository slabRepository;
+    private final AgreementTargetRepository targetRepository;
     private final AgreementTimePeriodRepository timePeriodRepository;
 
     @Override
@@ -77,11 +80,12 @@ public class CommercialServiceImpl implements CommercialService {
         validateAgreementDates(version);
         validateFrequencies(request.selectedFrequencies());
 
-        List<AgreementPurchaseSlab> purchaseSlabs =
-                purchaseSlabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementId);
-        if (purchaseSlabs.isEmpty()) {
+        CommercialSlabType slabType = resolveSlabType(request.slabType());
+        List<AgreementSlab> slabs = slabRepository
+                .findByAgreementVersionIdAndSlabTypeOrderByFromValueAsc(agreementId, slabType);
+        if (slabs.isEmpty()) {
             throw new IncompleteAgreementException(
-                    "No purchase slabs found for this agreement. Add at least one slab before generating the template.");
+                    "No slabs found for this agreement. Add at least one slab before generating the template.");
         }
 
         LocalDate startDate = version.getStartDate();
@@ -89,12 +93,13 @@ public class CommercialServiceImpl implements CommercialService {
         List<String> groupedPeriodNames = buildGroupedPeriodNames(
                 request.selectedFrequencies(), startDate, expiryDate, currentUserId);
 
-        List<SlabDTO> slabDtos = purchaseSlabs.stream()
+        List<SlabDTO> slabDtos = slabs.stream()
                 .map(slab -> new SlabDTO(
                         slab.getFromValue(),
                         slab.getToValue(),
                         slab.getValueType(),
-                        slab.getCommercialValue()))
+                        slab.getCommercialValue(),
+                        slab.getSlabType()))
                 .toList();
 
         return buildExcel(slabDtos, groupedPeriodNames);
@@ -102,20 +107,24 @@ public class CommercialServiceImpl implements CommercialService {
 
     @Override
     @Transactional
-    public CommercialUploadResponse uploadCommercialTargets(Long agreementId, MultipartFile file, Long currentUserId) {
+    public CommercialUploadResponse uploadCommercialTargets(
+            Long agreementId, MultipartFile file, CommercialSlabType slabType, Long currentUserId) {
         if (file == null || file.isEmpty()) {
             throw new IncompleteAgreementException("Uploaded Excel file is required.");
         }
 
         AgreementVersion version = loadDraftVersionForMutation(agreementId, currentUserId);
 
-        List<AgreementPurchaseSlab> slabs = purchaseSlabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementId);
+        CommercialSlabType resolvedSlabType = slabType != null ? slabType : CommercialSlabType.PURCHASE;
+        List<AgreementSlab> slabs = slabRepository
+                .findByAgreementVersionIdAndSlabTypeOrderByFromValueAsc(agreementId, resolvedSlabType);
         if (slabs.isEmpty()) {
             throw new IncompleteAgreementException(
-                    "No purchase slabs found for this agreement. Generate the commercial template first.");
+                    "No slabs found for this agreement. Generate the commercial template first.");
         }
 
-        saleTargetRepository.deleteByAgreementVersionId(agreementId);
+        targetRepository.deleteByAgreementVersionIdAndTargetType(
+                agreementId, resolvedSlabType.inverseTargetType());
 
         try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
@@ -128,10 +137,10 @@ public class CommercialServiceImpl implements CommercialService {
                 throw new IncompleteAgreementException("Excel file is missing the header row.");
             }
 
-            Map<Integer, AgreementPurchaseSlab> columnSlabs = mapHeaderColumns(headerRow, slabs);
+            Map<Integer, AgreementSlab> columnSlabs = mapHeaderColumns(headerRow, slabs);
             if (columnSlabs.isEmpty()) {
                 throw new IncompleteAgreementException(
-                        "No slab columns matched the saved purchase slabs for this agreement.");
+                        "No slab columns matched the saved slabs for this agreement.");
             }
 
             int savedCount = 0;
@@ -152,21 +161,23 @@ public class CommercialServiceImpl implements CommercialService {
                 }
 
                 boolean rowHasSavedTarget = false;
-                for (Map.Entry<Integer, AgreementPurchaseSlab> entry : columnSlabs.entrySet()) {
+                for (Map.Entry<Integer, AgreementSlab> entry : columnSlabs.entrySet()) {
                     BigDecimal targetValue = ExcelCellReader.readAsDecimal(row.getCell(entry.getKey()));
                     if (targetValue == null) {
                         skippedCells++;
                         continue;
                     }
 
-                    AgreementSaleTarget target = AgreementSaleTarget.builder()
+                    AgreementSlab slab = entry.getValue();
+                    AgreementTarget target = AgreementTarget.builder()
                             .agreementVersion(version)
                             .timePeriod(timePeriod)
-                            .slab(entry.getValue())
+                            .slab(slab)
+                            .targetType(slab.getSlabType().inverseTargetType())
                             .targetValue(targetValue)
                             .build();
                     target.setCreatedByUserId(currentUserId);
-                    saleTargetRepository.save(target);
+                    targetRepository.save(target);
                     savedCount++;
                     rowHasSavedTarget = true;
                 }
@@ -187,11 +198,11 @@ public class CommercialServiceImpl implements CommercialService {
     public List<TimePeriodTargetsPreviewResponse> getTargetsPreview(Long agreementId, Long currentUserId) {
         loadVersionForRead(agreementId, currentUserId);
 
-        List<AgreementSaleTarget> targets = saleTargetRepository.findByAgreementVersionId(agreementId);
+        List<AgreementTarget> targets = targetRepository.findByAgreementVersionId(agreementId);
         Map<Long, String> periodNames = new HashMap<>();
         Map<Long, Map<Long, BigDecimal>> periodTargets = new HashMap<>();
 
-        for (AgreementSaleTarget target : targets) {
+        for (AgreementTarget target : targets) {
             Long periodId = target.getTimePeriod().getId();
             periodNames.put(periodId, target.getTimePeriod().getName());
             periodTargets.computeIfAbsent(periodId, id -> new HashMap<>())
@@ -199,7 +210,7 @@ public class CommercialServiceImpl implements CommercialService {
         }
 
         return periodNames.entrySet().stream()
-                .sorted(Map.Entry.comparingByValue())
+                .sorted(Map.Entry.comparingByKey())
                 .map(entry -> new TimePeriodTargetsPreviewResponse(
                         entry.getKey(),
                         entry.getValue(),
@@ -209,42 +220,79 @@ public class CommercialServiceImpl implements CommercialService {
 
     @Override
     @Transactional
-    public void upsertSaleTarget(Long agreementId, UpsertSaleTargetRequest request, Long currentUserId) {
+    public void upsertTarget(Long agreementId, UpsertTargetRequest request, Long currentUserId) {
         AgreementVersion version = loadDraftVersionForMutation(agreementId, currentUserId);
 
         AgreementTimePeriod timePeriod = timePeriodRepository.findById(request.timePeriodId())
                 .orElseThrow(() -> new ResourceNotFoundException("TimePeriod", request.timePeriodId()));
 
-        AgreementPurchaseSlab slab = purchaseSlabRepository.findById(request.slabId())
-                .orElseThrow(() -> new ResourceNotFoundException("PurchaseSlab", request.slabId()));
+        AgreementSlab slab = slabRepository.findById(request.slabId())
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementSlab", request.slabId()));
         if (!slab.getAgreementVersion().getId().equals(agreementId)) {
-            throw new ResourceNotFoundException("PurchaseSlab", request.slabId());
+            throw new ResourceNotFoundException("AgreementSlab", request.slabId());
         }
 
-        Optional<AgreementSaleTarget> existing = saleTargetRepository
+        CommercialSlabType targetType = slab.getSlabType().inverseTargetType();
+
+        Optional<AgreementTarget> existing = targetRepository
                 .findByAgreementVersionIdAndTimePeriodIdAndSlabId(agreementId, request.timePeriodId(), request.slabId());
 
         if (request.targetValue() == null) {
-            existing.ifPresent(saleTargetRepository::delete);
+            existing.ifPresent(targetRepository::delete);
             return;
         }
 
         if (existing.isPresent()) {
-            AgreementSaleTarget target = existing.get();
+            AgreementTarget target = existing.get();
             target.setTargetValue(request.targetValue());
+            target.setTargetType(targetType);
             target.setUpdatedByUserId(currentUserId);
-            saleTargetRepository.save(target);
+            targetRepository.save(target);
             return;
         }
 
-        AgreementSaleTarget target = AgreementSaleTarget.builder()
+        AgreementTarget target = AgreementTarget.builder()
                 .agreementVersion(version)
                 .timePeriod(timePeriod)
                 .slab(slab)
+                .targetType(targetType)
                 .targetValue(request.targetValue())
                 .build();
         target.setCreatedByUserId(currentUserId);
-        saleTargetRepository.save(target);
+        targetRepository.save(target);
+    }
+
+    @Override
+    @Transactional
+    public void switchCommercialType(Long agreementId, CommercialTypeSwitchRequest request, Long currentUserId) {
+        loadDraftVersionForMutation(agreementId, currentUserId);
+
+        if (request.action() == CommercialTypeSwitchAction.CLEAR) {
+            targetRepository.deleteByAgreementVersionId(agreementId);
+            slabRepository.deleteByAgreementVersionId(agreementId);
+            return;
+        }
+
+        CommercialSlabType newSlabType = request.newSlabType();
+        CommercialSlabType newTargetType = newSlabType.inverseTargetType();
+
+        List<AgreementSlab> slabs = slabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementId);
+        for (AgreementSlab slab : slabs) {
+            slab.setSlabType(newSlabType);
+            slab.setUpdatedByUserId(currentUserId);
+        }
+        slabRepository.saveAll(slabs);
+
+        List<AgreementTarget> targets = targetRepository.findByAgreementVersionId(agreementId);
+        for (AgreementTarget target : targets) {
+            target.setTargetType(newTargetType);
+            target.setUpdatedByUserId(currentUserId);
+        }
+        targetRepository.saveAll(targets);
+    }
+
+    private CommercialSlabType resolveSlabType(CommercialSlabType slabType) {
+        return slabType != null ? slabType : CommercialSlabType.PURCHASE;
     }
 
     private AgreementVersion loadDraftVersionForMutation(Long agreementVersionId, Long userId) {
@@ -270,20 +318,20 @@ public class CommercialServiceImpl implements CommercialService {
         return version;
     }
 
-    private Map<Integer, AgreementPurchaseSlab> mapHeaderColumns(Row headerRow, List<AgreementPurchaseSlab> slabs) {
-        Map<String, AgreementPurchaseSlab> headerLookup = new HashMap<>();
-        for (AgreementPurchaseSlab slab : slabs) {
+    private Map<Integer, AgreementSlab> mapHeaderColumns(Row headerRow, List<AgreementSlab> slabs) {
+        Map<String, AgreementSlab> headerLookup = new HashMap<>();
+        for (AgreementSlab slab : slabs) {
             headerLookup.put(SlabHeaderFormatter.format(slab), slab);
         }
 
-        Map<Integer, AgreementPurchaseSlab> columnSlabs = new HashMap<>();
+        Map<Integer, AgreementSlab> columnSlabs = new HashMap<>();
         for (int columnIndex = 1; columnIndex < headerRow.getLastCellNum(); columnIndex++) {
             Cell headerCell = headerRow.getCell(columnIndex);
             String header = ExcelCellReader.readAsString(headerCell);
             if (header.isEmpty()) {
                 continue;
             }
-            AgreementPurchaseSlab slab = headerLookup.get(header);
+            AgreementSlab slab = headerLookup.get(header);
             if (slab != null) {
                 columnSlabs.put(columnIndex, slab);
             }

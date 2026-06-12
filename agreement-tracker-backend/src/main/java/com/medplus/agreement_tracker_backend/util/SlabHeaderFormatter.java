@@ -1,7 +1,7 @@
 package com.medplus.agreement_tracker_backend.util;
 
 import com.medplus.agreement_tracker_backend.dto.request.SlabDTO;
-import com.medplus.agreement_tracker_backend.entity.AgreementPurchaseSlab;
+import com.medplus.agreement_tracker_backend.entity.AgreementSlab;
 import com.medplus.agreement_tracker_backend.enums.SlabValueType;
 
 import java.math.BigDecimal;
@@ -14,7 +14,7 @@ public final class SlabHeaderFormatter {
         return format(slab.fromValue(), slab.toValue(), slab.valueType(), slab.commercialValue());
     }
 
-    public static String format(AgreementPurchaseSlab slab) {
+    public static String format(AgreementSlab slab) {
         return format(slab.getFromValue(), slab.getToValue(), slab.getValueType(), slab.getCommercialValue());
     }
 

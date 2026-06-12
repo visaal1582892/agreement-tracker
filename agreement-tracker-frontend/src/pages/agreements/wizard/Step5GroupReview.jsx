@@ -127,7 +127,7 @@ export default function Step5GroupReview({ sharedState, groupDrafts, activeAgree
                 />
               )}
               {activeReview.version.commercialStructure === 'SLAB' && (
-                <ReviewRow label="Purchase Slabs" value={`${activeReview.slabs.length} tier(s)`} />
+                <ReviewRow label="Slabs" value={`${activeReview.slabs.length} tier(s)`} />
               )}
             </Grid>
           </Grid>
