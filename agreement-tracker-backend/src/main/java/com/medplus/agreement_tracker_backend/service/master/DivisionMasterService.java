@@ -43,13 +43,17 @@ public class DivisionMasterService {
     }
 
     @Transactional(readOnly = true)
-    public List<DivisionMaster> findByManufacturer(Long manufacturerId) {
-        return divisionRepository.findByManufacturerIdAndIsActiveTrue(manufacturerId);
+    public List<DivisionMasterResponse> findByManufacturer(Long manufacturerId) {
+        return divisionRepository.findActiveByManufacturerId(manufacturerId).stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)
-    public List<DivisionMaster> findAllActive() {
-        return divisionRepository.findByIsActiveTrue();
+    public List<DivisionMasterResponse> findAllActive() {
+        return divisionRepository.findAllActiveWithManufacturer().stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     public DivisionMasterResponse create(DivisionMasterRequest req, Long userId) {

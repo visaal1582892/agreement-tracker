@@ -15,6 +15,7 @@ import {
   formatSlabLabel,
   toSlabPayload,
   updatePurchaseSlab,
+  validateSlabAgainstExisting,
 } from '../../../api/commercialApi';
 import CommercialValueInput from '../../../components/forms/CommercialValueInput';
 import CommercialsUploadModal from './CommercialsUploadModal';
@@ -83,6 +84,12 @@ export default function CommercialFields({
     }
     if (Number(draftSlab.toValue) <= Number(draftSlab.fromValue)) {
       enqueueSnackbar('To value must be greater than from value', { variant: 'warning' });
+      return false;
+    }
+    const payload = toSlabPayload(draftSlab);
+    const conflict = validateSlabAgainstExisting(savedSlabs, payload, editingSlabId);
+    if (conflict) {
+      enqueueSnackbar(conflict, { variant: 'warning' });
       return false;
     }
     return true;

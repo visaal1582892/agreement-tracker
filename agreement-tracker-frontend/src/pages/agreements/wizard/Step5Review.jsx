@@ -81,6 +81,12 @@ export default function Step5Review({ state, serverAgreementId }) {
               <ReviewRow label="Agreement Name" value={state.agreementName} />
               <ReviewRow label="Income Type" value={agreement.details.incomeTypeId ? `ID: ${agreement.details.incomeTypeId}` : ''} />
               <ReviewRow label="Agreement Type" value={agreement.details.agreementTypeId ? `ID: ${agreement.details.agreementTypeId}` : ''} />
+              <ReviewRow
+                label="States"
+                value={agreement.details.stateIds?.length
+                  ? `${agreement.details.stateIds.length} selected`
+                  : ''}
+              />
               <ReviewRow label="Start Date" value={agreement.details.startDate ? dayjs(agreement.details.startDate).format('DD MMM YYYY') : ''} />
               <ReviewRow label="Expiry Date" value={agreement.details.expiryDate ? dayjs(agreement.details.expiryDate).format('DD MMM YYYY') : ''} />
               <ReviewRow label="Tenure" value={formatTenureFromDates(agreement.details.startDate, agreement.details.expiryDate)} />

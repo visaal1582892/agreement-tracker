@@ -4,7 +4,7 @@ import {
 } from '@mui/material';
 import {
   Business, LocalShipping, Factory, AccountTree,
-  Inventory2, AttachMoney, Description, ManageAccounts, Security,
+  Inventory2, AttachMoney, Description, ManageAccounts, Security, Map,
 } from '@mui/icons-material';
 import { BRAND } from '../../config/theme';
 import { ROUTES } from '../../config/routes';
@@ -19,6 +19,7 @@ const MASTER_TABS = [
   { label: 'Products',         icon: <Inventory2 />,      path: ROUTES.MASTER_PRODUCTS,        rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
   { label: 'Income Types',     icon: <AttachMoney />,     path: ROUTES.MASTER_INCOME_TYPES,    rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
   { label: 'Agreement Types',  icon: <Description />,     path: ROUTES.MASTER_AGREEMENT_TYPES, rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'States',           icon: <Map />,             path: ROUTES.MASTER_STATES,          rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
   { label: 'Roles',            icon: <ManageAccounts />,  path: ROUTES.MASTER_ROLES,           rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
   { label: 'Rights',           icon: <Security />,        path: ROUTES.MASTER_RIGHTS,          rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
 ];

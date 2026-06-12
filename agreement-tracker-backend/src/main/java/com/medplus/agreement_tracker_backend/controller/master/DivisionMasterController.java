@@ -4,7 +4,6 @@ import com.medplus.agreement_tracker_backend.dto.request.MasterPageRequest;
 import com.medplus.agreement_tracker_backend.dto.request.master.DivisionMasterRequest;
 import com.medplus.agreement_tracker_backend.dto.response.PagedResponse;
 import com.medplus.agreement_tracker_backend.dto.response.master.DivisionMasterResponse;
-import com.medplus.agreement_tracker_backend.entity.DivisionMaster;
 import com.medplus.agreement_tracker_backend.security.UserPrincipal;
 import com.medplus.agreement_tracker_backend.service.master.DivisionMasterService;
 import jakarta.validation.Valid;
@@ -35,13 +34,13 @@ public class DivisionMasterController {
     /** Cascade dropdown used by the agreement wizard. */
     @GetMapping("/manufacturers/{manufacturerId}/divisions")
     @PreAuthorize(MASTER_OR_AGREEMENT_READ)
-    public ResponseEntity<List<DivisionMaster>> getByManufacturer(@PathVariable Long manufacturerId) {
+    public ResponseEntity<List<DivisionMasterResponse>> getByManufacturer(@PathVariable Long manufacturerId) {
         return ResponseEntity.ok(service.findByManufacturer(manufacturerId));
     }
 
     @GetMapping("/divisions")
     @PreAuthorize(MASTER_VIEW)
-    public ResponseEntity<List<DivisionMaster>> listAll() {
+    public ResponseEntity<List<DivisionMasterResponse>> listAll() {
         return ResponseEntity.ok(service.findAllActive());
     }
 

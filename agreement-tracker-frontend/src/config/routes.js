@@ -24,6 +24,7 @@ export const ROUTES = {
   MASTER_PRODUCTS: '/master/products',
   MASTER_INCOME_TYPES: '/master/income-types',
   MASTER_AGREEMENT_TYPES: '/master/agreement-types',
+  MASTER_STATES: '/master/states',
   MASTER_ROLES: '/master/roles',
   MASTER_RIGHTS: '/master/rights',
 };

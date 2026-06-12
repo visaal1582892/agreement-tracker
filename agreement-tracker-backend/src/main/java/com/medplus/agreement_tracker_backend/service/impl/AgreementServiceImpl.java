@@ -33,6 +33,7 @@ import com.medplus.agreement_tracker_backend.entity.CompanyAgreementGroup;
 import com.medplus.agreement_tracker_backend.entity.CompanyMaster;
 import com.medplus.agreement_tracker_backend.entity.IncomeType;
 import com.medplus.agreement_tracker_backend.entity.ProductMaster;
+import com.medplus.agreement_tracker_backend.entity.StateMaster;
 import com.medplus.agreement_tracker_backend.entity.User;
 import com.medplus.agreement_tracker_backend.entity.VendorMaster;
 import com.medplus.agreement_tracker_backend.enums.ActionRequestStatus;
@@ -63,6 +64,7 @@ import com.medplus.agreement_tracker_backend.repository.AgreementVersionReposito
 import com.medplus.agreement_tracker_backend.repository.CompanyAgreementGroupRepository;
 import com.medplus.agreement_tracker_backend.repository.IncomeTypeRepository;
 import com.medplus.agreement_tracker_backend.repository.ProductMasterRepository;
+import com.medplus.agreement_tracker_backend.repository.StateMasterRepository;
 import com.medplus.agreement_tracker_backend.repository.UserRepository;
 import com.medplus.agreement_tracker_backend.repository.VendorMasterRepository;
 import com.medplus.agreement_tracker_backend.service.AgreementService;
@@ -86,6 +88,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -116,6 +119,7 @@ public class AgreementServiceImpl implements AgreementService {
     private final IncomeTypeRepository incomeTypeRepository;
     private final AgreementTypeRepository agreementTypeRepository;
     private final VendorMasterRepository vendorMasterRepository;
+    private final StateMasterRepository stateMasterRepository;
     private final ProductMasterRepository productMasterRepository;
     private final AgreementStatusResolver statusResolver;
     private final TransactionTemplate groupSubmitTransactionTemplate;
@@ -149,6 +153,7 @@ public class AgreementServiceImpl implements AgreementService {
             IncomeTypeRepository incomeTypeRepository,
             AgreementTypeRepository agreementTypeRepository,
             VendorMasterRepository vendorMasterRepository,
+            StateMasterRepository stateMasterRepository,
             ProductMasterRepository productMasterRepository,
             AgreementStatusResolver statusResolver,
             PlatformTransactionManager transactionManager,
@@ -173,6 +178,7 @@ public class AgreementServiceImpl implements AgreementService {
         this.incomeTypeRepository = incomeTypeRepository;
         this.agreementTypeRepository = agreementTypeRepository;
         this.vendorMasterRepository = vendorMasterRepository;
+        this.stateMasterRepository = stateMasterRepository;
         this.productMasterRepository = productMasterRepository;
         this.statusResolver = statusResolver;
         this.groupSubmitTransactionTemplate = new TransactionTemplate(transactionManager);
@@ -222,6 +228,10 @@ public class AgreementServiceImpl implements AgreementService {
             AgreementVersion version = buildDraftVersion(item, owner, parent, 1, currentUserId);
             validateUniqueIncomeTypeInGroup(parent, version);
             version = agreementVersionRepository.save(version);
+            DraftDetailsPayload itemDetails = item != null ? item.details() : null;
+            if (itemDetails != null && itemDetails.stateIds() != null) {
+                replaceAgreementStates(parent, itemDetails.stateIds(), currentUserId);
+            }
             syncAgreementName(parent, version, currentUserId);
 
             replaceVendors(version, vendorIds, currentUserId);
@@ -320,6 +330,10 @@ public class AgreementServiceImpl implements AgreementService {
 
         replaceVendors(newVersion, vendorIds, currentUserId);
         replaceRulesAndComputeProducts(newVersion, manufacturerIds, divisionRules, productRules, currentUserId);
+        if (request.details() != null && request.details().stateIds() != null) {
+            replaceAgreementStates(parent, request.details().stateIds(), currentUserId);
+        }
+        syncAgreementName(parent, newVersion, currentUserId);
 
         recordAudit(parent.getId(), newVersion.getId(), "VERSIONED_EDIT_CREATED",
                 String.valueOf(source.getVersionNumber()), String.valueOf(newVersion.getVersionNumber()), currentUserId);
@@ -364,6 +378,9 @@ public class AgreementServiceImpl implements AgreementService {
         validateUniqueIncomeTypeInGroup(parent, version);
         version.setUpdatedByUserId(currentUserId);
         version = agreementVersionRepository.save(version);
+        if (request.details() != null && request.details().stateIds() != null) {
+            replaceAgreementStates(parent, request.details().stateIds(), currentUserId);
+        }
         syncAgreementName(parent, version, currentUserId);
 
         if (request.vendorIds() != null) {
@@ -400,6 +417,7 @@ public class AgreementServiceImpl implements AgreementService {
                 .build();
         parent.setCreatedByUserId(currentUserId);
         parent = agreementRepository.save(parent);
+        copyAgreementStates(sourceParent, parent, currentUserId);
 
         AgreementVersion clone = AgreementVersion.builder()
                 .agreement(parent)
@@ -1422,6 +1440,12 @@ public class AgreementServiceImpl implements AgreementService {
 
         AgreementType agreementType = version.getAgreementType();
 
+        List<AgreementVersionResponse.StateSummary> states = parent.getStates().stream()
+                .sorted(Comparator.comparing(StateMaster::getStateName))
+                .map(s -> new AgreementVersionResponse.StateSummary(s.getId(), s.getStateName(), s.getStateCode()))
+                .toList();
+        List<Long> stateIds = states.stream().map(AgreementVersionResponse.StateSummary::id).toList();
+
         return new AgreementVersionResponse(
                 version.getId(),
                 parent.getId(),
@@ -1448,6 +1472,8 @@ public class AgreementServiceImpl implements AgreementService {
                 version.getTerminationDate(),
                 version.getTerminationReason(),
                 version.getNotes(),
+                stateIds,
+                states,
                 vendors,
                 manufacturerIds,
                 divisionRules,
@@ -1660,12 +1686,43 @@ public class AgreementServiceImpl implements AgreementService {
             return;
         }
         CompanyAgreementGroup cag = parent.getCompanyAgreementGroup();
-        String generatedName = cag.getName()
-                + " - "
-                + version.getIncomeType().getName()
-                + " - "
-                + version.getStartDate().format(AGREEMENT_NAME_DATE_FORMAT);
-        parent.setAgreementName(generatedName);
+        String stateCodes = parent.getStates().stream()
+                .map(StateMaster::getStateCode)
+                .sorted()
+                .collect(Collectors.joining(","));
+        StringBuilder generatedName = new StringBuilder(cag.getName())
+                .append(" - ")
+                .append(version.getIncomeType().getName());
+        if (!stateCodes.isBlank()) {
+            generatedName.append(" - ").append(stateCodes);
+        }
+        generatedName.append(" - ").append(version.getStartDate().format(AGREEMENT_NAME_DATE_FORMAT));
+        parent.setAgreementName(generatedName.toString());
+    }
+
+    private void replaceAgreementStates(Agreement parent, List<Long> stateIds, Long userId) {
+        parent.getStates().clear();
+        if (stateIds != null && !stateIds.isEmpty()) {
+            List<StateMaster> states = stateMasterRepository.findByIdInAndIsActiveTrue(stateIds);
+            Set<Long> foundIds = states.stream().map(StateMaster::getId).collect(Collectors.toSet());
+            for (Long stateId : stateIds) {
+                if (!foundIds.contains(stateId)) {
+                    throw new ResourceNotFoundException("StateMaster", stateId);
+                }
+            }
+            parent.getStates().addAll(states);
+        }
+        parent.setUpdatedByUserId(userId);
+        agreementRepository.save(parent);
+    }
+
+    private void copyAgreementStates(Agreement source, Agreement target, Long userId) {
+        if (source.getStates() == null || source.getStates().isEmpty()) {
+            return;
+        }
+        target.getStates().addAll(source.getStates());
+        target.setUpdatedByUserId(userId);
+        agreementRepository.save(target);
     }
 
     private void validateUniqueIncomeTypeInGroup(Agreement parent, AgreementVersion version) {

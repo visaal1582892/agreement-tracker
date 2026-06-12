@@ -43,6 +43,7 @@ export const manufacturerApi = {
 export const divisionApi = {
   search:       (req) => search(ENDPOINTS.MASTER_DIVISIONS_SEARCH, req),
   list:         ()    => getAll(ENDPOINTS.MASTER_DIVISIONS),
+  listByManufacturer: (manufacturerId) => getAll(ENDPOINTS.DIVISIONS(manufacturerId)),
   getById:      (id)  => getById(ENDPOINTS.MASTER_DIVISION_BY_ID(id)),
   create:       (d)   => create(ENDPOINTS.MASTER_DIVISIONS, d),
   update:       (id, d) => update(ENDPOINTS.MASTER_DIVISION_BY_ID(id), d),
@@ -66,6 +67,16 @@ export const incomeTypeApi = {
   create:       (d)   => create(ENDPOINTS.MASTER_INCOME_TYPES, d),
   update:       (id, d) => update(ENDPOINTS.MASTER_INCOME_TYPE_BY_ID(id), d),
   toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_INCOME_TYPE_TOGGLE(id)),
+};
+
+// ── States ──────────────────────────────────────────────────────────────────
+export const stateApi = {
+  search:       (req) => search(ENDPOINTS.MASTER_STATES_SEARCH, req),
+  list:         ()    => getAll(ENDPOINTS.MASTER_STATES),
+  getById:      (id)  => getById(ENDPOINTS.MASTER_STATE_BY_ID(id)),
+  create:       (d)   => create(ENDPOINTS.MASTER_STATES, d),
+  update:       (id, d) => update(ENDPOINTS.MASTER_STATE_BY_ID(id), d),
+  toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_STATE_TOGGLE(id)),
 };
 
 // ── Agreement Types ─────────────────────────────────────────────────────────

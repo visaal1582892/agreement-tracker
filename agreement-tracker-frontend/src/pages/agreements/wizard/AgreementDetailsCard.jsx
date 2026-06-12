@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Box, Typography, Grid, FormControl, InputLabel, Select, MenuItem,
+  Autocomplete, Box, Typography, Grid, FormControl, InputLabel, Select, MenuItem,
   TextField, Button, Chip, FormHelperText, IconButton, alpha, Paper, Alert,
   CircularProgress,
 } from '@mui/material';
@@ -49,6 +49,7 @@ export default function AgreementDetailsCard({
   const { enqueueSnackbar } = useSnackbar();
   const [incomeTypes, setIncomeTypes] = useState([]);
   const [agreementTypes, setAgreementTypes] = useState([]);
+  const [stateOptions, setStateOptions] = useState([]);
   const [dragOver, setDragOver] = useState(false);
   const [savingContract, setSavingContract] = useState(false);
   const [savedSnapshot, setSavedSnapshot] = useState(null);
@@ -63,6 +64,7 @@ export default function AgreementDetailsCard({
   useEffect(() => {
     axiosInstance.get(ENDPOINTS.INCOME_TYPES).then(({ data }) => setIncomeTypes(data));
     axiosInstance.get(ENDPOINTS.AGREEMENT_TYPES).then(({ data }) => setAgreementTypes(data));
+    axiosInstance.get(ENDPOINTS.STATES).then(({ data }) => setStateOptions(Array.isArray(data) ? data : []));
   }, []);
 
   useEffect(() => {
@@ -119,6 +121,7 @@ export default function AgreementDetailsCard({
         startDate: details.startDate,
         expiryDate: details.expiryDate,
         notes: details.notes ?? '',
+        stateIds: details.stateIds ?? [],
       };
       setSavedSnapshot(snapshot);
       setIsLocked(true);
@@ -143,10 +146,17 @@ export default function AgreementDetailsCard({
         startDate: savedSnapshot.startDate,
         expiryDate: savedSnapshot.expiryDate,
         notes: savedSnapshot.notes ?? '',
+        stateIds: savedSnapshot.stateIds ?? [],
       });
     }
     setIsEditing(false);
   };
+
+  const selectedStateIds = details.stateIds ?? [];
+  const selectedStates = stateOptions.filter((s) => selectedStateIds.includes(s.id));
+  const statesReadOnlyLabel = selectedStates.length
+    ? selectedStates.map((s) => `${s.stateName} (${s.stateCode})`).join(', ')
+    : '—';
 
   const documents = details.documents || [];
 
@@ -218,6 +228,31 @@ export default function AgreementDetailsCard({
               {agreementTypes.map((t) => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
             </Select>
           </FormControl>
+        </Grid>
+
+        <Grid size={12}>
+          {fieldsDisabled ? (
+            <TextField
+              label="States"
+              size="small"
+              fullWidth
+              value={statesReadOnlyLabel}
+              disabled
+              sx={notesFieldSx}
+            />
+          ) : (
+            <Autocomplete
+              multiple
+              options={stateOptions}
+              value={selectedStates}
+              getOptionLabel={(option) => option.stateName}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              onChange={(_, newValue) => onUpdateDetails({ stateIds: newValue.map((s) => s.id) })}
+              renderInput={(params) => (
+                <TextField {...params} label="States" size="small" placeholder="Select states" />
+              )}
+            />
+          )}
         </Grid>
 
         <Grid size={12}>

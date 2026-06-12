@@ -12,6 +12,7 @@ export function buildAgreementDetailsPayload(agreement) {
       startDate: formatLocalDateString(details.startDate),
       expiryDate: formatLocalDateString(details.expiryDate),
       notes: details.notes || null,
+      stateIds: details.stateIds?.length ? details.stateIds : [],
     },
     commercials: {
       commercialStructure: commercials.commercialStructure || null,
@@ -98,7 +99,23 @@ export function buildContractDetailsSnapshot(agreement) {
     startDate: agreement.startDate ?? agreement.details?.startDate ?? null,
     expiryDate: agreement.expiryDate ?? agreement.details?.expiryDate ?? null,
     notes: agreement.notes ?? agreement.details?.notes ?? '',
+    stateIds: agreement.stateIds ?? agreement.details?.stateIds ?? [],
   };
+}
+
+export function validateCurrentAgreementDetails(state, enqueueSnackbar) {
+  if (!validateStep2LoopFields(state, enqueueSnackbar)) return false;
+  const { details, commercials } = state.agreement ?? {};
+  if (!validateContractDetailsFields(details, enqueueSnackbar)) return false;
+  if (!commercials?.commercialStructure) {
+    enqueueSnackbar('Commercial structure is required', { variant: 'warning' });
+    return false;
+  }
+  if (commercials.commercialStructure === 'FLAT' && !commercials.commercialValue) {
+    enqueueSnackbar('Commercial value is required for FLAT structure', { variant: 'warning' });
+    return false;
+  }
+  return true;
 }
 
 export function validateStep2LoopFields(state, enqueueSnackbar) {

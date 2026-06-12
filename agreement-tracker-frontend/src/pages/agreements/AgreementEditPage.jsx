@@ -25,6 +25,7 @@ import {
   validateStep1Fields,
   validateStep2LoopFields,
   validateContractDetailsFields,
+  validateCurrentAgreementDetails,
 } from '../../utils/agreementWizardUtils';
 import Step1Setup from './wizard/Step1Setup';
 import Step2Agreements from './wizard/Step2Agreements';
@@ -122,25 +123,6 @@ export default function AgreementEditPage() {
     setDocumentErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
   };
 
-  const validateRevisionStep = () => {
-    switch (state.step) {
-      case 0:
-        return validateStep1Fields(state, enqueueSnackbar);
-      case 1: {
-        const { details, commercials } = state.agreement ?? {};
-        if (!details?.incomeTypeId) { enqueueSnackbar('Select income type', { variant: 'warning' }); return false; }
-        if (!details?.agreementTypeId) { enqueueSnackbar('Select agreement type', { variant: 'warning' }); return false; }
-        if (!details?.startDate || !details?.expiryDate) { enqueueSnackbar('Dates are required', { variant: 'warning' }); return false; }
-        if (commercials?.commercialStructure === 'FLAT' && !commercials?.commercialValue) {
-          enqueueSnackbar('Enter commercial value', { variant: 'warning' }); return false;
-        }
-        return true;
-      }
-      default:
-        return true;
-    }
-  };
-
   const buildUpdatePayload = useCallback(() => buildStep1UpdatePayload(state), [state]);
 
   const persistDraft = async ({ validateStep1 = false, validateStep2 = false } = {}) => {
@@ -213,6 +195,20 @@ export default function AgreementEditPage() {
     }
   };
 
+  const handleDetailsNext = async () => {
+    if (!validateCurrentAgreementDetails(state, enqueueSnackbar)) return;
+    setSavingDraft(true);
+    try {
+      await persistDraft({ validateStep2: true });
+      enqueueSnackbar('Agreement details saved', { variant: 'success' });
+      syncStepToUrl(2);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Complete required contract details', { variant: 'error' });
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   const handleFinishAndExit = async () => {
     setSavingDraft(true);
     try {
@@ -244,7 +240,19 @@ export default function AgreementEditPage() {
       }
       return;
     }
-    if (!validateRevisionStep()) return;
+    if (state.step === 1) {
+      if (!validateCurrentAgreementDetails(state, enqueueSnackbar)) return;
+      setSavingDraft(true);
+      try {
+        await persistDraft({ validateStep2: true });
+        syncStepToUrl(2);
+      } catch (err) {
+        enqueueSnackbar(err.response?.data?.message || 'Complete required contract details', { variant: 'error' });
+      } finally {
+        setSavingDraft(false);
+      }
+      return;
+    }
     syncStepToUrl(state.step + 1);
   };
 
@@ -408,6 +416,7 @@ export default function AgreementEditPage() {
             : ROUTES.AGREEMENTS,
         )}
         onSaveAndCreateAnother={handleSaveAndCreateAnother}
+        onDetailsNext={isFreshDraftWizard ? handleDetailsNext : undefined}
         onFinishAndExit={handleFinishAndExit}
         onSubmitForApproval={handleSubmitForApproval}
         isSavingDraft={savingDraft}

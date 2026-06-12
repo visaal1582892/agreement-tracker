@@ -9,6 +9,7 @@ export function createBlankAgreement() {
       startDate: null,
       expiryDate: null,
       notes: '',
+      stateIds: [],
       documents: [],
     },
     commercials: {
@@ -125,6 +126,7 @@ export function useAgreementWizard() {
           startDate: agreement.startDate ?? null,
           expiryDate: agreement.expiryDate ?? null,
           notes: agreement.notes ?? '',
+          stateIds: agreement.stateIds ?? agreement.states?.map((s) => s.id) ?? [],
           documents: [],
         },
         commercials: {

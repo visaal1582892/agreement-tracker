@@ -4,6 +4,9 @@ import com.medplus.agreement_tracker_backend.entity.base.AuditableEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.HashSet;
+import java.util.Set;
+
 @Entity
 @Table(name = "agreements", indexes = {
         @Index(name = "idx_ag_company_agreement_group_id", columnList = "company_agreement_group_id"),
@@ -37,4 +40,13 @@ public class Agreement extends AuditableEntity {
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private boolean isActive = true;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "agreement_states",
+            joinColumns = @JoinColumn(name = "agreement_id"),
+            inverseJoinColumns = @JoinColumn(name = "state_id")
+    )
+    @Builder.Default
+    private Set<StateMaster> states = new HashSet<>();
 }

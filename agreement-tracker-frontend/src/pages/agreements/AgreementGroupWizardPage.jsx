@@ -22,6 +22,7 @@ import {
   validateStep1Fields,
   validateStep2LoopFields,
   validateContractDetailsFields,
+  validateCurrentAgreementDetails,
 } from '../../utils/agreementWizardUtils';
 import Step1Setup from './wizard/Step1Setup';
 import Step2Agreements from './wizard/Step2Agreements';
@@ -264,23 +265,8 @@ export default function AgreementGroupWizardPage() {
     }
   };
 
-  const validateCurrentAgreementDetails = () => {
-    if (!validateStep2LoopFields(state, enqueueSnackbar)) return false;
-    const { details, commercials } = state.agreement ?? {};
-    if (!validateContractDetailsFields(details, enqueueSnackbar)) return false;
-    if (!commercials?.commercialStructure) {
-      enqueueSnackbar('Commercial structure is required', { variant: 'warning' });
-      return false;
-    }
-    if (commercials.commercialStructure === 'FLAT' && !commercials.commercialValue) {
-      enqueueSnackbar('Commercial value is required for FLAT structure', { variant: 'warning' });
-      return false;
-    }
-    return true;
-  };
-
   const handleDetailsNext = async () => {
-    if (!validateCurrentAgreementDetails()) return;
+    if (!validateCurrentAgreementDetails(state, enqueueSnackbar)) return;
     setSavingDraft(true);
     try {
       await persistDraft({ validateStep2: true });

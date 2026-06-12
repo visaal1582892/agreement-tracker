@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSnackbar } from 'notistack';
 import { useForm, Controller } from 'react-hook-form';
 import {
   Box, Button, TextField, Stack, Typography, FormControlLabel, Switch,
@@ -24,11 +25,9 @@ const COLUMNS = buildMasterColumns([
 export default function ProductMasterPage() {
   const page = useMasterPage({ api: productApi, entityLabel: 'Product' });
   const [manufacturers, setManufacturers] = useState([]);
-  const [allDivisions, setAllDivisions]   = useState([]);
 
   useEffect(() => {
     manufacturerApi.list().then(setManufacturers).catch(() => {});
-    divisionApi.list().then(setAllDivisions).catch(() => {});
   }, []);
 
   const enrichedRows = page.rows.map((row) => ({
@@ -56,18 +55,19 @@ export default function ProductMasterPage() {
         onRowsPerPageChange={page.handleRowsPerPageChange} sortBy={page.sortBy} sortDir={page.sortDir}
         onSort={page.handleSort} filters={page.filters} onFilterChange={page.handleFilterChange} />
       <ProductFormPanel open={page.panelOpen} onClose={page.closePanel} editingRow={page.editingRow}
-        saving={page.saving} onSave={page.handleSave} manufacturers={manufacturers} allDivisions={allDivisions} />
+        saving={page.saving} onSave={page.handleSave} manufacturers={manufacturers} />
     </Box>
   );
 }
 
-function ProductFormPanel({ open, onClose, editingRow, saving, onSave, manufacturers, allDivisions }) {
+function ProductFormPanel({ open, onClose, editingRow, saving, onSave, manufacturers }) {
+  const { enqueueSnackbar } = useSnackbar();
   const isEdit = Boolean(editingRow);
-  const { register, handleSubmit, reset, control, watch, formState: { errors } } = useForm();
+  const { register, handleSubmit, reset, control, watch, setValue, formState: { errors } } = useForm();
   const selectedMfrId = watch('manufacturerId');
-  const filteredDivisions = selectedMfrId
-    ? allDivisions.filter((d) => d.manufacturer?.id === Number(selectedMfrId))
-    : allDivisions;
+  const [divisions, setDivisions] = useState([]);
+  const [loadingDivisions, setLoadingDivisions] = useState(false);
+  const prevMfrIdRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -80,7 +80,39 @@ function ProductFormPanel({ open, onClose, editingRow, saving, onSave, manufactu
           isActive: isRecordActive(editingRow),
         }
       : { productCode: '', productName: '', manufacturerId: '', divisionId: '', isActive: true });
+    prevMfrIdRef.current = null;
   }, [open, editingRow, isEdit, reset]);
+
+  useEffect(() => {
+    if (!open || !selectedMfrId) {
+      setDivisions([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingDivisions(true);
+    divisionApi.listByManufacturer(selectedMfrId)
+      .then((data) => {
+        if (!cancelled) setDivisions(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setDivisions([]);
+          enqueueSnackbar(err?.response?.data?.message || 'Failed to load divisions', { variant: 'error' });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingDivisions(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, selectedMfrId, enqueueSnackbar]);
+
+  useEffect(() => {
+    if (!open || !selectedMfrId) return;
+    if (prevMfrIdRef.current != null && prevMfrIdRef.current !== selectedMfrId) {
+      setValue('divisionId', '');
+    }
+    prevMfrIdRef.current = selectedMfrId;
+  }, [open, selectedMfrId, setValue]);
 
   return (
     <SlidePanel open={open} onClose={onClose} title={isEdit ? 'Edit Product' : 'Add Product'} loading={saving}>
@@ -100,15 +132,18 @@ function ProductFormPanel({ open, onClose, editingRow, saving, onSave, manufactu
             )} />
           {errors.manufacturerId && <FormHelperText>{errors.manufacturerId.message}</FormHelperText>}
         </FormControl>
-        <FormControl fullWidth required error={!!errors.divisionId}>
+        <FormControl fullWidth required error={!!errors.divisionId} disabled={!selectedMfrId || loadingDivisions}>
           <InputLabel>Division</InputLabel>
           <Controller name="divisionId" control={control} rules={{ required: 'Division is required' }}
             render={({ field }) => (
               <Select {...field} label="Division">
-                {filteredDivisions.map((d) => <MenuItem key={d.id} value={d.id}>{d.divisionName}</MenuItem>)}
+                {divisions.map((d) => <MenuItem key={d.id} value={d.id}>{d.divisionName}</MenuItem>)}
               </Select>
             )} />
           {errors.divisionId && <FormHelperText>{errors.divisionId.message}</FormHelperText>}
+          {selectedMfrId && !loadingDivisions && divisions.length === 0 && (
+            <FormHelperText>No divisions for this manufacturer — add one in Divisions master</FormHelperText>
+          )}
         </FormControl>
         {isEdit && (
           <FormControlLabel control={<Switch {...register('isActive')} defaultChecked={isRecordActive(editingRow)} color="success" />} label="Active" />

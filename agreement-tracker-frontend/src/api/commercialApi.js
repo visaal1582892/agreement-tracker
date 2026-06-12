@@ -92,3 +92,33 @@ export function formatSlabLabel(slab) {
   }
   return `${range} (Fixed: ${slab.commercialValue})`;
 }
+
+function slabRangesOverlap(fromA, toA, fromB, toB) {
+  return fromA < toB && fromB < toA;
+}
+
+function isExactSlabMatch(a, b) {
+  return Number(a.fromValue) === Number(b.fromValue)
+    && Number(a.toValue) === Number(b.toValue)
+    && a.valueType === b.valueType
+    && Number(a.commercialValue) === Number(b.commercialValue);
+}
+
+/** Returns error message if payload conflicts with existing slabs, else null. */
+export function validateSlabAgainstExisting(slabs, payload, excludeSlabId = null) {
+  const peers = (slabs ?? []).filter((s) => s.id !== excludeSlabId);
+  const from = Number(payload.fromValue);
+  const to = Number(payload.toValue);
+
+  const duplicate = peers.find((s) => isExactSlabMatch(s, payload));
+  if (duplicate) {
+    return `This slab rule already exists: ${formatSlabLabel(duplicate)}`;
+  }
+
+  const overlap = peers.find((s) => slabRangesOverlap(from, to, Number(s.fromValue), Number(s.toValue)));
+  if (overlap) {
+    return `Slab range overlaps with existing rule: ${formatSlabLabel(overlap)}`;
+  }
+
+  return null;
+}

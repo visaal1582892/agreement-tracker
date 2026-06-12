@@ -35,6 +35,8 @@ public record AgreementVersionResponse(
         LocalDate terminationDate,
         String terminationReason,
         String notes,
+        List<Long> stateIds,
+        List<StateSummary> states,
         List<VendorSummary> vendors,
         List<Long> manufacturerIds,
         List<RuleSummary> divisionRules,
@@ -44,6 +46,7 @@ public record AgreementVersionResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
+    public record StateSummary(Long id, String stateName, String stateCode) {}
     public record VendorSummary(Long vendorId, String vendorName) {}
     public record ProductSummary(Long productId, String productName, String manufacturerName, String divisionName) {}
     public record RuleSummary(Long id, String ruleType) {}

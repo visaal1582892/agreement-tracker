@@ -87,6 +87,12 @@ export default function Step5GroupReview({ sharedState, groupDrafts, activeAgree
               <ReviewRow label="Income Type" value={activeReview.version.incomeTypeName} />
               <ReviewRow label="Agreement Type" value={activeReview.version.agreementTypeName} />
               <ReviewRow
+                label="States"
+                value={activeReview.version.states?.length
+                  ? activeReview.version.states.map((s) => s.stateName).join(', ')
+                  : ''}
+              />
+              <ReviewRow
                 label="Start Date"
                 value={activeReview.version.startDate
                   ? dayjs(activeReview.version.startDate).format('DD MMM YYYY')

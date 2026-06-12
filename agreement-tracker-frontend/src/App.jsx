@@ -28,6 +28,7 @@ import DivisionMasterPage from './pages/master/DivisionMasterPage';
 import ProductMasterPage from './pages/master/ProductMasterPage';
 import IncomeTypePage from './pages/master/IncomeTypePage';
 import AgreementTypePage from './pages/master/AgreementTypePage';
+import StateMasterPage from './pages/master/StateMasterPage';
 import RolePage from './pages/master/RolePage';
 import RightPage from './pages/master/RightPage';
 
@@ -88,6 +89,7 @@ export default function App() {
                         <Route path={ROUTES.MASTER_PRODUCTS} element={<ProductMasterPage />} />
                         <Route path={ROUTES.MASTER_INCOME_TYPES} element={<IncomeTypePage />} />
                         <Route path={ROUTES.MASTER_AGREEMENT_TYPES} element={<AgreementTypePage />} />
+                        <Route path={ROUTES.MASTER_STATES} element={<StateMasterPage />} />
                         <Route path={ROUTES.MASTER_ROLES} element={<RolePage />} />
                         <Route path={ROUTES.MASTER_RIGHTS} element={<RightPage />} />
                       </Route>

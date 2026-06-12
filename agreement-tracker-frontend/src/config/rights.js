@@ -30,6 +30,7 @@ export const ROUTE_RIGHTS = {
   '/master/products': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/income-types': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/agreement-types': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+  '/master/states': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/roles': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/rights': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
 };

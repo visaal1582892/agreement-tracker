@@ -70,6 +70,7 @@ export const ENDPOINTS = {
   COMPANIES: `${BASE}/master/companies`,
   INCOME_TYPES: `${BASE}/master/income-types`,
   AGREEMENT_TYPES: `${BASE}/master/agreement-types`,
+  STATES: `${BASE}/master/states`,
   VENDORS: `${BASE}/master/vendors`,
   MANUFACTURERS: `${BASE}/master/manufacturers`,
   DIVISIONS: (mfrId) => `${BASE}/master/manufacturers/${mfrId}/divisions`,
@@ -105,6 +106,11 @@ export const ENDPOINTS = {
   MASTER_INCOME_TYPES_SEARCH: `${BASE}/master/income-types/search`,
   MASTER_INCOME_TYPE_BY_ID: (id) => `${BASE}/master/income-types/${id}`,
   MASTER_INCOME_TYPE_TOGGLE: (id) => `${BASE}/master/income-types/${id}/toggle-status`,
+
+  MASTER_STATES: `${BASE}/master/states`,
+  MASTER_STATES_SEARCH: `${BASE}/master/states/search`,
+  MASTER_STATE_BY_ID: (id) => `${BASE}/master/states/${id}`,
+  MASTER_STATE_TOGGLE: (id) => `${BASE}/master/states/${id}/toggle-status`,
 
   MASTER_AGREEMENT_TYPES: `${BASE}/master/agreement-types`,
   MASTER_AGREEMENT_TYPES_SEARCH: `${BASE}/master/agreement-types/search`,

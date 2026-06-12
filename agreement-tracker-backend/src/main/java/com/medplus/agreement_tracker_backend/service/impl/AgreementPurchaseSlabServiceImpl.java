@@ -41,6 +41,7 @@ public class AgreementPurchaseSlabServiceImpl implements AgreementPurchaseSlabSe
     public PurchaseSlabResponse createSlab(Long agreementId, SlabDTO request, Long currentUserId) {
         AgreementVersion version = loadDraftVersionForMutation(agreementId, currentUserId);
         validateSlabValues(request.fromValue(), request.toValue());
+        validateSlabUniqueness(agreementId, request, null);
 
         AgreementPurchaseSlab slab = AgreementPurchaseSlab.builder()
                 .agreementVersion(version)
@@ -60,6 +61,7 @@ public class AgreementPurchaseSlabServiceImpl implements AgreementPurchaseSlabSe
         loadDraftVersionForMutation(agreementId, currentUserId);
         AgreementPurchaseSlab slab = loadSlabForVersion(agreementId, slabId);
         validateSlabValues(request.fromValue(), request.toValue());
+        validateSlabUniqueness(agreementId, request, slabId);
 
         slab.setFromValue(request.fromValue());
         slab.setToValue(request.toValue());
@@ -118,6 +120,43 @@ public class AgreementPurchaseSlabServiceImpl implements AgreementPurchaseSlabSe
         if (toValue.compareTo(fromValue) <= 0) {
             throw new BusinessException("toValue must be greater than fromValue");
         }
+    }
+
+    private void validateSlabUniqueness(Long agreementVersionId, SlabDTO request, Long excludeSlabId) {
+        List<AgreementPurchaseSlab> existing =
+                purchaseSlabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementVersionId);
+        for (AgreementPurchaseSlab slab : existing) {
+            if (excludeSlabId != null && slab.getId().equals(excludeSlabId)) {
+                continue;
+            }
+            if (isExactDuplicate(slab, request)) {
+                throw new BusinessException("This slab rule already exists");
+            }
+            if (rangesOverlap(slab.getFromValue(), slab.getToValue(), request.fromValue(), request.toValue())) {
+                throw new BusinessException(
+                        "Slab range overlaps with an existing slab (" + formatSlabRange(slab) + ")");
+            }
+        }
+    }
+
+    private boolean isExactDuplicate(AgreementPurchaseSlab slab, SlabDTO request) {
+        return slab.getFromValue().compareTo(request.fromValue()) == 0
+                && slab.getToValue().compareTo(request.toValue()) == 0
+                && slab.getValueType() == request.valueType()
+                && slab.getCommercialValue().compareTo(request.commercialValue()) == 0;
+    }
+
+    private boolean rangesOverlap(BigDecimal from1, BigDecimal to1, BigDecimal from2, BigDecimal to2) {
+        return from1.compareTo(to2) < 0 && from2.compareTo(to1) < 0;
+    }
+
+    private String formatSlabRange(AgreementPurchaseSlab slab) {
+        String range = slab.getFromValue().stripTrailingZeros().toPlainString()
+                + " - " + slab.getToValue().stripTrailingZeros().toPlainString();
+        if (slab.getValueType().name().equals("PERCENTAGE")) {
+            return range + " (" + slab.getCommercialValue().stripTrailingZeros().toPlainString() + "%)";
+        }
+        return range + " (Fixed: " + slab.getCommercialValue().stripTrailingZeros().toPlainString() + ")";
     }
 
     private PurchaseSlabResponse toResponse(AgreementPurchaseSlab slab) {
