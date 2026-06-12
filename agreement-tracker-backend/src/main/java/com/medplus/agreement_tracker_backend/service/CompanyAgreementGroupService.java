@@ -29,7 +29,8 @@ public interface CompanyAgreementGroupService {
     void deleteGroupImmediately(Long groupId, String reason, Long currentUserId,
                                 boolean isApprover, boolean isAccountManager);
 
-    void submitDeletionRequest(Long groupId, GroupDeletionRequest request, Long currentUserId);
+    void submitDeletionRequest(Long groupId, GroupDeletionRequest request, Long currentUserId,
+                               boolean isApprover, boolean isAccountManager);
 
     void executeApprovedGroupDeletion(Long groupId, Long approverId, String reason);
 

@@ -835,6 +835,8 @@ public class AgreementServiceImpl implements AgreementService {
             hardDeleteAgreementVersion(version.getId());
         }
         auditRepository.deleteByAgreementId(agreementId);
+        agreement.getStates().clear();
+        agreementRepository.saveAndFlush(agreement);
         agreementRepository.delete(agreement);
     }
 

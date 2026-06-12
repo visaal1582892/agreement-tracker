@@ -166,6 +166,9 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
             return new GroupDeletionStatusResponse(GroupDeletionStatus.READY);
         }
         if (isAccountManager && isCreator(group, currentUserId)) {
+            if (agreementRepository.countByCompanyAgreementGroupId(groupId) == 0) {
+                return new GroupDeletionStatusResponse(GroupDeletionStatus.READY);
+            }
             return new GroupDeletionStatusResponse(GroupDeletionStatus.REQUIRES_APPROVAL);
         }
 
@@ -198,11 +201,13 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
 
     @Override
     @Transactional
-    public void submitDeletionRequest(Long groupId, GroupDeletionRequest request, Long currentUserId) {
+    public void submitDeletionRequest(Long groupId, GroupDeletionRequest request, Long currentUserId,
+                                      boolean isApprover, boolean isAccountManager) {
         CompanyAgreementGroup group = loadGroup(groupId);
         enforceCreatorForDeletionRequest(group, currentUserId);
 
-        GroupDeletionStatus status = getDeletionStatus(groupId, currentUserId, false, false).status();
+        GroupDeletionStatus status = getDeletionStatus(
+                groupId, currentUserId, isApprover, isAccountManager).status();
         if (status != GroupDeletionStatus.REQUIRES_APPROVAL) {
             throw new BusinessException("This group does not require a deletion approval request");
         }

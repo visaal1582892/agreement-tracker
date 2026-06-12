@@ -90,7 +90,9 @@ public class CompanyAgreementGroupResourceController {
             @PathVariable Long groupId,
             @Valid @RequestBody GroupDeletionRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
-        companyAgreementGroupService.submitDeletionRequest(groupId, request, principal.getId());
+        companyAgreementGroupService.submitDeletionRequest(
+                groupId, request, principal.getId(),
+                principal.hasRole("APPROVER"), principal.hasRole("ACCOUNT_MANAGER"));
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
