@@ -24,11 +24,13 @@ import {
   urlStepFromInternal,
   validateStep1Fields,
   validateStep2LoopFields,
-  validateContractDetailsFields,
+  validateAgreementDetailsStep,
+  validateCommercialStructureStep,
   validateCurrentAgreementDetails,
 } from '../../utils/agreementWizardUtils';
 import Step1Setup from './wizard/Step1Setup';
-import Step2Agreements from './wizard/Step2Agreements';
+import AgreementDetailsStep from './wizard/AgreementDetailsStep';
+import CommercialStructureStep from './wizard/CommercialStructureStep';
 import Step5Review from './wizard/Step5Review';
 
 export default function AgreementEditPage() {
@@ -177,7 +179,7 @@ export default function AgreementEditPage() {
   };
 
   const handleSaveAndCreateAnother = async () => {
-    if (!validateStep2LoopFields(state, enqueueSnackbar)) return;
+    if (!validateCurrentAgreementDetails(state, enqueueSnackbar)) return;
     setSavingLoop(true);
     try {
       await persistDraft({ validateStep2: true });
@@ -186,7 +188,7 @@ export default function AgreementEditPage() {
       setSourceAgreement(cloned);
       setDraftAgreementId(cloned.id);
       hydratedRef.current = true;
-      navigate(buildAgreementEditPath(cloned.id, { step: urlStepFromInternal(1) }), { replace: true });
+      navigate(buildAgreementEditPath(cloned.id, { step: urlStepFromInternal(0) }), { replace: true });
       enqueueSnackbar('Agreement saved — new draft ready', { variant: 'success' });
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to save and create another', { variant: 'error' });
@@ -196,14 +198,38 @@ export default function AgreementEditPage() {
   };
 
   const handleDetailsNext = async () => {
-    if (!validateCurrentAgreementDetails(state, enqueueSnackbar)) return;
+    const agreementId = state.agreement?.id;
+    if (!validateAgreementDetailsStep(state, enqueueSnackbar)) {
+      if (!state.agreement?.details?.documents?.length && agreementId) {
+        setDocumentErrors((prev) => ({
+          ...prev,
+          [agreementId]: 'At least one document is required',
+        }));
+      }
+      return;
+    }
+    if (agreementId) clearDocumentError(agreementId);
     setSavingDraft(true);
     try {
       await persistDraft({ validateStep2: true });
-      enqueueSnackbar('Agreement details saved', { variant: 'success' });
+      enqueueSnackbar('Contract details saved', { variant: 'success' });
       syncStepToUrl(2);
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Complete required contract details', { variant: 'error' });
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleCommercialsNext = async () => {
+    if (!validateCommercialStructureStep(state, enqueueSnackbar)) return;
+    setSavingDraft(true);
+    try {
+      await persistDraft({ validateStep2: true });
+      enqueueSnackbar('Commercial structure saved', { variant: 'success' });
+      syncStepToUrl(3);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Complete required commercial fields', { variant: 'error' });
     } finally {
       setSavingDraft(false);
     }
@@ -241,13 +267,26 @@ export default function AgreementEditPage() {
       return;
     }
     if (state.step === 1) {
-      if (!validateCurrentAgreementDetails(state, enqueueSnackbar)) return;
+      if (!validateAgreementDetailsStep(state, enqueueSnackbar)) return;
       setSavingDraft(true);
       try {
         await persistDraft({ validateStep2: true });
         syncStepToUrl(2);
       } catch (err) {
         enqueueSnackbar(err.response?.data?.message || 'Complete required contract details', { variant: 'error' });
+      } finally {
+        setSavingDraft(false);
+      }
+      return;
+    }
+    if (state.step === 2) {
+      if (!validateCommercialStructureStep(state, enqueueSnackbar)) return;
+      setSavingDraft(true);
+      try {
+        await persistDraft({ validateStep2: true });
+        syncStepToUrl(3);
+      } catch (err) {
+        enqueueSnackbar(err.response?.data?.message || 'Complete required commercial fields', { variant: 'error' });
       } finally {
         setSavingDraft(false);
       }
@@ -344,21 +383,14 @@ export default function AgreementEditPage() {
     }
   };
 
-  const handleSaveContractDetails = useCallback(async () => {
-    const { details } = state.agreement ?? {};
-    if (!validateContractDetailsFields(details, enqueueSnackbar)) {
-      throw new Error('Contract details validation failed');
-    }
-    return persistDraft();
-  }, [state, enqueueSnackbar, persistDraft]);
-
   const footerMode = (() => {
     if (!isFreshDraftWizard) {
-      if (state.step === 2) return 'review';
+      if (state.step === 3) return 'review';
       return 'revision';
     }
     if (state.step === 0) return 'setup';
     if (state.step === 1) return 'details';
+    if (state.step === 2) return 'commercials';
     return 'review';
   })();
 
@@ -375,16 +407,18 @@ export default function AgreementEditPage() {
       updateProductRules={updateProductRules}
       groupFieldsLocked={Boolean(draftAgreementId)}
     />,
-    <Step2Agreements
+    <AgreementDetailsStep
       state={state}
-      updateFields={updateFields}
-      updateAgreementDetails={updateAgreementDetails}
-      updateAgreementCommercials={updateAgreementCommercials}
-      documentErrors={documentErrors}
-      onClearDocumentError={clearDocumentError}
+      agreement={state.agreement}
+      onUpdateDetails={updateAgreementDetails}
+      documentError={documentErrors?.[state.agreement.id]}
+      onClearDocumentError={() => clearDocumentError(state.agreement.id)}
+    />,
+    <CommercialStructureStep
+      agreement={state.agreement}
+      onUpdateCommercials={updateAgreementCommercials}
       serverAgreementId={draftAgreementId}
       sourceAgreement={sourceAgreement}
-      onSaveContractDetails={handleSaveContractDetails}
     />,
     <Step5Review state={state} serverAgreementId={draftAgreementId} />,
   ];
@@ -417,6 +451,7 @@ export default function AgreementEditPage() {
         )}
         onSaveAndCreateAnother={handleSaveAndCreateAnother}
         onDetailsNext={isFreshDraftWizard ? handleDetailsNext : undefined}
+        onCommercialsNext={isFreshDraftWizard ? handleCommercialsNext : undefined}
         onFinishAndExit={handleFinishAndExit}
         onSubmitForApproval={handleSubmitForApproval}
         isSavingDraft={savingDraft}

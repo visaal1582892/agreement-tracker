@@ -1,9 +1,11 @@
-import { Box, Step, StepLabel, Stepper, Typography, Paper, Button, Chip, Tabs, Tab, alpha } from '@mui/material';
+import { Box, Step, StepLabel, Stepper, Typography, Paper, Button, Chip, Tabs, Tab, alpha, IconButton } from '@mui/material';
+import { Close } from '@mui/icons-material';
 import { BRAND } from '../config/theme';
 
 const STEPS = [
   'Company, Vendors & Products',
   'Agreement Details',
+  'Commercial Structure',
   'Review & Submit',
 ];
 
@@ -20,6 +22,7 @@ export default function WizardLayout({
   draftTabs = [],
   activeDraftId,
   onDraftTabChange,
+  onDraftTabDelete,
   submitButtonLabel = 'Submit for Approval',
   children,
   onBack,
@@ -29,6 +32,7 @@ export default function WizardLayout({
   onSaveAndCreateAnother,
   onFinishAndExit,
   onDetailsNext,
+  onCommercialsNext,
   showDraftTabs = true,
   onSubmitForApproval,
   isSavingDraft,
@@ -77,7 +81,39 @@ export default function WizardLayout({
                 <Tab
                   key={tab.agreementId}
                   value={tab.agreementId}
-                  label={tab.label}
+                  label={(
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, maxWidth: '100%' }}>
+                      <Box
+                        component="span"
+                        sx={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {tab.label}
+                      </Box>
+                      {onDraftTabDelete && (
+                        <IconButton
+                          size="small"
+                          aria-label={`Delete ${tab.label}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            onDraftTabDelete(tab.agreementId);
+                          }}
+                          sx={{
+                            p: 0.25,
+                            ml: 0.25,
+                            color: 'text.secondary',
+                            '&:hover': { color: BRAND.red, bgcolor: alpha(BRAND.red, 0.08) },
+                          }}
+                        >
+                          <Close sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      )}
+                    </Box>
+                  )}
                 />
               ))}
             </Tabs>
@@ -235,47 +271,70 @@ export default function WizardLayout({
                     {isSavingDraft ? 'Saving…' : 'Finish & Exit'}
                   </Button>
                 )}
-                <Button
-                  variant="contained"
-                  onClick={onSaveAndCreateAnother}
-                  disabled={busy}
-                  sx={{
-                    borderRadius: 2.5,
-                    px: 3,
-                    minWidth: 190,
-                    fontWeight: 700,
-                    background: BRAND.redGradient,
-                    boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
-                    '&:hover': { background: BRAND.redGradient },
-                  }}
-                >
-                  {isSavingLoop ? 'Saving…' : 'Save & Create Another'}
-                </Button>
               </>
             )}
 
-            {footerMode === 'review' && (
+            {footerMode === 'commercials' && onCommercialsNext && (
               <Button
                 variant="contained"
-                onClick={onSubmitForApproval}
+                onClick={onCommercialsNext}
                 disabled={busy}
                 sx={{
                   borderRadius: 2.5,
                   px: 3,
-                  minWidth: 160,
+                  minWidth: 120,
                   fontWeight: 700,
                   background: BRAND.redGradient,
                   boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
                   '&:hover': { background: BRAND.redGradient },
                 }}
               >
-                {isSubmitting ? 'Submitting…' : submitButtonLabel}
+                {isSavingDraft ? 'Saving…' : 'Next'}
               </Button>
+            )}
+
+            {footerMode === 'review' && (
+              <>
+                {onSaveAndCreateAnother && (
+                  <Button
+                    variant="outlined"
+                    onClick={onSaveAndCreateAnother}
+                    disabled={busy}
+                    sx={{
+                      borderRadius: 2.5,
+                      px: 2.5,
+                      minWidth: 190,
+                      fontWeight: 600,
+                      borderColor: '#E2E8F0',
+                      color: '#334155',
+                      '&:hover': { borderColor: '#CBD5E1', bgcolor: '#fff' },
+                    }}
+                  >
+                    {isSavingLoop ? 'Saving…' : 'Save & Create Another'}
+                  </Button>
+                )}
+                <Button
+                  variant="contained"
+                  onClick={onSubmitForApproval}
+                  disabled={busy}
+                  sx={{
+                    borderRadius: 2.5,
+                    px: 3,
+                    minWidth: 160,
+                    fontWeight: 700,
+                    background: BRAND.redGradient,
+                    boxShadow: `0 4px 14px ${alpha(BRAND.red, 0.3)}`,
+                    '&:hover': { background: BRAND.redGradient },
+                  }}
+                >
+                  {isSubmitting ? 'Submitting…' : submitButtonLabel}
+                </Button>
+              </>
             )}
 
             {footerMode === 'revision' && (
               <>
-                {activeStep < 2 && (
+                {activeStep < 3 && (
                   <Button
                     variant="contained"
                     onClick={onNext}
@@ -293,7 +352,7 @@ export default function WizardLayout({
                     Next
                   </Button>
                 )}
-                {activeStep === 2 && (
+                {activeStep === 3 && (
                   <Button
                     variant="contained"
                     onClick={onSubmitForApproval}

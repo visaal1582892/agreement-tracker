@@ -79,6 +79,10 @@ export function validateContractDetailsFields(details, enqueueSnackbar) {
     enqueueSnackbar('Start and expiry dates are required before saving contract details', { variant: 'warning' });
     return false;
   }
+  if (!details?.documents?.length) {
+    enqueueSnackbar('At least one document is required', { variant: 'warning' });
+    return false;
+  }
   return true;
 }
 
@@ -103,10 +107,14 @@ export function buildContractDetailsSnapshot(agreement) {
   };
 }
 
-export function validateCurrentAgreementDetails(state, enqueueSnackbar) {
+export function validateAgreementDetailsStep(state, enqueueSnackbar) {
   if (!validateStep2LoopFields(state, enqueueSnackbar)) return false;
-  const { details, commercials } = state.agreement ?? {};
-  if (!validateContractDetailsFields(details, enqueueSnackbar)) return false;
+  const { details } = state.agreement ?? {};
+  return validateContractDetailsFields(details, enqueueSnackbar);
+}
+
+export function validateCommercialStructureStep(state, enqueueSnackbar) {
+  const { commercials } = state.agreement ?? {};
   if (!commercials?.commercialStructure) {
     enqueueSnackbar('Commercial structure is required', { variant: 'warning' });
     return false;
@@ -116,6 +124,11 @@ export function validateCurrentAgreementDetails(state, enqueueSnackbar) {
     return false;
   }
   return true;
+}
+
+export function validateCurrentAgreementDetails(state, enqueueSnackbar) {
+  if (!validateAgreementDetailsStep(state, enqueueSnackbar)) return false;
+  return validateCommercialStructureStep(state, enqueueSnackbar);
 }
 
 export function validateStep2LoopFields(state, enqueueSnackbar) {
@@ -137,7 +150,7 @@ export function validateStep2LoopFields(state, enqueueSnackbar) {
 
 export function internalStepFromUrl(urlStep) {
   const parsed = Number.parseInt(urlStep, 10);
-  if (Number.isNaN(parsed) || parsed < 1 || parsed > 3) return null;
+  if (Number.isNaN(parsed) || parsed < 1 || parsed > 4) return null;
   return parsed - 1;
 }
 

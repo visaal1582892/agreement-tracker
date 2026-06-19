@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Box, Typography, Grid, FormControl, Select, MenuItem,
+  Box, Typography, Grid, FormControl, Select, MenuItem, TextField,
   FormGroup, FormControlLabel, Checkbox, Chip, Button, Alert, CircularProgress,
 } from '@mui/material';
+import { AccountTreeOutlined } from '@mui/icons-material';
 import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
 import { BRAND } from '../../../config/theme';
@@ -23,6 +24,38 @@ const listSx = {
   mt: 1,
   overflowY: 'auto',
   maxHeight: 320,
+};
+
+const panelHeaderSx = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 1,
+  mb: 1,
+  minHeight: 128,
+};
+
+const panelHeaderTitleRowSx = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 1,
+};
+
+const panelHeaderActionsRowSx = {
+  display: 'flex',
+  gap: 1.5,
+  alignItems: 'center',
+};
+
+const ruleSelectSx = {
+  minWidth: 200,
+  flexShrink: 0,
+};
+
+const headerActionButtonSx = {
+  minWidth: 0,
+  px: 0.5,
+  fontSize: '0.72rem',
 };
 
 const EMPTY_RULES = { manufacturers: [], divisionRules: [], productRules: [] };
@@ -135,6 +168,7 @@ export default function Step2Products({ state, updateProductRules }) {
   const [checkedProductIds, setCheckedProductIds] = useState([]);
   const [divisionOp, setDivisionOp] = useState('INCLUDE');
   const [productOp, setProductOp] = useState('INCLUDE');
+  const [productSearchTerm, setProductSearchTerm] = useState('');
 
   const hasInitialized = useRef(false);
   const emitReadyRef = useRef(false);
@@ -359,10 +393,21 @@ export default function Step2Products({ state, updateProductRules }) {
   const selectAllDivisions = () => setSelectedDivisionIds(availableDivisions.map((d) => d.id));
   const deselectAllDivisions = () => setSelectedDivisionIds([]);
 
-  const selectAllProducts = () => setCheckedProductIds(visibleProducts.map((p) => p.id));
+  const filteredProducts = useMemo(() => {
+    const term = productSearchTerm.toLowerCase();
+    if (!term) return visibleProducts;
+    return visibleProducts.filter((p) =>
+      (p.productName || '').toLowerCase().includes(term),
+    );
+  }, [visibleProducts, productSearchTerm]);
+
+  const selectAllProducts = () => {
+    const filteredIds = filteredProducts.map((p) => p.id);
+    setCheckedProductIds((prev) => [...new Set([...prev, ...filteredIds])]);
+  };
   const deselectAllProducts = () => setCheckedProductIds([]);
 
-  const productsByDivision = visibleProducts.reduce((acc, p) => {
+  const productsByDivision = filteredProducts.reduce((acc, p) => {
     const key = p.divisionName || 'Other';
     if (!acc[key]) acc[key] = [];
     acc[key].push(p);
@@ -395,68 +440,85 @@ export default function Step2Products({ state, updateProductRules }) {
         </Box>
       )}
 
-      <Grid container spacing={2.5} sx={{ alignItems: 'stretch' }}>
+      <Grid container spacing={2.5} sx={{ alignItems: 'flex-start' }}>
         <Grid size={{ xs: 12, md: 4 }}>
           <Box sx={panelSx}>
-            <Typography variant="subtitle2" fontWeight={700} mb={1}>Manufacturer</Typography>
-            <SearchableSelect
-              label="Manufacturers (optional)"
-              placeholder="Filter by manufacturer…"
-              isMulti
-              options={manufacturerOptions}
-              value={selectedManufacturers}
-              onChange={handleManufacturersChange}
-              getOptionLabel={(o) => o.manufacturerName || ''}
-              isOptionEqualToValue={(o, v) => o.id === v.id}
-              disabled={!vendorProducts.length || loading}
-              maxVisibleChips={2}
-            />
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
-              {selectedManufacturers.length
-                ? `${selectedManufacturers.length} manufacturer(s) active`
-                : `All ${vendorProducts.length} vendor product(s) in scope`}
-            </Typography>
+            <Box sx={panelHeaderSx}>
+              <Box sx={panelHeaderTitleRowSx}>
+                <Typography variant="h6" fontWeight={700}>Manufacturer</Typography>
+              </Box>
+              <SearchableSelect
+                label="Manufacturers (optional)"
+                placeholder="Filter by manufacturer…"
+                isMulti
+                options={manufacturerOptions}
+                value={selectedManufacturers}
+                onChange={handleManufacturersChange}
+                getOptionLabel={(o) => o.manufacturerName || ''}
+                isOptionEqualToValue={(o, v) => o.id === v.id}
+                disabled={!vendorProducts.length || loading}
+                maxVisibleChips={2}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {selectedManufacturers.length
+                  ? `${selectedManufacturers.length} manufacturer(s) active`
+                  : `All ${vendorProducts.length} vendor product(s) in scope`}
+              </Typography>
+            </Box>
           </Box>
         </Grid>
 
         <Grid size={{ xs: 12, md: 4 }}>
           <Box sx={panelSx}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Typography variant="subtitle2" fontWeight={700}>Divisions</Typography>
-                <Typography variant="caption" color="text.disabled">|</Typography>
+            <Box sx={panelHeaderSx}>
+              <Box sx={panelHeaderTitleRowSx}>
+                <Typography variant="h6" fontWeight={700}>Divisions</Typography>
+                <FormControl size="small" sx={ruleSelectSx} disabled={!hasManufacturerFilter}>
+                  <Select value={divisionOp} onChange={(e) => setDivisionOp(e.target.value)}>
+                    <MenuItem value="INCLUDE">Rule: Include Selected</MenuItem>
+                    <MenuItem value="EXCLUDE">Rule: Exclude Selected</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box sx={{ flex: 1, minHeight: 40 }} />
+              <Box sx={panelHeaderActionsRowSx}>
                 <Button
                   size="small"
                   variant="text"
-                  sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }}
+                  sx={headerActionButtonSx}
                   onClick={selectAllDivisions}
                   disabled={!hasManufacturerFilter || !availableDivisions.length}
                 >
                   Select All
                 </Button>
-                <Typography variant="caption" color="text.disabled">|</Typography>
                 <Button
                   size="small"
                   variant="text"
-                  sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }}
+                  sx={headerActionButtonSx}
                   onClick={deselectAllDivisions}
                   disabled={!hasManufacturerFilter || !availableDivisions.length}
                 >
                   Clear All
                 </Button>
               </Box>
-              <FormControl size="small" sx={{ minWidth: 120 }} disabled={!hasManufacturerFilter}>
-                <Select value={divisionOp} onChange={(e) => setDivisionOp(e.target.value)}>
-                  <MenuItem value="INCLUDE">Include Only</MenuItem>
-                  <MenuItem value="EXCLUDE">Exclude</MenuItem>
-                </Select>
-              </FormControl>
             </Box>
             <Box sx={listSx}>
               {!hasManufacturerFilter ? (
-                <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                  Select manufacturer(s) to view divisions
-                </Typography>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    py: 4,
+                    flex: 1,
+                  }}
+                >
+                  <AccountTreeOutlined sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
+                  <Typography variant="body2" color="text.secondary" align="center">
+                    Select manufacturer(s) to view divisions
+                  </Typography>
+                </Box>
               ) : availableDivisions.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
                   No divisions for selected manufacturers
@@ -484,36 +546,45 @@ export default function Step2Products({ state, updateProductRules }) {
 
         <Grid size={{ xs: 12, md: 4 }}>
           <Box sx={panelSx}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Typography variant="subtitle2" fontWeight={700}>Products</Typography>
-                <Typography variant="caption" color="text.disabled">|</Typography>
+            <Box sx={panelHeaderSx}>
+              <Box sx={panelHeaderTitleRowSx}>
+                <Typography variant="h6" fontWeight={700}>Products</Typography>
+                <FormControl size="small" sx={ruleSelectSx}>
+                  <Select value={productOp} onChange={(e) => setProductOp(e.target.value)}>
+                    <MenuItem value="INCLUDE">Rule: Include Selected</MenuItem>
+                    <MenuItem value="EXCLUDE">Rule: Exclude Selected</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+              <TextField
+                size="small"
+                variant="outlined"
+                placeholder="Search products..."
+                value={productSearchTerm}
+                onChange={(e) => setProductSearchTerm(e.target.value)}
+                fullWidth
+                sx={{ mb: 0.5 }}
+              />
+              <Box sx={panelHeaderActionsRowSx}>
                 <Button
                   size="small"
                   variant="text"
-                  sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }}
+                  sx={headerActionButtonSx}
                   onClick={selectAllProducts}
-                  disabled={!visibleProducts.length}
+                  disabled={!filteredProducts.length}
                 >
                   Select All
                 </Button>
-                <Typography variant="caption" color="text.disabled">|</Typography>
                 <Button
                   size="small"
                   variant="text"
-                  sx={{ minWidth: 0, px: 0.5, fontSize: '0.72rem' }}
+                  sx={headerActionButtonSx}
                   onClick={deselectAllProducts}
                   disabled={!visibleProducts.length}
                 >
                   Clear All
                 </Button>
               </Box>
-              <FormControl size="small" sx={{ minWidth: 120 }}>
-                <Select value={productOp} onChange={(e) => setProductOp(e.target.value)}>
-                  <MenuItem value="INCLUDE">Include Only</MenuItem>
-                  <MenuItem value="EXCLUDE">Exclude</MenuItem>
-                </Select>
-              </FormControl>
             </Box>
             <Box sx={listSx}>
               {visibleProducts.length === 0 ? (
@@ -523,6 +594,10 @@ export default function Step2Products({ state, updateProductRules }) {
                     : hasManufacturerFilter && !selectedDivisionIds.length
                       ? 'Select manufacturer(s) — divisions will auto-select'
                       : 'No products match current filters'}
+                </Typography>
+              ) : filteredProducts.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                  No products match your search
                 </Typography>
               ) : (
                 Object.entries(productsByDivision).map(([divName, prods]) => (

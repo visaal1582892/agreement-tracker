@@ -15,6 +15,7 @@ export async function fetchGroupDraftAgreements(groupId, scope = 'MY') {
       scope,
       size: 100,
       page: 0,
+      sort: 'createdAt,asc',
     },
   });
   return normalizePageResponse(data).content;

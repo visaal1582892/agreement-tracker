@@ -87,7 +87,7 @@ export function useAgreementWizard() {
   }, []);
 
   const nextStep = useCallback(() => {
-    setState((prev) => ({ ...prev, step: Math.min(prev.step + 1, 2) }));
+    setState((prev) => ({ ...prev, step: Math.min(prev.step + 1, 3) }));
   }, []);
 
   const prevStep = useCallback(() => {
@@ -146,7 +146,7 @@ export function useAgreementWizard() {
     if (!cloned) return;
     setState((prev) => ({
       ...prev,
-      step: 1,
+      step: 0,
       agreementName: '',
       companyId: cloned.companyId ?? null,
       companyName: cloned.companyName ?? '',

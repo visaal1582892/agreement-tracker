@@ -149,23 +149,6 @@ public interface AgreementVersionRepository extends JpaRepository<AgreementVersi
     Optional<AgreementVersion> findByIdWithAgreementOwner(@Param("id") Long id);
 
     @Query("""
-            SELECT COUNT(av) FROM AgreementVersion av
-            JOIN av.agreement ag
-            WHERE ag.companyAgreementGroup.id = :groupId
-            AND ag.isActive = true
-            AND av.incomeType.id = :incomeTypeId
-            AND ag.id <> :excludeAgreementId
-            AND av.versionNumber = (
-                SELECT MAX(av2.versionNumber) FROM AgreementVersion av2
-                WHERE av2.agreement.id = ag.id
-            )
-            """)
-    long countLatestVersionsWithIncomeTypeInGroupExcludingAgreement(
-            @Param("groupId") Long groupId,
-            @Param("incomeTypeId") Long incomeTypeId,
-            @Param("excludeAgreementId") Long excludeAgreementId);
-
-    @Query("""
             SELECT av FROM AgreementVersion av
             JOIN FETCH av.agreement ag
             JOIN FETCH ag.owner

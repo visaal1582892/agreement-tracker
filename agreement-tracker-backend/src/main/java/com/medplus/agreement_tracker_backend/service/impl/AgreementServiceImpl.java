@@ -226,7 +226,6 @@ public class AgreementServiceImpl implements AgreementService {
             parent = agreementRepository.save(parent);
 
             AgreementVersion version = buildDraftVersion(item, owner, parent, 1, currentUserId);
-            validateUniqueIncomeTypeInGroup(parent, version);
             version = agreementVersionRepository.save(version);
             DraftDetailsPayload itemDetails = item != null ? item.details() : null;
             if (itemDetails != null && itemDetails.stateIds() != null) {
@@ -318,7 +317,6 @@ public class AgreementServiceImpl implements AgreementService {
 
         DraftAgreementItemRequest item = new DraftAgreementItemRequest(request.details(), request.commercials());
         AgreementVersion newVersion = buildDraftVersion(item, owner, parent, maxVersion + 1, currentUserId);
-        validateUniqueIncomeTypeInGroup(parent, newVersion);
         newVersion = agreementVersionRepository.save(newVersion);
 
         List<Long> vendorIds = request.vendorIds() != null ? request.vendorIds() : List.of();
@@ -375,7 +373,6 @@ public class AgreementServiceImpl implements AgreementService {
         }
 
         applyDraftFields(version, request.details(), request.commercials());
-        validateUniqueIncomeTypeInGroup(parent, version);
         version.setUpdatedByUserId(currentUserId);
         version = agreementVersionRepository.save(version);
         if (request.details() != null && request.details().stateIds() != null) {
@@ -1726,20 +1723,6 @@ public class AgreementServiceImpl implements AgreementService {
         target.getStates().addAll(source.getStates());
         target.setUpdatedByUserId(userId);
         agreementRepository.save(target);
-    }
-
-    private void validateUniqueIncomeTypeInGroup(Agreement parent, AgreementVersion version) {
-        if (version.getIncomeType() == null) {
-            return;
-        }
-        Long groupId = parent.getCompanyAgreementGroup().getId();
-        Long incomeTypeId = version.getIncomeType().getId();
-        long duplicates = agreementVersionRepository.countLatestVersionsWithIncomeTypeInGroupExcludingAgreement(
-                groupId, incomeTypeId, parent.getId());
-        if (duplicates > 0) {
-            throw new BusinessException(
-                    "An agreement with this income type already exists in the selected company agreement group");
-        }
     }
 
     private CompanyAgreementGroup resolveCompanyAgreementGroup(Long companyId, Long groupId, String newName,

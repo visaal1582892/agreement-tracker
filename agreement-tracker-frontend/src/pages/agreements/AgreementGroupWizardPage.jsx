@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Box, CircularProgress, Alert } from '@mui/material';
+import {
+  Box, CircularProgress, Alert, Dialog, DialogTitle, DialogContent,
+  DialogContentText, DialogActions, Button,
+} from '@mui/material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
@@ -21,11 +24,13 @@ import {
   urlStepFromInternal,
   validateStep1Fields,
   validateStep2LoopFields,
-  validateContractDetailsFields,
+  validateAgreementDetailsStep,
+  validateCommercialStructureStep,
   validateCurrentAgreementDetails,
 } from '../../utils/agreementWizardUtils';
 import Step1Setup from './wizard/Step1Setup';
-import Step2Agreements from './wizard/Step2Agreements';
+import AgreementDetailsStep from './wizard/AgreementDetailsStep';
+import CommercialStructureStep from './wizard/CommercialStructureStep';
 import Step5GroupReview from './wizard/Step5GroupReview';
 import {
   incompleteDraftLabels,
@@ -37,6 +42,12 @@ function draftTabLabel(row) {
     || row.incomeTypeName
     || `Draft #${row.id}`;
 }
+
+function sortDraftsByCreatedAt(rows) {
+  return [...rows].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+}
+
+const REVIEW_STEP_INDEX = 3;
 
 export default function AgreementGroupWizardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -72,8 +83,16 @@ export default function AgreementGroupWizardPage() {
   const [savingLoop, setSavingLoop] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [documentErrors, setDocumentErrors] = useState({});
+  const [agreementSteps, setAgreementSteps] = useState({});
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [deletingDraft, setDeletingDraft] = useState(false);
 
   const loadedVersionRef = useRef(null);
+  const agreementStepsRef = useRef(agreementSteps);
+
+  useEffect(() => {
+    agreementStepsRef.current = agreementSteps;
+  }, [agreementSteps]);
 
   const refreshGroupDrafts = useCallback(async () => {
     if (!parsedGroupId || Number.isNaN(parsedGroupId)) return [];
@@ -83,13 +102,18 @@ export default function AgreementGroupWizardPage() {
   }, [parsedGroupId, agreementScope]);
 
   const draftTabs = useMemo(
-    () => groupDrafts.map((row) => ({
+    () => sortDraftsByCreatedAt(groupDrafts).map((row) => ({
       agreementId: row.id,
       latestVersionId: row.latestVersionId,
       label: draftTabLabel(row),
     })),
     [groupDrafts],
   );
+
+  const rememberAgreementStep = useCallback((agreementId, internalStep) => {
+    if (!agreementId || internalStep == null) return;
+    setAgreementSteps((prev) => ({ ...prev, [agreementId]: internalStep }));
+  }, []);
 
   const loadActiveDraft = useCallback(async (agreementId, drafts) => {
     const rows = drafts ?? groupDrafts;
@@ -108,11 +132,20 @@ export default function AgreementGroupWizardPage() {
       setSourceAgreement(loaded);
       setDraftAgreementId(loaded.id);
       hydrateFromEdit(loaded);
+      const rawStep = searchParams.get('step');
+      const rememberedStep = agreementStepsRef.current[agreementId];
+      const internalStep = rawStep != null && rawStep !== ''
+        ? internalStepFromUrl(rawStep)
+        : rememberedStep;
+      if (internalStep != null) {
+        updateStep(internalStep);
+        rememberAgreementStep(agreementId, internalStep);
+      }
       loadedVersionRef.current = loaded.id;
     } finally {
       setLoadingDraft(false);
     }
-  }, [groupDrafts, hydrateFromEdit]);
+  }, [groupDrafts, hydrateFromEdit, searchParams, updateStep, rememberAgreementStep]);
 
   useEffect(() => {
     if (!parsedGroupId || Number.isNaN(parsedGroupId)) {
@@ -188,21 +221,81 @@ export default function AgreementGroupWizardPage() {
     const internalStep = internalStepFromUrl(rawStep);
     if (internalStep == null) return;
     updateStep(internalStep);
-  }, [sourceAgreement, searchParams, updateStep]);
+    rememberAgreementStep(parsedActiveAgreementId, internalStep);
+  }, [sourceAgreement, searchParams, updateStep, parsedActiveAgreementId, rememberAgreementStep]);
 
   const syncStepToUrl = useCallback((internalStep) => {
+    rememberAgreementStep(parsedActiveAgreementId, internalStep);
     const params = new URLSearchParams(searchParams);
     params.set('step', String(urlStepFromInternal(internalStep)));
     setSearchParams(params, { replace: true });
     updateStep(internalStep);
-  }, [searchParams, setSearchParams, updateStep]);
+  }, [searchParams, setSearchParams, updateStep, parsedActiveAgreementId, rememberAgreementStep]);
 
   const handleDraftTabChange = useCallback((agreementId) => {
+    if (agreementId === parsedActiveAgreementId) return;
+
+    setAgreementSteps((prev) => ({
+      ...prev,
+      [parsedActiveAgreementId]: state.step,
+    }));
+
+    const targetInternalStep = agreementStepsRef.current[agreementId] ?? 0;
+    loadedVersionRef.current = null;
     const path = buildGroupWizardPath(parsedGroupId, agreementId, {
-      step: searchParams.get('step') || undefined,
+      step: urlStepFromInternal(targetInternalStep),
     });
     if (path) navigate(path);
-  }, [parsedGroupId, searchParams, navigate]);
+  }, [parsedActiveAgreementId, parsedGroupId, state.step, navigate]);
+
+  const handleDraftTabDelete = useCallback((agreementId) => {
+    setDeleteTargetId(agreementId);
+  }, []);
+
+  const handleConfirmDeleteDraft = async () => {
+    if (!deleteTargetId) return;
+    setDeletingDraft(true);
+    try {
+      await axiosInstance.delete(ENDPOINTS.AGREEMENT_DELETE(deleteTargetId));
+      const wasActive = deleteTargetId === parsedActiveAgreementId;
+      const previousSorted = sortDraftsByCreatedAt(groupDrafts);
+      const deletedIndex = previousSorted.findIndex((row) => row.id === deleteTargetId);
+
+      setAgreementSteps((prev) => {
+        const next = { ...prev };
+        delete next[deleteTargetId];
+        return next;
+      });
+
+      const rows = await refreshGroupDrafts();
+      enqueueSnackbar('Draft deleted', { variant: 'success' });
+      setDeleteTargetId(null);
+
+      if (!wasActive) return;
+
+      if (rows.length === 0) {
+        navigate(buildGroupDetailPath(parsedGroupId) || ROUTES.AGREEMENTS);
+        return;
+      }
+
+      const sorted = sortDraftsByCreatedAt(rows);
+      const neighborIndex = Math.min(
+        Math.max(deletedIndex, 0),
+        sorted.length - 1,
+      );
+      const target = sorted[neighborIndex];
+      const targetStep = agreementStepsRef.current[target.id] ?? 0;
+      loadedVersionRef.current = null;
+      const path = buildGroupWizardPath(parsedGroupId, target.id, {
+        step: urlStepFromInternal(targetStep),
+      });
+      if (path) navigate(path, { replace: true });
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to delete draft', { variant: 'error' });
+    } finally {
+      setDeletingDraft(false);
+    }
+  };
 
   const clearDocumentError = (id) => {
     setDocumentErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
@@ -242,20 +335,26 @@ export default function AgreementGroupWizardPage() {
   };
 
   const handleSaveAndCreateAnother = async () => {
-    if (!validateStep2LoopFields(state, enqueueSnackbar)) return;
+    if (!validateCurrentAgreementDetails(state, enqueueSnackbar)) return;
     setSavingLoop(true);
     try {
+      rememberAgreementStep(parsedActiveAgreementId, REVIEW_STEP_INDEX);
       await persistDraft({ validateStep2: true });
       const cloned = await cloneAgreementOnServer(axiosInstance, ENDPOINTS, draftAgreementId);
-      const rows = await refreshGroupDrafts();
+      await refreshGroupDrafts();
       const newAgreementId = cloned.agreementId;
       applyCloneResponse(cloned);
+      setSourceAgreement(cloned);
+      setDraftAgreementId(cloned.id);
+      setAgreementSteps((prev) => ({
+        ...prev,
+        [parsedActiveAgreementId]: REVIEW_STEP_INDEX,
+        [newAgreementId]: 0,
+      }));
       loadedVersionRef.current = null;
-      const path = buildGroupWizardPath(parsedGroupId, newAgreementId, { step: 2 });
+      const path = buildGroupWizardPath(parsedGroupId, newAgreementId, { step: urlStepFromInternal(0) });
       if (path) {
         navigate(path, { replace: true });
-      } else {
-        await loadActiveDraft(newAgreementId, rows);
       }
       enqueueSnackbar('Agreement saved — new draft ready', { variant: 'success' });
     } catch (err) {
@@ -266,7 +365,31 @@ export default function AgreementGroupWizardPage() {
   };
 
   const handleDetailsNext = async () => {
-    if (!validateCurrentAgreementDetails(state, enqueueSnackbar)) return;
+    const agreementId = state.agreement?.id;
+    if (!validateAgreementDetailsStep(state, enqueueSnackbar)) {
+      if (!state.agreement?.details?.documents?.length && agreementId) {
+        setDocumentErrors((prev) => ({
+          ...prev,
+          [agreementId]: 'At least one document is required',
+        }));
+      }
+      return;
+    }
+    if (agreementId) clearDocumentError(agreementId);
+    setSavingDraft(true);
+    try {
+      await persistDraft({ validateStep2: true });
+      enqueueSnackbar('Contract details saved', { variant: 'success' });
+      syncStepToUrl(2);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Complete required contract details', { variant: 'error' });
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleCommercialsNext = async () => {
+    if (!validateCommercialStructureStep(state, enqueueSnackbar)) return;
     setSavingDraft(true);
     try {
       await persistDraft({ validateStep2: true });
@@ -280,17 +403,12 @@ export default function AgreementGroupWizardPage() {
         );
         return;
       }
-      syncStepToUrl(2);
+      syncStepToUrl(3);
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to validate group drafts', { variant: 'error' });
     } finally {
       setSavingDraft(false);
     }
-  };
-
-  const handleBack = () => {
-    if (state.step === 0) return;
-    syncStepToUrl(state.step - 1);
   };
 
   const handleSubmitForApproval = async () => {
@@ -325,17 +443,15 @@ export default function AgreementGroupWizardPage() {
     }
   };
 
-  const handleSaveContractDetails = useCallback(async () => {
-    const { details } = state.agreement ?? {};
-    if (!validateContractDetailsFields(details, enqueueSnackbar)) {
-      throw new Error('Contract details validation failed');
-    }
-    return persistDraft();
-  }, [state, enqueueSnackbar]);
+  const handleBack = () => {
+    if (state.step === 0) return;
+    syncStepToUrl(state.step - 1);
+  };
 
   const footerMode = (() => {
     if (state.step === 0) return 'setup';
     if (state.step === 1) return 'details';
+    if (state.step === 2) return 'commercials';
     return 'review';
   })();
 
@@ -347,17 +463,20 @@ export default function AgreementGroupWizardPage() {
       updateProductRules={updateProductRules}
       groupFieldsLocked
     />,
-    <Step2Agreements
+    <AgreementDetailsStep
       key={`step2-${draftAgreementId}`}
       state={state}
-      updateFields={updateFields}
-      updateAgreementDetails={updateAgreementDetails}
-      updateAgreementCommercials={updateAgreementCommercials}
-      documentErrors={documentErrors}
-      onClearDocumentError={clearDocumentError}
+      agreement={state.agreement}
+      onUpdateDetails={updateAgreementDetails}
+      documentError={documentErrors?.[state.agreement.id]}
+      onClearDocumentError={() => clearDocumentError(state.agreement.id)}
+    />,
+    <CommercialStructureStep
+      key={`step3-${draftAgreementId}`}
+      agreement={state.agreement}
+      onUpdateCommercials={updateAgreementCommercials}
       serverAgreementId={draftAgreementId}
       sourceAgreement={sourceAgreement}
-      onSaveContractDetails={handleSaveContractDetails}
     />,
     <Step5GroupReview
       key={`step5-group-${parsedActiveAgreementId}`}
@@ -391,6 +510,7 @@ export default function AgreementGroupWizardPage() {
         draftTabs={draftTabs}
         activeDraftId={parsedActiveAgreementId}
         onDraftTabChange={handleDraftTabChange}
+        onDraftTabDelete={handleDraftTabDelete}
         showDraftTabs
         submitButtonLabel="Submit for Approval"
         footerMode={footerMode}
@@ -399,6 +519,7 @@ export default function AgreementGroupWizardPage() {
         onCancel={() => navigate(buildGroupDetailPath(parsedGroupId) || ROUTES.AGREEMENTS)}
         onSaveAndCreateAnother={handleSaveAndCreateAnother}
         onDetailsNext={handleDetailsNext}
+        onCommercialsNext={handleCommercialsNext}
         onSubmitForApproval={handleSubmitForApproval}
         isSavingDraft={savingDraft}
         isSavingLoop={savingLoop}
@@ -406,6 +527,37 @@ export default function AgreementGroupWizardPage() {
       >
         {STEP_COMPONENTS[state.step]}
       </WizardLayout>
+
+      <Dialog
+        open={deleteTargetId != null}
+        onClose={() => !deletingDraft && setDeleteTargetId(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle fontWeight={700}>Delete draft?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this draft? This cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setDeleteTargetId(null)}
+            disabled={deletingDraft}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmDeleteDraft}
+            disabled={deletingDraft}
+            variant="contained"
+            color="error"
+          >
+            {deletingDraft ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
