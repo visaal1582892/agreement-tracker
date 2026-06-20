@@ -3,8 +3,8 @@ import { Close } from '@mui/icons-material';
 import { BRAND } from '../config/theme';
 
 const STEPS = [
-  'Company, Vendors & Products',
-  'Agreement Details',
+  'Foundational Setup',
+  'Commercial Configuration',
   'Commercial Structure',
   'Review & Submit',
 ];
@@ -29,6 +29,7 @@ export default function WizardLayout({
   onCancel,
   footerMode = 'setup',
   onNext,
+  onSaveAndClose,
   onSaveAndCreateAnother,
   onFinishAndExit,
   onDetailsNext,
@@ -244,6 +245,42 @@ export default function WizardLayout({
 
             {footerMode === 'details' && (
               <>
+                {onSaveAndClose && (
+                  <Button
+                    variant="outlined"
+                    onClick={onSaveAndClose}
+                    disabled={busy}
+                    sx={{
+                      borderRadius: 2.5,
+                      px: 2.5,
+                      minWidth: 130,
+                      fontWeight: 600,
+                      borderColor: '#E2E8F0',
+                      color: '#334155',
+                      '&:hover': { borderColor: '#CBD5E1', bgcolor: '#fff' },
+                    }}
+                  >
+                    {isSavingDraft ? 'Saving…' : 'Save & Close'}
+                  </Button>
+                )}
+                {onSaveAndCreateAnother && (
+                  <Button
+                    variant="outlined"
+                    onClick={onSaveAndCreateAnother}
+                    disabled={busy}
+                    sx={{
+                      borderRadius: 2.5,
+                      px: 2.5,
+                      minWidth: 190,
+                      fontWeight: 600,
+                      borderColor: '#E2E8F0',
+                      color: '#334155',
+                      '&:hover': { borderColor: '#CBD5E1', bgcolor: '#fff' },
+                    }}
+                  >
+                    {isSavingLoop ? 'Saving…' : 'Save & Create Another'}
+                  </Button>
+                )}
                 {onDetailsNext ? (
                   <Button
                     variant="contained"

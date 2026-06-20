@@ -13,23 +13,25 @@ import { submitAgreementGroupForApproval } from '../../api/agreementGroupApi';
 import WizardLayout from '../../layouts/WizardLayout';
 import { useAgreementWizard } from '../../hooks/useAgreementWizard';
 import { validateAgreementForSubmit } from '../../utils/agreementSubmitValidation';
-import { cloneAgreementOnServer } from '../../utils/agreementClone';
 import {
-  buildAgreementEditPath,
-  buildAgreementDetailPath,
-} from '../../utils/agreementNavigation';
+  buildReapprovalBaseline,
+  detectRequiresReapproval,
+} from '../../utils/agreementReapprovalUtils';
 import {
-  buildStep1UpdatePayload,
+  buildSanitizedStep1UpdatePayload,
   internalStepFromUrl,
   urlStepFromInternal,
   validateStep1Fields,
   validateStep2LoopFields,
   validateAgreementDetailsStep,
   validateCommercialStructureStep,
-  validateCurrentAgreementDetails,
 } from '../../utils/agreementWizardUtils';
+import {
+  buildAgreementEditPath,
+  buildAgreementDetailPath,
+} from '../../utils/agreementNavigation';
 import Step1Setup from './wizard/Step1Setup';
-import AgreementDetailsStep from './wizard/AgreementDetailsStep';
+import ConfigurationStep from './wizard/ConfigurationStep';
 import CommercialStructureStep from './wizard/CommercialStructureStep';
 import Step5Review from './wizard/Step5Review';
 
@@ -45,16 +47,18 @@ export default function AgreementEditPage() {
     updateFields,
     updateProductRules,
     updateAgreementDetails,
+    updateAgreementAsset,
     updateAgreementCommercials,
     reset,
     hydrateFromEdit,
-    applyCloneResponse,
+    resetVariableFieldsForAnother,
     updateStep,
   } = useAgreementWizard();
 
   const [sourceAgreement, setSourceAgreement] = useState(null);
   const [draftAgreementId, setDraftAgreementId] = useState(null);
   const [versionSourceId, setVersionSourceId] = useState(null);
+  const [reapprovalBaseline, setReapprovalBaseline] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [savingLoop, setSavingLoop] = useState(false);
@@ -81,6 +85,15 @@ export default function AgreementEditPage() {
 
         setSourceAgreement(loaded);
         setVersionSourceId(loaded.id);
+        setReapprovalBaseline(buildReapprovalBaseline(
+          loaded,
+          loaded.vendors?.map((vendor) => vendor.vendorId),
+          {
+            manufacturers: loaded.manufacturerIds ?? [],
+            divisionRules: loaded.divisionRules ?? [],
+            productRules: loaded.productRules ?? [],
+          },
+        ));
 
         const { data: versions } = await axiosInstance.get(
           ENDPOINTS.AGREEMENT_VERSIONS(loaded.agreementId),
@@ -125,15 +138,26 @@ export default function AgreementEditPage() {
     setDocumentErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
   };
 
-  const buildUpdatePayload = useCallback(() => buildStep1UpdatePayload(state), [state]);
+  const buildUpdatePayload = useCallback(({ requiresReapproval: forceReapproval } = {}) => {
+    const requiresReapproval = forceReapproval ?? (
+      !draftAgreementId && (versionSourceId != null || detectRequiresReapproval(reapprovalBaseline, state))
+    );
+    return buildSanitizedStep1UpdatePayload(state, { requiresReapproval });
+  }, [state, reapprovalBaseline, draftAgreementId, versionSourceId]);
 
-  const persistDraft = async ({ validateStep1 = false, validateStep2 = false } = {}) => {
+  const handleDraftVersionCreated = useCallback((data) => {
+    setDraftAgreementId(data.id);
+    setSourceAgreement(data);
+    navigate(buildAgreementEditPath(data.id, { step: urlStepFromInternal(state.step) }), { replace: true });
+  }, [navigate, state.step]);
+
+  const persistDraft = async ({ validateStep1 = false, validateStep2 = false, validateCommercialStructure = false } = {}) => {
     const payload = buildUpdatePayload();
     if (draftAgreementId) {
       const { data } = await axiosInstance.put(
         ENDPOINTS.AGREEMENT_VERSION_UPDATE(draftAgreementId),
         payload,
-        { params: { validateStep1, validateStep2 } },
+        { params: { validateStep1, validateStep2, validateCommercialStructure } },
       );
       setSourceAgreement(data);
       if (data.agreementName) {
@@ -169,7 +193,7 @@ export default function AgreementEditPage() {
     setSavingDraft(true);
     try {
       await persistDraft({ validateStep1: true });
-      enqueueSnackbar('Product template saved', { variant: 'success' });
+      enqueueSnackbar('Foundational setup saved', { variant: 'success' });
       syncStepToUrl(1);
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Complete required step 1 fields', { variant: 'error' });
@@ -178,18 +202,46 @@ export default function AgreementEditPage() {
     }
   };
 
+  const handleSaveAndClose = async () => {
+    if (!validateAgreementDetailsStep(state, enqueueSnackbar)) return;
+    setSavingDraft(true);
+    try {
+      await persistDraft({ validateStep2: true });
+      enqueueSnackbar('Agreement saved', { variant: 'success' });
+      navigate(sourceAgreement?.agreementId
+        ? buildAgreementDetailPath(sourceAgreement.agreementId)
+        : ROUTES.AGREEMENTS);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to save agreement', { variant: 'error' });
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   const handleSaveAndCreateAnother = async () => {
-    if (!validateCurrentAgreementDetails(state, enqueueSnackbar)) return;
+    if (!validateAgreementDetailsStep(state, enqueueSnackbar)) return;
     setSavingLoop(true);
     try {
       await persistDraft({ validateStep2: true });
-      const cloned = await cloneAgreementOnServer(axiosInstance, ENDPOINTS, draftAgreementId);
-      applyCloneResponse(cloned);
-      setSourceAgreement(cloned);
-      setDraftAgreementId(cloned.id);
+      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENTS, {
+        companyId: state.companyId,
+        companyAgreementGroupId: state.companyAgreementGroupId,
+        vendorIds: [],
+        productRules: { manufacturers: [], divisionRules: [], productRules: [] },
+        agreements: [],
+      });
+      const newDraft = data.agreements?.[0];
+      if (!newDraft) {
+        throw new Error('No draft agreement returned from server');
+      }
+      resetVariableFieldsForAnother();
+      setDraftAgreementId(newDraft.id);
+      setSourceAgreement(newDraft);
+      setVersionSourceId(null);
+      setReapprovalBaseline(null);
       hydratedRef.current = true;
-      navigate(buildAgreementEditPath(cloned.id, { step: urlStepFromInternal(0) }), { replace: true });
-      enqueueSnackbar('Agreement saved — new draft ready', { variant: 'success' });
+      navigate(buildAgreementEditPath(newDraft.id, { step: urlStepFromInternal(0) }), { replace: true });
+      enqueueSnackbar('Agreement saved — configure another', { variant: 'success' });
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to save and create another', { variant: 'error' });
     } finally {
@@ -225,7 +277,7 @@ export default function AgreementEditPage() {
     if (!validateCommercialStructureStep(state, enqueueSnackbar)) return;
     setSavingDraft(true);
     try {
-      await persistDraft({ validateStep2: true });
+      await persistDraft({ validateCommercialStructure: true });
       enqueueSnackbar('Commercial structure saved', { variant: 'success' });
       syncStepToUrl(3);
     } catch (err) {
@@ -283,7 +335,7 @@ export default function AgreementEditPage() {
       if (!validateCommercialStructureStep(state, enqueueSnackbar)) return;
       setSavingDraft(true);
       try {
-        await persistDraft({ validateStep2: true });
+        await persistDraft({ validateCommercialStructure: true });
         syncStepToUrl(3);
       } catch (err) {
         enqueueSnackbar(err.response?.data?.message || 'Complete required commercial fields', { variant: 'error' });
@@ -404,21 +456,32 @@ export default function AgreementEditPage() {
     <Step1Setup
       state={state}
       updateFields={updateFields}
+      updateAgreementDetails={updateAgreementDetails}
+      updateAgreementAsset={updateAgreementAsset}
+      updateAgreementCommercials={updateAgreementCommercials}
       updateProductRules={updateProductRules}
       groupFieldsLocked={Boolean(draftAgreementId)}
     />,
-    <AgreementDetailsStep
+    <ConfigurationStep
       state={state}
       agreement={state.agreement}
       onUpdateDetails={updateAgreementDetails}
+      onUpdateAsset={updateAgreementAsset}
+      onUpdateCommercials={updateAgreementCommercials}
+      updateProductRules={updateProductRules}
+      updateFields={updateFields}
       documentError={documentErrors?.[state.agreement.id]}
       onClearDocumentError={() => clearDocumentError(state.agreement.id)}
     />,
     <CommercialStructureStep
       agreement={state.agreement}
       onUpdateCommercials={updateAgreementCommercials}
+      onUpdateAsset={updateAgreementAsset}
       serverAgreementId={draftAgreementId}
       sourceAgreement={sourceAgreement}
+      versionSourceId={versionSourceId}
+      buildVersionedEditPayload={buildUpdatePayload}
+      onDraftVersionCreated={handleDraftVersionCreated}
     />,
     <Step5Review state={state} serverAgreementId={draftAgreementId} />,
   ];
@@ -449,7 +512,8 @@ export default function AgreementEditPage() {
             ? buildAgreementDetailPath(sourceAgreement.agreementId)
             : ROUTES.AGREEMENTS,
         )}
-        onSaveAndCreateAnother={handleSaveAndCreateAnother}
+        onSaveAndClose={isFreshDraftWizard && state.step === 1 ? handleSaveAndClose : undefined}
+        onSaveAndCreateAnother={isFreshDraftWizard && state.step === 1 ? handleSaveAndCreateAnother : undefined}
         onDetailsNext={isFreshDraftWizard ? handleDetailsNext : undefined}
         onCommercialsNext={isFreshDraftWizard ? handleCommercialsNext : undefined}
         onFinishAndExit={handleFinishAndExit}

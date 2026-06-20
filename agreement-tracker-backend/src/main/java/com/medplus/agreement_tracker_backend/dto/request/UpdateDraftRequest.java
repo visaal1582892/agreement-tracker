@@ -14,5 +14,7 @@ public record UpdateDraftRequest(
         List<Long> vendorIds,
         ProductRulesPayload productRules,
         DraftDetailsPayload details,
-        DraftCommercialsPayload commercials
+        DraftCommercialsPayload commercials,
+        DraftAssetPayload asset,
+        Boolean requiresReapproval
 ) {}

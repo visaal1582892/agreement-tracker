@@ -5,5 +5,6 @@ public enum DocumentType {
     TERMINATION,
     SUPPORTING_DOC,
     EMAIL,
-    OTHER
+    OTHER,
+    STORE_OUTLET_LIST
 }

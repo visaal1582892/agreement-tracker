@@ -21,6 +21,7 @@ import com.medplus.agreement_tracker_backend.repository.AgreementVersionReposito
 import com.medplus.agreement_tracker_backend.repository.AgreementTargetRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementTimePeriodRepository;
 import com.medplus.agreement_tracker_backend.service.CommercialService;
+import com.medplus.agreement_tracker_backend.service.CommercialVersionGuard;
 import com.medplus.agreement_tracker_backend.util.ExcelCellReader;
 import com.medplus.agreement_tracker_backend.util.SlabHeaderFormatter;
 import lombok.RequiredArgsConstructor;
@@ -55,12 +56,13 @@ import java.util.function.BiFunction;
 public class CommercialServiceImpl implements CommercialService {
 
     private static final Set<String> VALID_FREQUENCIES =
-            Set.of("MONTHLY", "QUARTERLY", "HALF_YEARLY", "YEARLY");
+            Set.of("ONE_TIME", "MONTHLY", "QUARTERLY", "HALF_YEARLY", "YEARLY");
 
     private static final DateTimeFormatter MONTHLY_FORMAT =
             DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH);
 
     private static final Map<String, BiFunction<LocalDate, LocalDate, List<String>>> PERIOD_GENERATORS = Map.of(
+            "ONE_TIME", CommercialServiceImpl::generateOneTimePeriod,
             "MONTHLY", CommercialServiceImpl::generateMonthlyPeriods,
             "QUARTERLY", CommercialServiceImpl::generateQuarterlyPeriods,
             "HALF_YEARLY", CommercialServiceImpl::generateHalfYearlyPeriods,
@@ -71,14 +73,16 @@ public class CommercialServiceImpl implements CommercialService {
     private final AgreementSlabRepository slabRepository;
     private final AgreementTargetRepository targetRepository;
     private final AgreementTimePeriodRepository timePeriodRepository;
+    private final CommercialVersionGuard commercialVersionGuard;
 
     @Override
     @Transactional
     public byte[] generateCommercialTemplate(Long agreementId, CommercialTemplateRequest request, Long currentUserId) {
-        AgreementVersion version = loadDraftVersionForMutation(agreementId, currentUserId);
+        AgreementVersion version = commercialVersionGuard.loadForCommercialMutation(agreementId, currentUserId);
 
         validateAgreementDates(version);
         validateFrequencies(request.selectedFrequencies());
+        commercialVersionGuard.validateQpsPayoutFrequencies(version, request.selectedFrequencies());
 
         CommercialSlabType slabType = resolveSlabType(request.slabType());
         List<AgreementSlab> slabs = slabRepository
@@ -99,7 +103,8 @@ public class CommercialServiceImpl implements CommercialService {
                         slab.getToValue(),
                         slab.getValueType(),
                         slab.getCommercialValue(),
-                        slab.getSlabType()))
+                        slab.getSlabType(),
+                        slab.getPayoutFrequency()))
                 .toList();
 
         return buildExcel(slabDtos, groupedPeriodNames);
@@ -113,7 +118,7 @@ public class CommercialServiceImpl implements CommercialService {
             throw new IncompleteAgreementException("Uploaded Excel file is required.");
         }
 
-        AgreementVersion version = loadDraftVersionForMutation(agreementId, currentUserId);
+        AgreementVersion version = commercialVersionGuard.loadForCommercialMutation(agreementId, currentUserId);
 
         CommercialSlabType resolvedSlabType = slabType != null ? slabType : CommercialSlabType.PURCHASE;
         List<AgreementSlab> slabs = slabRepository
@@ -221,7 +226,7 @@ public class CommercialServiceImpl implements CommercialService {
     @Override
     @Transactional
     public void upsertTarget(Long agreementId, UpsertTargetRequest request, Long currentUserId) {
-        AgreementVersion version = loadDraftVersionForMutation(agreementId, currentUserId);
+        AgreementVersion version = commercialVersionGuard.loadForCommercialMutation(agreementId, currentUserId);
 
         AgreementTimePeriod timePeriod = timePeriodRepository.findById(request.timePeriodId())
                 .orElseThrow(() -> new ResourceNotFoundException("TimePeriod", request.timePeriodId()));
@@ -265,7 +270,7 @@ public class CommercialServiceImpl implements CommercialService {
     @Override
     @Transactional
     public void switchCommercialType(Long agreementId, CommercialTypeSwitchRequest request, Long currentUserId) {
-        loadDraftVersionForMutation(agreementId, currentUserId);
+        commercialVersionGuard.loadForCommercialMutation(agreementId, currentUserId);
 
         if (request.action() == CommercialTypeSwitchAction.CLEAR) {
             targetRepository.deleteByAgreementVersionId(agreementId);
@@ -293,19 +298,6 @@ public class CommercialServiceImpl implements CommercialService {
 
     private CommercialSlabType resolveSlabType(CommercialSlabType slabType) {
         return slabType != null ? slabType : CommercialSlabType.PURCHASE;
-    }
-
-    private AgreementVersion loadDraftVersionForMutation(Long agreementVersionId, Long userId) {
-        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
-                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
-        if (!version.getAgreement().getOwner().getId().equals(userId)) {
-            throw new UnauthorizedException("You are not the owner of this agreement");
-        }
-        if (version.getApprovalStatus() != ApprovalStatus.DRAFT) {
-            throw new UnauthorizedException(
-                    "Commercial targets can only be modified while the agreement is in DRAFT status");
-        }
-        return version;
     }
 
     private AgreementVersion loadVersionForRead(Long agreementVersionId, Long userId) {
@@ -372,7 +364,7 @@ public class CommercialServiceImpl implements CommercialService {
         for (String frequency : selectedFrequencies) {
             if (!VALID_FREQUENCIES.contains(frequency)) {
                 throw new IncompleteAgreementException(
-                        "Invalid frequency: " + frequency + ". Allowed values: MONTHLY, QUARTERLY, HALF_YEARLY, YEARLY.");
+                        "Invalid frequency: " + frequency + ". Allowed values: ONE_TIME, MONTHLY, QUARTERLY, HALF_YEARLY, YEARLY.");
             }
         }
     }
@@ -399,6 +391,10 @@ public class CommercialServiceImpl implements CommercialService {
         }
 
         return groupedNames;
+    }
+
+    private static List<String> generateOneTimePeriod(LocalDate start, LocalDate end) {
+        return List.of("ONE_TIME");
     }
 
     private static List<String> generateMonthlyPeriods(LocalDate start, LocalDate end) {

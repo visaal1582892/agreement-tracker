@@ -8,11 +8,11 @@ import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
 import com.medplus.agreement_tracker_backend.enums.CommercialSlabType;
 import com.medplus.agreement_tracker_backend.exception.BusinessException;
 import com.medplus.agreement_tracker_backend.exception.ResourceNotFoundException;
-import com.medplus.agreement_tracker_backend.exception.UnauthorizedException;
 import com.medplus.agreement_tracker_backend.repository.AgreementSlabRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementTargetRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementVersionRepository;
 import com.medplus.agreement_tracker_backend.service.AgreementSlabService;
+import com.medplus.agreement_tracker_backend.service.CommercialVersionGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +27,7 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
     private final AgreementVersionRepository agreementVersionRepository;
     private final AgreementSlabRepository slabRepository;
     private final AgreementTargetRepository targetRepository;
+    private final CommercialVersionGuard commercialVersionGuard;
 
     @Override
     @Transactional(readOnly = true)
@@ -41,7 +42,7 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
     @Override
     @Transactional
     public AgreementSlabResponse createSlab(Long agreementId, SlabDTO request, Long currentUserId) {
-        AgreementVersion version = loadDraftVersionForMutation(agreementId, currentUserId);
+        AgreementVersion version = commercialVersionGuard.loadForCommercialMutation(agreementId, currentUserId);
         CommercialSlabType slabType = resolveSlabType(request);
         validateSlabValues(request.fromValue(), request.toValue());
         validateSlabUniqueness(agreementId, request, slabType, null);
@@ -53,6 +54,7 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
                 .toValue(request.toValue())
                 .valueType(request.valueType())
                 .commercialValue(request.commercialValue())
+                .payoutFrequency(request.payoutFrequency())
                 .build();
         slab.setCreatedByUserId(currentUserId);
         slab = slabRepository.save(slab);
@@ -62,7 +64,7 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
     @Override
     @Transactional
     public AgreementSlabResponse updateSlab(Long agreementId, Long slabId, SlabDTO request, Long currentUserId) {
-        loadDraftVersionForMutation(agreementId, currentUserId);
+        commercialVersionGuard.loadForCommercialMutation(agreementId, currentUserId);
         AgreementSlab slab = loadSlabForVersion(agreementId, slabId);
         CommercialSlabType slabType = resolveSlabType(request);
         validateSlabValues(request.fromValue(), request.toValue());
@@ -73,6 +75,7 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
         slab.setToValue(request.toValue());
         slab.setValueType(request.valueType());
         slab.setCommercialValue(request.commercialValue());
+        slab.setPayoutFrequency(request.payoutFrequency());
         slab.setUpdatedByUserId(currentUserId);
         slab = slabRepository.save(slab);
         return toResponse(slab);
@@ -81,7 +84,7 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
     @Override
     @Transactional
     public void deleteSlab(Long agreementId, Long slabId, Long currentUserId) {
-        loadDraftVersionForMutation(agreementId, currentUserId);
+        commercialVersionGuard.loadForCommercialMutation(agreementId, currentUserId);
         AgreementSlab slab = loadSlabForVersion(agreementId, slabId);
         targetRepository.deleteBySlabId(slab.getId());
         slabRepository.delete(slab);
@@ -89,19 +92,6 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
 
     private CommercialSlabType resolveSlabType(SlabDTO request) {
         return request.slabType() != null ? request.slabType() : CommercialSlabType.PURCHASE;
-    }
-
-    private AgreementVersion loadDraftVersionForMutation(Long agreementVersionId, Long userId) {
-        AgreementVersion version = agreementVersionRepository.findById(agreementVersionId)
-                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", agreementVersionId));
-        if (!version.getAgreement().getOwner().getId().equals(userId)) {
-            throw new UnauthorizedException("You are not the owner of this agreement");
-        }
-        if (version.getApprovalStatus() != ApprovalStatus.DRAFT) {
-            throw new UnauthorizedException(
-                    "Slabs can only be modified while the agreement is in DRAFT status");
-        }
-        return version;
     }
 
     private AgreementVersion loadVersionForRead(Long agreementVersionId, Long userId) {
@@ -177,6 +167,7 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
                 slab.getFromValue(),
                 slab.getToValue(),
                 slab.getValueType(),
-                slab.getCommercialValue());
+                slab.getCommercialValue(),
+                slab.getPayoutFrequency());
     }
 }

@@ -2,6 +2,7 @@ package com.medplus.agreement_tracker_backend.entity;
 
 import com.medplus.agreement_tracker_backend.entity.base.AuditableEntity;
 import com.medplus.agreement_tracker_backend.enums.CommercialSlabType;
+import com.medplus.agreement_tracker_backend.enums.PayoutFrequency;
 import com.medplus.agreement_tracker_backend.enums.SlabValueType;
 import jakarta.persistence.*;
 import lombok.*;
@@ -44,4 +45,8 @@ public class AgreementSlab extends AuditableEntity {
 
     @Column(name = "commercial_value", nullable = false, precision = 15, scale = 2)
     private BigDecimal commercialValue;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payout_frequency", length = 20)
+    private PayoutFrequency payoutFrequency;
 }

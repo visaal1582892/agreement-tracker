@@ -96,7 +96,12 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedLookups() {
-        List<String> incomeTypes = List.of("Data Fee", "Retro", "Listing Fee", "Margin", "Sample", "CME");
+        List<String> incomeTypes = List.of(
+                "Data Fee",
+                "Commercial Contracts",
+                "Asset Rentals",
+                "Ad-Hoc Activities"
+        );
         for (String name : incomeTypes) {
             if (!incomeTypeRepository.existsByNameIgnoreCase(name)) {
                 incomeTypeRepository.save(IncomeType.builder().name(name).build());

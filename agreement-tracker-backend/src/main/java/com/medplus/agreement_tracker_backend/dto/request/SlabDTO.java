@@ -1,6 +1,7 @@
 package com.medplus.agreement_tracker_backend.dto.request;
 
 import com.medplus.agreement_tracker_backend.enums.CommercialSlabType;
+import com.medplus.agreement_tracker_backend.enums.PayoutFrequency;
 import com.medplus.agreement_tracker_backend.enums.SlabValueType;
 import jakarta.validation.constraints.NotNull;
 
@@ -11,5 +12,6 @@ public record SlabDTO(
         @NotNull BigDecimal toValue,
         @NotNull SlabValueType valueType,
         @NotNull BigDecimal commercialValue,
-        CommercialSlabType slabType
+        CommercialSlabType slabType,
+        PayoutFrequency payoutFrequency
 ) {}

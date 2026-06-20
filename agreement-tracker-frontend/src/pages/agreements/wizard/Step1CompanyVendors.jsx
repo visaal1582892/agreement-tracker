@@ -4,18 +4,14 @@ import { BRAND } from '../../../config/theme';
 import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
 import SearchableSelect from '../../../components/forms/SearchableSelect';
-import BulkVendorInput from '../../../components/forms/BulkVendorInput';
 
 export default function Step1CompanyVendors({ state, updateFields, groupFieldsLocked = false }) {
   const [companyOptions, setCompanyOptions] = useState([]);
   const [groupOptions, setGroupOptions] = useState([]);
-  const [vendorOptions, setVendorOptions] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [selectedGroup, setSelectedGroup] = useState(null);
-  const [selectedVendors, setSelectedVendors] = useState([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [loadingGroups, setLoadingGroups] = useState(false);
-  const [loadingVendors, setLoadingVendors] = useState(false);
   const [fetchError, setFetchError] = useState(null);
   const [createNewGroup, setCreateNewGroup] = useState(false);
 
@@ -53,22 +49,6 @@ export default function Step1CompanyVendors({ state, updateFields, groupFieldsLo
     }
   }, []);
 
-  const searchVendors = useCallback(async (query) => {
-    setLoadingVendors(true);
-    try {
-      const { data } = await axiosInstance.get(ENDPOINTS.VENDORS, {
-        params: query?.trim() ? { search: query.trim() } : {},
-      });
-      setVendorOptions(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('Failed to search vendors:', err);
-      setFetchError('Failed to load vendors. Check API connection.');
-      setVendorOptions([]);
-    } finally {
-      setLoadingVendors(false);
-    }
-  }, []);
-
   const handleGroupSearch = useCallback(() => {
     loadGroups(state.companyId);
   }, [loadGroups, state.companyId]);
@@ -100,20 +80,6 @@ export default function Step1CompanyVendors({ state, updateFields, groupFieldsLo
     state.companyAgreementGroupName,
     state.newCompanyAgreementGroupName,
   ]);
-
-  useEffect(() => {
-    if (state.vendorIds?.length > 0 && selectedVendors.length === 0) {
-      axiosInstance
-        .get(ENDPOINTS.VENDORS, { params: { ids: state.vendorIds.join(',') } })
-        .then(({ data }) => {
-          const resolved = Array.isArray(data)
-            ? data.filter((v) => state.vendorIds.includes(v.id))
-            : [];
-          if (resolved.length) setSelectedVendors(resolved);
-        })
-        .catch((err) => console.error('Failed to hydrate vendors:', err));
-    }
-  }, [state.vendorIds, selectedVendors.length]);
 
   const handleCompanyChange = (company) => {
     setSelectedCompany(company);
@@ -149,18 +115,13 @@ export default function Step1CompanyVendors({ state, updateFields, groupFieldsLo
     });
   };
 
-  const handleVendorChange = (selected) => {
-    setSelectedVendors(selected);
-    updateFields({ vendorIds: selected.map((v) => v.id) });
-  };
-
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
       <Typography sx={{ fontSize: '1rem', fontWeight: 700, color: BRAND.textPrimary, mb: 0.5 }}>
-        Company & Vendor Setup
+        Company & Group Setup
       </Typography>
       <Typography sx={{ fontSize: '0.875rem', color: '#64748B', mb: 3 }}>
-        Select company, agreement group, and vendors for this agreement.
+        Select company and agreement group for this agreement.
       </Typography>
 
       {fetchError && (
@@ -226,24 +187,6 @@ export default function Step1CompanyVendors({ state, updateFields, groupFieldsLo
               />
             </>
           )}
-        </Grid>
-
-        <Grid size={{ xs: 12 }}>
-          <SearchableSelect
-            label="Vendors"
-            placeholder="Search vendors by name or code…"
-            isMulti
-            options={vendorOptions}
-            value={selectedVendors}
-            onChange={handleVendorChange}
-            onSearch={searchVendors}
-            getOptionLabel={(o) => `${o.vendorCode} — ${o.vendorName}`}
-            isOptionEqualToValue={(o, v) => o.id === v.id}
-            loading={loadingVendors}
-            maxVisibleChips={2}
-            required
-          />
-          <BulkVendorInput selectedVendors={selectedVendors} onChange={handleVendorChange} />
         </Grid>
       </Grid>
     </Box>

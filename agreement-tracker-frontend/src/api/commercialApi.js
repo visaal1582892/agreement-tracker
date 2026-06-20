@@ -84,10 +84,11 @@ export async function extractApiErrorMessage(err, fallback) {
 
 export function toSlabPayload(slab, slabType) {
   return {
-    fromValue: Number(slab.fromValue),
-    toValue: Number(slab.toValue),
+    fromValue: Number(slab.fromValue ?? slab.threshold),
+    toValue: Number(slab.toValue ?? slab.threshold),
     valueType: slab.valueType,
     commercialValue: Number(slab.commercialValue),
+    payoutFrequency: slab.payoutFrequency || null,
     slabType: slabType || slab.slabType || 'PURCHASE',
   };
 }

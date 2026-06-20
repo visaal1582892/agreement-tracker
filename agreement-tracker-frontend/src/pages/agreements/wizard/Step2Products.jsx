@@ -159,6 +159,10 @@ export function mapSharedRulesToLocalState(rules, vendorProducts, manufacturerOp
   return next;
 }
 
+function countedLabel(base, count) {
+  return `${base} (${count})`;
+}
+
 export default function Step2Products({ state, updateProductRules }) {
   const [vendorProducts, setVendorProducts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -445,10 +449,12 @@ export default function Step2Products({ state, updateProductRules }) {
           <Box sx={panelSx}>
             <Box sx={panelHeaderSx}>
               <Box sx={panelHeaderTitleRowSx}>
-                <Typography variant="h6" fontWeight={700}>Manufacturer</Typography>
+                <Typography variant="h6" fontWeight={700}>
+                  {countedLabel('Manufacturers', selectedManufacturers.length)}
+                </Typography>
               </Box>
               <SearchableSelect
-                label="Manufacturers (optional)"
+                label={countedLabel('Manufacturers', selectedManufacturers.length)}
                 placeholder="Filter by manufacturer…"
                 isMulti
                 options={manufacturerOptions}
@@ -472,7 +478,9 @@ export default function Step2Products({ state, updateProductRules }) {
           <Box sx={panelSx}>
             <Box sx={panelHeaderSx}>
               <Box sx={panelHeaderTitleRowSx}>
-                <Typography variant="h6" fontWeight={700}>Divisions</Typography>
+                <Typography variant="h6" fontWeight={700}>
+                  {countedLabel('Divisions', selectedDivisionIds.length)}
+                </Typography>
                 <FormControl size="small" sx={ruleSelectSx} disabled={!hasManufacturerFilter}>
                   <Select value={divisionOp} onChange={(e) => setDivisionOp(e.target.value)}>
                     <MenuItem value="INCLUDE">Rule: Include Selected</MenuItem>
@@ -548,7 +556,9 @@ export default function Step2Products({ state, updateProductRules }) {
           <Box sx={panelSx}>
             <Box sx={panelHeaderSx}>
               <Box sx={panelHeaderTitleRowSx}>
-                <Typography variant="h6" fontWeight={700}>Products</Typography>
+                <Typography variant="h6" fontWeight={700}>
+                  {countedLabel('Products', resolvedProductIds.length)}
+                </Typography>
                 <FormControl size="small" sx={ruleSelectSx}>
                   <Select value={productOp} onChange={(e) => setProductOp(e.target.value)}>
                     <MenuItem value="INCLUDE">Rule: Include Selected</MenuItem>

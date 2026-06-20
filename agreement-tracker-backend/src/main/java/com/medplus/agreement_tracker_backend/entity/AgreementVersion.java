@@ -1,8 +1,13 @@
 package com.medplus.agreement_tracker_backend.entity;
 
 import com.medplus.agreement_tracker_backend.entity.base.AuditableEntity;
+import com.medplus.agreement_tracker_backend.enums.AdHocSubType;
 import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
+import com.medplus.agreement_tracker_backend.enums.CalculationBasis;
 import com.medplus.agreement_tracker_backend.enums.CommercialStructure;
+import com.medplus.agreement_tracker_backend.enums.PaymentRealizationType;
+import com.medplus.agreement_tracker_backend.enums.PayoutFrequency;
+import com.medplus.agreement_tracker_backend.enums.SlabValueType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -58,8 +63,43 @@ public class AgreementVersion extends AuditableEntity {
     @Column(name = "commercial_value", precision = 15, scale = 2)
     private BigDecimal commercialValue;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "flat_value_type", length = 20)
+    private SlabValueType flatValueType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "flat_baseline_frequency", length = 20)
+    private PayoutFrequency flatBaselineFrequency;
+
+    @Column(name = "quantity_cap", precision = 15, scale = 2)
+    private BigDecimal quantityCap;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "adhoc_sub_type", length = 20)
+    private AdHocSubType adhocSubType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "invoice_vendor_id")
+    private VendorMaster invoiceVendor;
+
+    @Column(name = "payout_buffer_days")
+    private Integer payoutBufferDays;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "calculation_basis", nullable = false, length = 20)
+    @Builder.Default
+    private CalculationBasis calculationBasis = CalculationBasis.VENDOR_INVOICE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_realization_type", nullable = false, length = 30)
+    @Builder.Default
+    private PaymentRealizationType paymentRealizationType = PaymentRealizationType.DIRECT_PAYMENT_INVOICE;
+
     @Column(name = "calculation_formula", length = 500)
     private String calculationFormula;
+
+    @OneToOne(mappedBy = "agreementVersion", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private AgreementAsset asset;
 
     @Column(name = "start_date")
     private LocalDate startDate;

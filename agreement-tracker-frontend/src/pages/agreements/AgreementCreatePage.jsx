@@ -10,6 +10,7 @@ import { useAgreementWizard } from '../../hooks/useAgreementWizard';
 import { buildGroupWizardPath } from '../../utils/agreementNavigation';
 import {
   buildStep1CreatePayload,
+  buildSanitizedStep1UpdatePayload,
   urlStepFromInternal,
   validateStep1Fields,
 } from '../../utils/agreementWizardUtils';
@@ -18,7 +19,14 @@ import Step1Setup from './wizard/Step1Setup';
 export default function AgreementCreatePage() {
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
-  const { state, updateFields, updateProductRules } = useAgreementWizard();
+  const {
+    state,
+    updateFields,
+    updateAgreementDetails,
+    updateAgreementAsset,
+    updateAgreementCommercials,
+    updateProductRules,
+  } = useAgreementWizard();
   const [savingDraft, setSavingDraft] = useState(false);
 
   const createDraft = useCallback(async () => {
@@ -35,8 +43,18 @@ export default function AgreementCreatePage() {
     setSavingDraft(true);
     try {
       const created = await createDraft();
-      enqueueSnackbar('Product template saved', { variant: 'success' });
-      navigate(buildGroupWizardPath(created.companyAgreementGroupId, created.agreementId, { step: urlStepFromInternal(1) }), { replace: true });
+      await axiosInstance.put(
+        ENDPOINTS.AGREEMENT_VERSION_UPDATE(created.id),
+        buildSanitizedStep1UpdatePayload(state),
+        { params: { validateStep1: true } },
+      );
+      enqueueSnackbar('Foundational setup saved', { variant: 'success' });
+      navigate(
+        buildGroupWizardPath(created.companyAgreementGroupId, created.agreementId, {
+          step: urlStepFromInternal(1),
+        }),
+        { replace: true },
+      );
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || err.message || 'Failed to save draft', { variant: 'error' });
     } finally {
@@ -58,6 +76,9 @@ export default function AgreementCreatePage() {
         <Step1Setup
           state={state}
           updateFields={updateFields}
+          updateAgreementDetails={updateAgreementDetails}
+          updateAgreementAsset={updateAgreementAsset}
+          updateAgreementCommercials={updateAgreementCommercials}
           updateProductRules={updateProductRules}
         />
       </WizardLayout>

@@ -1,7 +1,9 @@
 package com.medplus.agreement_tracker_backend.service.impl;
 
+import com.medplus.agreement_tracker_backend.constants.IncomeTypeNames;
 import com.medplus.agreement_tracker_backend.dto.request.CreateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.DraftAgreementItemRequest;
+import com.medplus.agreement_tracker_backend.dto.request.DraftAssetPayload;
 import com.medplus.agreement_tracker_backend.dto.request.DraftCommercialsPayload;
 import com.medplus.agreement_tracker_backend.dto.request.DraftDetailsPayload;
 import com.medplus.agreement_tracker_backend.dto.request.EditAgreementRequest;
@@ -20,6 +22,7 @@ import com.medplus.agreement_tracker_backend.dto.response.PendingActionRequestIn
 import com.medplus.agreement_tracker_backend.entity.Agreement;
 import com.medplus.agreement_tracker_backend.entity.AgreementActionRequest;
 import com.medplus.agreement_tracker_backend.entity.AgreementApproval;
+import com.medplus.agreement_tracker_backend.entity.AgreementAsset;
 import com.medplus.agreement_tracker_backend.entity.AgreementAudit;
 import com.medplus.agreement_tracker_backend.entity.AgreementComputedProduct;
 import com.medplus.agreement_tracker_backend.entity.AgreementDivisionRule;
@@ -37,9 +40,12 @@ import com.medplus.agreement_tracker_backend.entity.StateMaster;
 import com.medplus.agreement_tracker_backend.entity.User;
 import com.medplus.agreement_tracker_backend.entity.VendorMaster;
 import com.medplus.agreement_tracker_backend.enums.ActionRequestStatus;
+import com.medplus.agreement_tracker_backend.enums.AdHocSubType;
 import com.medplus.agreement_tracker_backend.enums.ApprovalAction;
 import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
+import com.medplus.agreement_tracker_backend.enums.CalculationBasis;
 import com.medplus.agreement_tracker_backend.enums.CommercialStructure;
+import com.medplus.agreement_tracker_backend.enums.PaymentRealizationType;
 import com.medplus.agreement_tracker_backend.enums.RuleType;
 import com.medplus.agreement_tracker_backend.exception.BusinessException;
 import com.medplus.agreement_tracker_backend.exception.IncompleteAgreementException;
@@ -47,6 +53,7 @@ import com.medplus.agreement_tracker_backend.exception.ResourceNotFoundException
 import com.medplus.agreement_tracker_backend.exception.UnauthorizedException;
 import com.medplus.agreement_tracker_backend.repository.AgreementActionRequestRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementApprovalRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementAssetRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementAuditRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementComputedProductRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementDivisionRuleRepository;
@@ -115,6 +122,7 @@ public class AgreementServiceImpl implements AgreementService {
     private final AgreementActionRequestRepository actionRequestRepository;
     private final AgreementReminderRepository reminderRepository;
     private final AgreementDocumentRepository documentRepository;
+    private final AgreementAssetRepository assetRepository;
     private final UserRepository userRepository;
     private final IncomeTypeRepository incomeTypeRepository;
     private final AgreementTypeRepository agreementTypeRepository;
@@ -149,6 +157,7 @@ public class AgreementServiceImpl implements AgreementService {
             AgreementActionRequestRepository actionRequestRepository,
             AgreementReminderRepository reminderRepository,
             AgreementDocumentRepository documentRepository,
+            AgreementAssetRepository assetRepository,
             UserRepository userRepository,
             IncomeTypeRepository incomeTypeRepository,
             AgreementTypeRepository agreementTypeRepository,
@@ -174,6 +183,7 @@ public class AgreementServiceImpl implements AgreementService {
         this.actionRequestRepository = actionRequestRepository;
         this.reminderRepository = reminderRepository;
         this.documentRepository = documentRepository;
+        this.assetRepository = assetRepository;
         this.userRepository = userRepository;
         this.incomeTypeRepository = incomeTypeRepository;
         this.agreementTypeRepository = agreementTypeRepository;
@@ -318,20 +328,37 @@ public class AgreementServiceImpl implements AgreementService {
         DraftAgreementItemRequest item = new DraftAgreementItemRequest(request.details(), request.commercials());
         AgreementVersion newVersion = buildDraftVersion(item, owner, parent, maxVersion + 1, currentUserId);
         newVersion = agreementVersionRepository.save(newVersion);
+        applyDraftFields(newVersion, request.details(), request.commercials());
 
         List<Long> vendorIds = request.vendorIds() != null ? request.vendorIds() : List.of();
-        ProductRulesPayload rulesPayload = request.productRules() != null
-                ? request.productRules() : new ProductRulesPayload(null, null, null);
-        List<Long> manufacturerIds = rulesPayload.manufacturers() != null ? rulesPayload.manufacturers() : List.of();
-        List<RuleDTO> divisionRules = rulesPayload.divisionRules() != null ? rulesPayload.divisionRules() : List.of();
-        List<RuleDTO> productRules = rulesPayload.productRules() != null ? rulesPayload.productRules() : List.of();
-
         replaceVendors(newVersion, vendorIds, currentUserId);
-        replaceRulesAndComputeProducts(newVersion, manufacturerIds, divisionRules, productRules, currentUserId);
+
+        Long incomeTypeId = resolveIncomeTypeId(newVersion, request.details());
+        syncIncomeTypeSpecificData(
+                newVersion,
+                incomeTypeId,
+                currentUserId,
+                request.productRules(),
+                request.asset(),
+                request.details(),
+                true);
+
         if (request.details() != null && request.details().stateIds() != null) {
             replaceAgreementStates(parent, request.details().stateIds(), currentUserId);
         }
         syncAgreementName(parent, newVersion, currentUserId);
+
+        newVersion.setApprovedBy(null);
+        newVersion.setApprovalDate(null);
+        newVersion.setUpdatedByUserId(currentUserId);
+        newVersion = agreementVersionRepository.save(newVersion);
+
+        if (Boolean.TRUE.equals(request.requiresReapproval())
+                && source.getApprovalStatus() == ApprovalStatus.APPROVED) {
+            parent.setCurrentVersionId(newVersion.getId());
+            parent.setUpdatedByUserId(currentUserId);
+            agreementRepository.save(parent);
+        }
 
         recordAudit(parent.getId(), newVersion.getId(), "VERSIONED_EDIT_CREATED",
                 String.valueOf(source.getVersionNumber()), String.valueOf(newVersion.getVersionNumber()), currentUserId);
@@ -342,7 +369,8 @@ public class AgreementServiceImpl implements AgreementService {
     @Override
     @Transactional
     public AgreementVersionResponse updateDraft(Long agreementVersionId, UpdateDraftRequest request, Long currentUserId,
-                                                boolean validateStep1, boolean validateStep2) {
+                                                boolean validateStep1, boolean validateStep2,
+                                                boolean validateCommercialStructure) {
         if (validateStep1) {
             var violations = validator.validate(request, Step1Validation.class);
             if (!violations.isEmpty()) {
@@ -357,8 +385,15 @@ public class AgreementServiceImpl implements AgreementService {
             }
             validateStep2Fields(request);
         }
+        if (validateCommercialStructure) {
+            validateCommercialStructureFields(request);
+        }
 
         AgreementVersion version = loadAndValidateOwnership(agreementVersionId, currentUserId);
+        if (version.getApprovalStatus() == ApprovalStatus.APPROVED
+                && Boolean.TRUE.equals(request.requiresReapproval())) {
+            return createReapprovalDraft(version, request, currentUserId);
+        }
         if (version.getApprovalStatus() != ApprovalStatus.DRAFT) {
             throw new BusinessException("Only DRAFT agreements can be updated via draft save");
         }
@@ -384,16 +419,132 @@ public class AgreementServiceImpl implements AgreementService {
             replaceVendors(version, request.vendorIds(), currentUserId);
         }
 
-        if (request.productRules() != null) {
-            ProductRulesPayload rulesPayload = request.productRules();
-            List<Long> manufacturerIds = rulesPayload.manufacturers() != null ? rulesPayload.manufacturers() : List.of();
-            List<RuleDTO> divisionRules = rulesPayload.divisionRules() != null ? rulesPayload.divisionRules() : List.of();
-            List<RuleDTO> productRules = rulesPayload.productRules() != null ? rulesPayload.productRules() : List.of();
-            replaceRulesAndComputeProducts(version, manufacturerIds, divisionRules, productRules, currentUserId);
-        }
+        Long incomeTypeId = resolveIncomeTypeId(version, request.details());
+        syncIncomeTypeSpecificData(
+                version,
+                incomeTypeId,
+                currentUserId,
+                request.productRules(),
+                request.asset(),
+                request.details(),
+                validateStep2);
+        version = agreementVersionRepository.save(version);
 
         recordAudit(parent.getId(), version.getId(), "DRAFT_UPDATED", null, null, currentUserId);
         return toVersionResponse(version);
+    }
+
+    private AgreementVersionResponse createReapprovalDraft(AgreementVersion approvedVersion,
+                                                            UpdateDraftRequest request,
+                                                            Long currentUserId) {
+        Agreement parent = approvedVersion.getAgreement();
+        Integer maxVersion = agreementVersionRepository.findMaxVersionByAgreementId(parent.getId());
+        AgreementVersion latest = agreementVersionRepository
+                .findByAgreementIdAndVersionNumber(parent.getId(), maxVersion)
+                .orElseThrow(() -> new BusinessException("No agreement version exists for this agreement"));
+
+        if (latest.getApprovalStatus() == ApprovalStatus.DRAFT
+                && parent.getOwner().getId().equals(currentUserId)) {
+            throw new BusinessException("A draft version already exists — update it in place");
+        }
+
+        AgreementVersion newVersion = AgreementVersion.builder()
+                .agreement(parent)
+                .versionNumber(maxVersion + 1)
+                .owner(parent.getOwner())
+                .approvalStatus(ApprovalStatus.DRAFT)
+                .build();
+        newVersion.setCreatedByUserId(currentUserId);
+        newVersion = agreementVersionRepository.save(newVersion);
+
+        applyDraftFields(newVersion, request.details(), request.commercials());
+        if (request.details() != null && request.details().stateIds() != null) {
+            replaceAgreementStates(parent, request.details().stateIds(), currentUserId);
+        }
+        syncAgreementName(parent, newVersion, currentUserId);
+
+        if (request.vendorIds() != null) {
+            replaceVendors(newVersion, request.vendorIds(), currentUserId);
+        }
+
+        Long incomeTypeId = resolveIncomeTypeId(newVersion, request.details());
+        syncIncomeTypeSpecificData(
+                newVersion,
+                incomeTypeId,
+                currentUserId,
+                request.productRules(),
+                request.asset(),
+                request.details(),
+                true);
+        newVersion.setApprovedBy(null);
+        newVersion.setApprovalDate(null);
+        newVersion.setUpdatedByUserId(currentUserId);
+        newVersion = agreementVersionRepository.save(newVersion);
+
+        parent.setCurrentVersionId(newVersion.getId());
+        parent.setUpdatedByUserId(currentUserId);
+        agreementRepository.save(parent);
+
+        recordAudit(parent.getId(), newVersion.getId(), "REAPPROVAL_DRAFT_CREATED",
+                String.valueOf(approvedVersion.getVersionNumber()),
+                String.valueOf(newVersion.getVersionNumber()), currentUserId);
+
+        return toVersionResponse(newVersion);
+    }
+
+    private Long resolveIncomeTypeId(AgreementVersion version, DraftDetailsPayload details) {
+        if (version.getIncomeType() != null) {
+            return version.getIncomeType().getId();
+        }
+        return details != null ? details.incomeTypeId() : null;
+    }
+
+    private void syncIncomeTypeSpecificData(AgreementVersion version,
+                                            Long incomeTypeId,
+                                            Long currentUserId,
+                                            ProductRulesPayload productRulesPayload,
+                                            DraftAssetPayload assetPayload,
+                                            DraftDetailsPayload detailsPayload,
+                                            boolean validateStep2) {
+        if (isAssetRentalIncomeType(incomeTypeId)) {
+            clearProductRulesForVersion(version);
+            version.setAdhocSubType(null);
+            version.setQuantityCap(null);
+            if (shouldPersistAsset(assetPayload, validateStep2)) {
+                replaceAsset(version, assetPayload, currentUserId);
+            }
+            return;
+        }
+
+        clearAssetForVersion(version);
+        if (!isAdHocIncomeType(incomeTypeId)) {
+            version.setAdhocSubType(null);
+            version.setQuantityCap(null);
+        } else if (detailsPayload != null && "QPS".equals(detailsPayload.adhocSubType())) {
+            version.setQuantityCap(null);
+        }
+
+        if (productRulesPayload != null) {
+            List<Long> manufacturerIds = productRulesPayload.manufacturers() != null
+                    ? productRulesPayload.manufacturers() : List.of();
+            List<RuleDTO> divisionRules = productRulesPayload.divisionRules() != null
+                    ? productRulesPayload.divisionRules() : List.of();
+            List<RuleDTO> productRules = productRulesPayload.productRules() != null
+                    ? productRulesPayload.productRules() : List.of();
+            replaceRulesAndComputeProducts(version, manufacturerIds, divisionRules, productRules, currentUserId);
+        }
+    }
+
+    private void clearAssetForVersion(AgreementVersion version) {
+        assetRepository.deleteByAgreementVersionId(version.getId());
+        version.setAsset(null);
+    }
+
+    private void clearProductRulesForVersion(AgreementVersion version) {
+        manufacturerRuleRepository.deleteByAgreementVersionId(version.getId());
+        divisionRuleRepository.deleteByAgreementVersionId(version.getId());
+        productRuleRepository.deleteByAgreementVersionId(version.getId());
+        computedProductRepository.deleteByAgreementVersionId(version.getId());
     }
 
     @Override
@@ -1078,6 +1229,25 @@ public class AgreementServiceImpl implements AgreementService {
             if (details.notes() != null) {
                 version.setNotes(details.notes());
             }
+            if (details.adhocSubType() != null) {
+                version.setAdhocSubType(AdHocSubType.valueOf(details.adhocSubType()));
+            }
+            if (details.quantityCap() != null) {
+                version.setQuantityCap(details.quantityCap());
+            }
+            if (details.invoiceVendorId() != null) {
+                version.setInvoiceVendor(vendorMasterRepository.findById(details.invoiceVendorId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Vendor", details.invoiceVendorId())));
+            }
+            if (details.payoutBufferDays() != null) {
+                version.setPayoutBufferDays(details.payoutBufferDays());
+            }
+            if (details.calculationBasis() != null) {
+                version.setCalculationBasis(CalculationBasis.valueOf(details.calculationBasis()));
+            }
+            if (details.paymentRealizationType() != null) {
+                version.setPaymentRealizationType(PaymentRealizationType.valueOf(details.paymentRealizationType()));
+            }
         }
         if (commercials != null) {
             if (commercials.commercialStructure() != null) {
@@ -1086,6 +1256,12 @@ public class AgreementServiceImpl implements AgreementService {
             if (commercials.commercialValue() != null) {
                 version.setCommercialValue(commercials.commercialValue());
             }
+            if (commercials.flatValueType() != null) {
+                version.setFlatValueType(commercials.flatValueType());
+            }
+            if (commercials.flatBaselineFrequency() != null) {
+                version.setFlatBaselineFrequency(commercials.flatBaselineFrequency());
+            }
             if (commercials.calculationFormula() != null) {
                 version.setCalculationFormula(commercials.calculationFormula());
             }
@@ -1093,20 +1269,14 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     private void validateStep1Fields(UpdateDraftRequest request) {
-        if (request.vendorIds() == null || request.vendorIds().isEmpty()) {
-            throw new BusinessException("At least one vendor is required");
-        }
-        ProductRulesPayload rulesPayload = request.productRules();
-        List<RuleDTO> productRules = rulesPayload != null && rulesPayload.productRules() != null
-                ? rulesPayload.productRules() : List.of();
-        if (productRules.isEmpty()) {
-            throw new BusinessException("At least one product rule is required");
-        }
-    }
-
-    private void validateStep2Fields(UpdateDraftRequest request) {
         DraftDetailsPayload details = request.details();
-        if (details == null || details.startDate() == null) {
+        if (details == null || details.incomeTypeId() == null) {
+            throw new BusinessException("Income type is required");
+        }
+        if (details.agreementTypeId() == null) {
+            throw new BusinessException("Agreement type is required");
+        }
+        if (details.startDate() == null) {
             throw new BusinessException("Start date is required");
         }
         if (details.expiryDate() == null) {
@@ -1115,6 +1285,218 @@ public class AgreementServiceImpl implements AgreementService {
         if (details.expiryDate().isBefore(details.startDate())) {
             throw new BusinessException("Expiry date must be on or after start date");
         }
+    }
+
+    private void validateStep2Fields(UpdateDraftRequest request) {
+        validateStep1Fields(request);
+
+        DraftDetailsPayload details = request.details();
+        boolean assetRental = details != null && isAssetRentalIncomeType(details.incomeTypeId());
+
+        if (!assetRental && (request.vendorIds() == null || request.vendorIds().isEmpty())) {
+            throw new BusinessException("At least one vendor is required");
+        }
+
+        if (details != null && assetRental) {
+            validateAssetRentalConfiguration(request.asset(), details);
+        } else if (details != null && isAdHocIncomeType(details.incomeTypeId())) {
+            validateAdHocPayload(request, details);
+        } else {
+            ProductRulesPayload rulesPayload = request.productRules();
+            List<RuleDTO> productRules = rulesPayload != null && rulesPayload.productRules() != null
+                    ? rulesPayload.productRules() : List.of();
+            if (productRules.isEmpty()) {
+                throw new BusinessException("At least one product rule is required");
+            }
+        }
+
+        validateSettlementRouting(details, request.vendorIds(), assetRental);
+    }
+
+    private void validateSettlementRouting(DraftDetailsPayload details, List<Long> vendorIds, boolean assetRental) {
+        if (details == null) {
+            throw new BusinessException("Settlement details are required");
+        }
+        if (details.paymentRealizationType() == null || details.paymentRealizationType().isBlank()) {
+            throw new BusinessException("Payment realization type is required");
+        }
+        if (PaymentRealizationType.DIRECT_PAYMENT_INVOICE.name().equals(details.paymentRealizationType())
+                && details.invoiceVendorId() == null) {
+            throw new BusinessException("Invoice vendor is required for Direct Payment / Invoice");
+        }
+        if (assetRental) {
+            return;
+        }
+        if (details.calculationBasis() == null || details.calculationBasis().isBlank()) {
+            throw new BusinessException("Calculation basis is required");
+        }
+    }
+
+    private void validateAssetRentalConfiguration(DraftAssetPayload asset, DraftDetailsPayload details) {
+        if (asset == null || asset.assetCategory() == null) {
+            throw new BusinessException("Asset category is required for Asset Rentals");
+        }
+        if (asset.assetType() == null || asset.assetType().isBlank()) {
+            throw new BusinessException("Asset type is required for Asset Rentals");
+        }
+        if (details.stateIds() == null || details.stateIds().isEmpty()) {
+            throw new BusinessException("At least one state is required for Asset Rentals");
+        }
+        if (asset.storeCount() == null || asset.storeCount() <= 0) {
+            throw new BusinessException("Number of participating stores is required for Asset Rentals");
+        }
+    }
+
+    private void validateAssetRentalPayout(DraftAssetPayload asset) {
+        if (asset == null) {
+            throw new BusinessException("Asset payout amount is required for Asset Rentals");
+        }
+        boolean hasFlatPayout = asset.flatPayout() != null && asset.flatPayout().signum() > 0;
+        boolean hasPerStorePayout = asset.payoutPerStore() != null && asset.payoutPerStore().signum() > 0;
+        if (!hasFlatPayout && !hasPerStorePayout) {
+            throw new BusinessException("Asset payout amount is required for Asset Rentals");
+        }
+    }
+
+    private void validateCommercialStructureFields(UpdateDraftRequest request) {
+        DraftDetailsPayload details = request.details();
+        if (details == null || details.incomeTypeId() == null) {
+            throw new BusinessException("Income type is required");
+        }
+        if (isAssetRentalIncomeType(details.incomeTypeId())) {
+            validateAssetRentalPayout(request.asset());
+            return;
+        }
+        DraftCommercialsPayload commercials = request.commercials();
+        if (commercials == null) {
+            throw new BusinessException("Commercial configuration is required");
+        }
+        boolean enableFlat = Boolean.TRUE.equals(commercials.enableFlatBaseline())
+                || commercials.commercialStructure() == CommercialStructure.FLAT
+                || commercials.commercialStructure() == CommercialStructure.HYBRID;
+        boolean enableSlab = Boolean.TRUE.equals(commercials.enableSlabIncentives())
+                || commercials.commercialStructure() == CommercialStructure.SLAB
+                || commercials.commercialStructure() == CommercialStructure.HYBRID;
+        if (!enableFlat && !enableSlab) {
+            throw new BusinessException("Enable at least one commercial component (flat baseline or slab incentives)");
+        }
+        if (enableFlat && commercials.commercialValue() == null) {
+            throw new BusinessException("Flat baseline value is required when flat payout is enabled");
+        }
+        if (enableFlat && commercials.flatBaselineFrequency() == null) {
+            throw new BusinessException("Flat baseline frequency is required when flat payout is enabled");
+        }
+    }
+
+    private void validateAssetRentalPayload(DraftAssetPayload asset, DraftDetailsPayload details) {
+        validateAssetRentalConfiguration(asset, details);
+        validateAssetRentalPayout(asset);
+    }
+
+    private boolean isAdHocIncomeType(Long incomeTypeId) {
+        if (incomeTypeId == null) {
+            return false;
+        }
+        return incomeTypeRepository.findById(incomeTypeId)
+                .map(incomeType -> IncomeTypeNames.AD_HOC_ACTIVITIES.equalsIgnoreCase(incomeType.getName()))
+                .orElse(false);
+    }
+
+    private void validateAdHocPayload(UpdateDraftRequest request, DraftDetailsPayload details) {
+        if (details.adhocSubType() == null || details.adhocSubType().isBlank()) {
+            throw new BusinessException("Ad-Hoc activity sub-type is required");
+        }
+        if ("QPS".equals(details.adhocSubType())) {
+            ProductRulesPayload rulesPayload = request.productRules();
+            List<RuleDTO> productRules = rulesPayload != null && rulesPayload.productRules() != null
+                    ? rulesPayload.productRules() : List.of();
+            if (productRules.isEmpty()) {
+                throw new BusinessException("At least one product rule is required for QPS");
+            }
+            return;
+        }
+        if ("CONSUMER_PRICE_OFF".equals(details.adhocSubType())) {
+            if (details.stateIds() == null || details.stateIds().isEmpty()) {
+                throw new BusinessException("At least one state is required for Consumer Price Off");
+            }
+            ProductRulesPayload rulesPayload = request.productRules();
+            List<RuleDTO> productRules = rulesPayload != null && rulesPayload.productRules() != null
+                    ? rulesPayload.productRules() : List.of();
+            if (productRules.isEmpty()) {
+                throw new BusinessException("At least one product rule is required for Consumer Price Off");
+            }
+            if (details.quantityCap() == null || details.quantityCap().signum() <= 0) {
+                throw new BusinessException("Quantity / value cap is required for Consumer Price Off");
+            }
+        }
+    }
+
+    private boolean isAssetRentalIncomeType(Long incomeTypeId) {
+        if (incomeTypeId == null) {
+            return false;
+        }
+        return incomeTypeRepository.findById(incomeTypeId)
+                .map(incomeType -> IncomeTypeNames.ASSET_RENTALS.equalsIgnoreCase(incomeType.getName()))
+                .orElse(false);
+    }
+
+    private boolean hasPersistableAssetPayload(DraftAssetPayload payload) {
+        return payload != null
+                && payload.assetCategory() != null
+                && payload.assetType() != null
+                && !payload.assetType().isBlank();
+    }
+
+    private boolean shouldPersistAsset(DraftAssetPayload payload, boolean validateStep2) {
+        if (hasPersistableAssetPayload(payload)) {
+            return true;
+        }
+        // Partial Step 1 save (validateStep2=false): defer asset row until Step 2 payload is complete.
+        return false;
+    }
+
+    private void replaceAsset(AgreementVersion version, DraftAssetPayload payload, Long userId) {
+        if (!hasPersistableAssetPayload(payload)) {
+            return;
+        }
+        AgreementAsset asset = assetRepository.findByAgreementVersionId(version.getId())
+                .orElseGet(() -> AgreementAsset.builder().agreementVersion(version).build());
+
+        if (payload.assetCategory() != null) {
+            asset.setAssetCategory(payload.assetCategory());
+        }
+        if (payload.assetType() != null) {
+            asset.setAssetType(payload.assetType().trim());
+        }
+        if (payload.storeCount() != null) {
+            asset.setStoreCount(payload.storeCount());
+        }
+        asset.setPayoutPerStore(payload.payoutPerStore());
+        asset.setFlatPayout(payload.flatPayout());
+        if (payload.remarks() != null) {
+            asset.setRemarks(payload.remarks().trim());
+        }
+
+        if (asset.getId() == null) {
+            asset.setCreatedByUserId(userId);
+        }
+        asset.setUpdatedByUserId(userId);
+        assetRepository.save(asset);
+        version.setAsset(asset);
+    }
+
+    private AgreementVersionResponse.AssetSummary toAssetSummary(AgreementAsset asset) {
+        if (asset == null) {
+            return null;
+        }
+        return new AgreementVersionResponse.AssetSummary(
+                asset.getAssetCategory() != null ? asset.getAssetCategory().name() : null,
+                asset.getAssetType(),
+                asset.getStoreCount(),
+                asset.getPayoutPerStore(),
+                asset.getFlatPayout(),
+                asset.getRemarks()
+        );
     }
 
     private void validateCompleteAgreement(AgreementVersion version) {
@@ -1140,6 +1522,14 @@ public class AgreementServiceImpl implements AgreementService {
         if (version.getAgreementType() == null) {
             throw validationFailure(agreementName, "Missing Agreement Type.");
         }
+        if (version.getIncomeType() != null
+                && isAssetRentalIncomeType(version.getIncomeType().getId())) {
+            validateCompleteAssetRental(version, agreementName);
+            if (version.getInvoiceVendor() == null) {
+                throw validationFailure(agreementName, "Missing Invoice Vendor.");
+            }
+            return;
+        }
         if (version.getCommercialStructure() == null) {
             throw validationFailure(agreementName, "Missing Commercial Structure.");
         }
@@ -1147,15 +1537,18 @@ public class AgreementServiceImpl implements AgreementService {
             throw validationFailure(agreementName, "Expiry Date must be on or after Start Date.");
         }
         if (version.getCommercialStructure() == CommercialStructure.FLAT
-                && version.getCommercialValue() == null) {
-            throw validationFailure(agreementName, "Missing Commercial Value for FLAT structure.");
-        }
-        if (version.getCommercialStructure() == CommercialStructure.SLAB) {
-            if (slabRepository.findByAgreementVersionIdOrderByFromValueAsc(version.getId()).isEmpty()) {
-                throw validationFailure(agreementName, "Missing slabs for SLAB structure.");
+                || version.getCommercialStructure() == CommercialStructure.HYBRID) {
+            if (version.getCommercialValue() == null) {
+                throw validationFailure(agreementName, "Missing Commercial Value for flat baseline.");
             }
-            if (targetRepository.findByAgreementVersionId(version.getId()).isEmpty()) {
-                throw validationFailure(agreementName, "Missing commercial targets for SLAB structure.");
+            if (version.getFlatBaselineFrequency() == null) {
+                throw validationFailure(agreementName, "Missing flat baseline frequency.");
+            }
+        }
+        if (version.getCommercialStructure() == CommercialStructure.SLAB
+                || version.getCommercialStructure() == CommercialStructure.HYBRID) {
+            if (slabRepository.findByAgreementVersionIdOrderByFromValueAsc(version.getId()).isEmpty()) {
+                throw validationFailure(agreementName, "Missing slabs for slab-based incentives.");
             }
         }
         if (vendorRepository.findByAgreementVersionId(version.getId()).isEmpty()) {
@@ -1163,6 +1556,24 @@ public class AgreementServiceImpl implements AgreementService {
         }
         if (productRuleRepository.findByAgreementVersionId(version.getId()).isEmpty()) {
             throw validationFailure(agreementName, "Missing Product selection.");
+        }
+    }
+
+    private void validateCompleteAssetRental(AgreementVersion version, String agreementName) {
+        AgreementAsset asset = assetRepository.findByAgreementVersionId(version.getId()).orElse(null);
+        if (asset == null || asset.getAssetCategory() == null) {
+            throw validationFailure(agreementName, "Missing Asset Category.");
+        }
+        if (asset.getAssetType() == null || asset.getAssetType().isBlank()) {
+            throw validationFailure(agreementName, "Missing Asset Type.");
+        }
+        if (asset.getStoreCount() == null || asset.getStoreCount() <= 0) {
+            throw validationFailure(agreementName, "Missing participating store count.");
+        }
+        boolean hasFlatPayout = asset.getFlatPayout() != null && asset.getFlatPayout().signum() > 0;
+        boolean hasPerStorePayout = asset.getPayoutPerStore() != null && asset.getPayoutPerStore().signum() > 0;
+        if (!hasFlatPayout && !hasPerStorePayout) {
+            throw validationFailure(agreementName, "Missing Asset Payout amount.");
         }
     }
 
@@ -1446,6 +1857,11 @@ public class AgreementServiceImpl implements AgreementService {
                 .toList();
         List<Long> stateIds = states.stream().map(AgreementVersionResponse.StateSummary::id).toList();
 
+        AgreementVersionResponse.AssetSummary assetSummary = assetRepository
+                .findByAgreementVersionId(version.getId())
+                .map(this::toAssetSummary)
+                .orElse(null);
+
         return new AgreementVersionResponse(
                 version.getId(),
                 parent.getId(),
@@ -1463,7 +1879,16 @@ public class AgreementServiceImpl implements AgreementService {
                 agreementType != null ? agreementType.getName() : null,
                 version.getCommercialStructure(),
                 version.getCommercialValue(),
+                version.getFlatValueType(),
+                version.getFlatBaselineFrequency(),
                 version.getCalculationFormula(),
+                version.getQuantityCap(),
+                version.getAdhocSubType() != null ? version.getAdhocSubType().name() : null,
+                version.getInvoiceVendor() != null ? version.getInvoiceVendor().getId() : null,
+                version.getInvoiceVendor() != null ? version.getInvoiceVendor().getVendorName() : null,
+                version.getPayoutBufferDays(),
+                version.getCalculationBasis(),
+                version.getPaymentRealizationType(),
                 version.getStartDate(),
                 version.getExpiryDate(),
                 version.getApprovalStatus(),
@@ -1479,6 +1904,7 @@ public class AgreementServiceImpl implements AgreementService {
                 divisionRules,
                 productRules,
                 products,
+                assetSummary,
                 resolvePendingActionRequest(parent.getId()),
                 version.getCreatedAt(),
                 version.getUpdatedAt()

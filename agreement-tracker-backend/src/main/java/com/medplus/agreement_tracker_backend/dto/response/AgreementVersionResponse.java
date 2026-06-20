@@ -2,7 +2,11 @@ package com.medplus.agreement_tracker_backend.dto.response;
 
 import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
 import com.medplus.agreement_tracker_backend.enums.AgreementStatus;
+import com.medplus.agreement_tracker_backend.enums.CalculationBasis;
 import com.medplus.agreement_tracker_backend.enums.CommercialStructure;
+import com.medplus.agreement_tracker_backend.enums.PaymentRealizationType;
+import com.medplus.agreement_tracker_backend.enums.PayoutFrequency;
+import com.medplus.agreement_tracker_backend.enums.SlabValueType;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -26,7 +30,16 @@ public record AgreementVersionResponse(
         String agreementTypeName,
         CommercialStructure commercialStructure,
         BigDecimal commercialValue,
+        SlabValueType flatValueType,
+        PayoutFrequency flatBaselineFrequency,
         String calculationFormula,
+        BigDecimal quantityCap,
+        String adhocSubType,
+        Long invoiceVendorId,
+        String invoiceVendorName,
+        Integer payoutBufferDays,
+        CalculationBasis calculationBasis,
+        PaymentRealizationType paymentRealizationType,
         LocalDate startDate,
         LocalDate expiryDate,
         ApprovalStatus approvalStatus,
@@ -42,6 +55,7 @@ public record AgreementVersionResponse(
         List<RuleSummary> divisionRules,
         List<RuleSummary> productRules,
         List<ProductSummary> products,
+        AssetSummary asset,
         PendingActionRequestInfo pendingActionRequest,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
@@ -50,4 +64,12 @@ public record AgreementVersionResponse(
     public record VendorSummary(Long vendorId, String vendorName) {}
     public record ProductSummary(Long productId, String productName, String manufacturerName, String divisionName) {}
     public record RuleSummary(Long id, String ruleType) {}
+    public record AssetSummary(
+            String assetCategory,
+            String assetType,
+            Integer storeCount,
+            BigDecimal payoutPerStore,
+            BigDecimal flatPayout,
+            String remarks
+    ) {}
 }

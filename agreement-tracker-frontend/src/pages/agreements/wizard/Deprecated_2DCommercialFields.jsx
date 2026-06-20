@@ -20,6 +20,7 @@ import {
   updateSlab,
   validateSlabAgainstExisting,
 } from '../../../api/commercialApi';
+import { ensureDraftVersionForCommercial } from '../../../utils/commercialDraftOrchestration';
 import CommercialValueInput from '../../../components/forms/CommercialValueInput';
 import CommercialsUploadModal from './CommercialsUploadModal';
 
@@ -35,12 +36,17 @@ const SLAB_TYPE_OPTIONS = [
   { value: 'SALE', label: 'Sale Slab' },
 ];
 
-export default function CommercialFields({
+export default function Deprecated_2DCommercialFields({
   commercials,
   onUpdate,
   serverAgreementId,
+  sourceAgreement,
+  versionSourceId,
+  buildVersionedEditPayload,
+  onDraftVersionCreated,
   startDate,
   expiryDate,
+  lockOneTimeFrequency = false,
 }) {
   const { enqueueSnackbar } = useSnackbar();
   const uploadModal = useModal();
@@ -54,9 +60,40 @@ export default function CommercialFields({
   const [switchingType, setSwitchingType] = useState(false);
   const [pendingSlabType, setPendingSlabType] = useState(null);
   const [commercialRefreshKey, setCommercialRefreshKey] = useState(0);
+  const [commercialVersionId, setCommercialVersionId] = useState(serverAgreementId);
 
   const selectedFrequencies = commercials.selectedFrequencies || [];
   const slabType = commercials.slabType || 'PURCHASE';
+
+  useEffect(() => {
+    setCommercialVersionId(serverAgreementId);
+  }, [serverAgreementId]);
+
+  const resolveMutationVersionId = useCallback(async () => {
+    if (!buildVersionedEditPayload || !sourceAgreement) {
+      return serverAgreementId ?? commercialVersionId;
+    }
+    const { versionId, draftCreated, draftResponse } = await ensureDraftVersionForCommercial({
+      serverAgreementId: serverAgreementId ?? commercialVersionId,
+      sourceAgreement,
+      versionSourceId,
+      buildVersionedEditPayload,
+    });
+    if (draftCreated && draftResponse) {
+      onDraftVersionCreated?.(draftResponse);
+    }
+    if (versionId) {
+      setCommercialVersionId(versionId);
+    }
+    return versionId ?? serverAgreementId ?? commercialVersionId;
+  }, [
+    buildVersionedEditPayload,
+    commercialVersionId,
+    onDraftVersionCreated,
+    serverAgreementId,
+    sourceAgreement,
+    versionSourceId,
+  ]);
 
   const loadSlabs = useCallback(async () => {
     if (!serverAgreementId || commercials.commercialStructure !== 'SLAB') {
@@ -98,6 +135,12 @@ export default function CommercialFields({
   }, [loadSlabs, loadTargetCount]);
 
   useEffect(() => {
+    if (lockOneTimeFrequency && commercials.selectedFrequencies?.[0] !== 'ONE_TIME') {
+      onUpdate({ selectedFrequencies: ['ONE_TIME'] });
+    }
+  }, [lockOneTimeFrequency, commercials.selectedFrequencies, onUpdate]);
+
+  useEffect(() => {
     setEditingSlabId(null);
     setDraftSlab(EMPTY_DRAFT);
   }, [slabType]);
@@ -130,11 +173,16 @@ export default function CommercialFields({
   };
 
   const handleTypeSwitch = async (action) => {
-    if (!serverAgreementId || !pendingSlabType) return;
+    if (!pendingSlabType) return;
 
     setSwitchingType(true);
     try {
-      await switchCommercialType(serverAgreementId, {
+      const versionId = await resolveMutationVersionId();
+      if (!versionId) {
+        enqueueSnackbar('Save the agreement draft first before switching slab type', { variant: 'warning' });
+        return;
+      }
+      await switchCommercialType(versionId, {
         action,
         newSlabType: pendingSlabType,
       });
@@ -177,20 +225,21 @@ export default function CommercialFields({
   };
 
   const handleSaveSlab = async () => {
-    if (!serverAgreementId) {
-      enqueueSnackbar('Save the agreement draft first before adding slabs', { variant: 'warning' });
-      return;
-    }
     if (!validateDraftSlab()) return;
 
     setSavingSlab(true);
     try {
+      const versionId = await resolveMutationVersionId();
+      if (!versionId) {
+        enqueueSnackbar('Save the agreement draft first before adding slabs', { variant: 'warning' });
+        return;
+      }
       const payload = toSlabPayload(draftSlab, slabType);
       if (editingSlabId) {
-        await updateSlab(serverAgreementId, editingSlabId, payload);
+        await updateSlab(versionId, editingSlabId, payload);
         enqueueSnackbar('Slab updated', { variant: 'success' });
       } else {
-        await createSlab(serverAgreementId, payload);
+        await createSlab(versionId, payload);
         enqueueSnackbar('Slab added', { variant: 'success' });
       }
       resetDraft();
@@ -213,9 +262,10 @@ export default function CommercialFields({
   };
 
   const handleDeleteSlab = async (slabId) => {
-    if (!serverAgreementId) return;
     try {
-      await deleteSlab(serverAgreementId, slabId);
+      const versionId = await resolveMutationVersionId();
+      if (!versionId) return;
+      await deleteSlab(versionId, slabId);
       if (editingSlabId === slabId) {
         resetDraft();
       }
@@ -226,16 +276,24 @@ export default function CommercialFields({
     }
   };
 
-  const openUploadModal = () => {
-    if (!serverAgreementId) {
-      enqueueSnackbar('Save the agreement draft first', { variant: 'warning' });
-      return;
-    }
+  const openUploadModal = async () => {
     if (!slabs.length) {
       enqueueSnackbar('Add at least one slab first', { variant: 'warning' });
       return;
     }
-    uploadModal.open();
+    try {
+      const versionId = await resolveMutationVersionId();
+      if (!versionId) {
+        enqueueSnackbar('Save the agreement draft first', { variant: 'warning' });
+        return;
+      }
+      if (versionId !== serverAgreementId) {
+        await refreshCommercialData();
+      }
+      uploadModal.open();
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to prepare commercial upload', { variant: 'error' });
+    }
   };
 
   return (
@@ -407,7 +465,7 @@ export default function CommercialFields({
             key={commercialRefreshKey}
             open={uploadModal.isOpen}
             onClose={uploadModal.close}
-            agreementId={serverAgreementId}
+            agreementId={commercialVersionId ?? serverAgreementId}
             slabs={slabs}
             slabType={slabType}
             startDate={startDate}
@@ -415,6 +473,7 @@ export default function CommercialFields({
             selectedFrequencies={selectedFrequencies}
             onFrequenciesChange={(value) => onUpdate({ selectedFrequencies: value })}
             onTargetsChanged={loadTargetCount}
+            lockOneTimeFrequency={lockOneTimeFrequency}
           />
 
           <Dialog

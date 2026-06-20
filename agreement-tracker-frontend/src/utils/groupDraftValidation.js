@@ -1,6 +1,20 @@
 import axiosInstance from '../api/axiosInstance';
 import { ENDPOINTS } from '../config/endpoints';
-import { fetchCommercialTargetsPreview, fetchSlabs } from '../api/commercialApi';
+import { fetchSlabs } from '../api/commercialApi';
+import { INCOME_TYPE_NAMES } from '../constants/incomeTypeNames';
+
+function getAssetRentalPayoutGaps(asset) {
+  const gaps = [];
+  if (!asset?.assetCategory) gaps.push('Asset Category');
+  if (!asset?.assetType) gaps.push('Asset Type');
+  if (!asset?.storeCount) gaps.push('Store Count');
+  const hasFlatPayout = asset?.flatPayout != null && Number(asset.flatPayout) > 0;
+  const hasPerStorePayout = asset?.payoutPerStore != null && Number(asset.payoutPerStore) > 0;
+  if (!hasFlatPayout && !hasPerStorePayout) {
+    gaps.push('Asset Payout');
+  }
+  return gaps;
+}
 
 export function getDraftDetailsGaps(version, { slabCount = 0, targetCount = 0 } = {}) {
   const gaps = [];
@@ -8,14 +22,21 @@ export function getDraftDetailsGaps(version, { slabCount = 0, targetCount = 0 } 
   if (!version?.agreementTypeId) gaps.push('Agreement Type');
   if (!version?.startDate) gaps.push('Start Date');
   if (!version?.expiryDate) gaps.push('Expiry Date');
-  if (!version?.commercialStructure) gaps.push('Commercial Structure');
-  if (version?.commercialStructure === 'FLAT' && version.commercialValue == null) {
-    gaps.push('Commercial Value');
+
+  if (version?.incomeTypeName === INCOME_TYPE_NAMES.ASSET_RENTALS) {
+    gaps.push(...getAssetRentalPayoutGaps(version.asset));
+    if (!version?.invoiceVendorId) gaps.push('Invoice Vendor');
+    return gaps;
   }
-  if (version?.commercialStructure === 'SLAB') {
-    if (slabCount === 0) gaps.push('Slabs');
-    if (targetCount === 0) gaps.push('Commercial Targets');
-  }
+
+  const structure = version?.commercialStructure;
+  const hasFlat = structure === 'FLAT' || structure === 'HYBRID';
+  const hasSlab = structure === 'SLAB' || structure === 'HYBRID';
+  if (!structure) gaps.push('Commercial Structure');
+  if (hasFlat && version.commercialValue == null) gaps.push('Flat Baseline Value');
+  if (hasFlat && !version.flatBaselineFrequency) gaps.push('Flat Baseline Frequency');
+  if (hasSlab && slabCount === 0) gaps.push('Slabs');
+  if (!version?.paymentRealizationType) gaps.push('Payment Realization Type');
   return gaps;
 }
 
@@ -26,21 +47,13 @@ export async function loadGroupDraftReviewData(drafts) {
     );
 
     let slabs = [];
-    let targetCount = 0;
 
-    if (version.commercialStructure === 'SLAB') {
+    if (version.commercialStructure === 'SLAB' || version.commercialStructure === 'HYBRID') {
       slabs = await fetchSlabs(row.latestVersionId);
-      try {
-        const preview = await fetchCommercialTargetsPreview(row.latestVersionId);
-        targetCount = Array.isArray(preview) ? preview.length : 0;
-      } catch {
-        targetCount = 0;
-      }
     }
 
     const gaps = getDraftDetailsGaps(version, {
       slabCount: slabs.length,
-      targetCount,
     });
 
     return {

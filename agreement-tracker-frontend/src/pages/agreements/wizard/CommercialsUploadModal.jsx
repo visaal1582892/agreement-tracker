@@ -17,6 +17,7 @@ import {
 } from '../../../api/commercialApi';
 
 const FREQUENCY_OPTIONS = [
+  { value: 'ONE_TIME', label: 'One Time' },
   { value: 'MONTHLY', label: 'Monthly' },
   { value: 'QUARTERLY', label: 'Quarterly' },
   { value: 'HALF_YEARLY', label: 'Half-Yearly' },
@@ -67,6 +68,7 @@ export default function CommercialsUploadModal({
   onTargetsChanged,
   readOnly = false,
   embedded = false,
+  lockOneTimeFrequency = false,
 }) {
   const { enqueueSnackbar } = useSnackbar();
   const [previewRows, setPreviewRows] = useState([]);
@@ -220,6 +222,11 @@ export default function CommercialsUploadModal({
         {!readOnly && (
         <Box sx={{ p: 2.5, borderBottom: '1px solid #E2E8F0', bgcolor: '#FAFBFC' }}>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+            {lockOneTimeFrequency ? (
+              <Alert severity="info" sx={{ flex: 1 }}>
+                Payout frequency locked to <strong>One Time</strong> for QPS target incentives.
+              </Alert>
+            ) : (
             <FormControl size="small" sx={{ minWidth: 260 }}>
               <InputLabel>Target Frequency</InputLabel>
               <Select
@@ -239,7 +246,7 @@ export default function CommercialsUploadModal({
                   </Box>
                 )}
               >
-                {FREQUENCY_OPTIONS.map((option) => (
+                {FREQUENCY_OPTIONS.filter((option) => option.value !== 'ONE_TIME').map((option) => (
                   <MenuItem key={option.value} value={option.value}>
                     <Checkbox checked={(selectedFrequencies || []).includes(option.value)} />
                     <ListItemText primary={option.label} />
@@ -247,6 +254,7 @@ export default function CommercialsUploadModal({
                 ))}
               </Select>
             </FormControl>
+            )}
 
             <Button
               variant="contained"

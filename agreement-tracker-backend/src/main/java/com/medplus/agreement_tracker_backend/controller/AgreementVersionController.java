@@ -50,9 +50,10 @@ public class AgreementVersionController {
             @Validated(DraftValidation.class) @RequestBody UpdateDraftRequest request,
             @RequestParam(defaultValue = "false") boolean validateStep1,
             @RequestParam(defaultValue = "false") boolean validateStep2,
+            @RequestParam(defaultValue = "false") boolean validateCommercialStructure,
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(agreementService.updateDraft(
-                id, request, principal.getId(), validateStep1, validateStep2));
+                id, request, principal.getId(), validateStep1, validateStep2, validateCommercialStructure));
     }
 
     @PostMapping("/{id}/versions")
