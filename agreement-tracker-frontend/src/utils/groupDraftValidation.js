@@ -30,12 +30,12 @@ export function getDraftDetailsGaps(version, { slabCount = 0, targetCount = 0 } 
   }
 
   const structure = version?.commercialStructure;
-  const hasFlat = structure === 'FLAT' || structure === 'HYBRID';
-  const hasSlab = structure === 'SLAB' || structure === 'HYBRID';
+  const requiresFlat = structure === 'FLAT' || structure === 'HYBRID';
   if (!structure) gaps.push('Commercial Structure');
-  if (hasFlat && version.commercialValue == null) gaps.push('Flat Baseline Value');
-  if (hasFlat && !version.flatBaselineFrequency) gaps.push('Flat Baseline Frequency');
-  if (hasSlab && slabCount === 0) gaps.push('Slabs');
+  if (requiresFlat && version.commercialValue == null) gaps.push('Flat Baseline Value');
+  if (requiresFlat && !version.flatBaselineFrequency) gaps.push('Flat Baseline Frequency');
+  if (structure === 'SLAB' && slabCount === 0) gaps.push('Slabs');
+  if (structure === 'HYBRID' && slabCount === 0) gaps.push('Slabs');
   if (!version?.paymentRealizationType) gaps.push('Payment Realization Type');
   return gaps;
 }

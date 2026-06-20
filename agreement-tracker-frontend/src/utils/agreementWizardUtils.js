@@ -1,5 +1,6 @@
+import { fetchSlabs } from '../api/commercialApi';
 import { formatLocalDateString } from './dateUtils';
-import { isAdHocIncomeType, isAssetRentalIncomeType } from './incomeTypeUtils';
+import { isAdHocIncomeType, isAssetRentalIncomeType, isDataFeeIncomeType, resolveWizardIncomeContext } from './incomeTypeUtils';
 import { sanitizeAgreementPayload } from './incomeTypePayloadUtils';
 import { ADHOC_SUB_TYPES } from '../constants/adhocSubTypes';
 import { CALCULATION_BASIS } from '../constants/calculationBasis';
@@ -9,6 +10,43 @@ import {
   PAYOUT_FREQUENCY,
   resolveCommercialStructure,
 } from '../constants/commercialStructure';
+import { getFirstWizardFieldErrorMessage } from './wizardValidationUx';
+
+export function mapCommercialsFromApi(agreement, slabCount = null) {
+  const structure = agreement.commercialStructure ?? 'FLAT';
+  let enableFlatBaseline = structure === 'FLAT' || structure === 'HYBRID';
+  let enableSlabIncentives = structure === 'SLAB' || structure === 'HYBRID';
+
+  if (slabCount === 0 && (structure === 'HYBRID' || structure === 'SLAB')) {
+    enableSlabIncentives = false;
+    enableFlatBaseline = true;
+  }
+
+  const commercialStructure = resolveCommercialStructure(enableFlatBaseline, enableSlabIncentives) ?? 'FLAT';
+
+  return {
+    commercialStructure,
+    commercialValue: agreement.commercialValue ?? '',
+    valueType: agreement.flatValueType ?? agreement.valueType ?? 'FIXED',
+    flatValueType: agreement.flatValueType ?? agreement.valueType ?? 'FIXED',
+    flatBaselineFrequency: agreement.flatBaselineFrequency ?? 'MONTHLY',
+    enableFlatBaseline,
+    enableSlabIncentives,
+    calculationFormula: agreement.calculationFormula ?? '',
+    selectedFrequencies: [],
+    slabType: 'PURCHASE',
+  };
+}
+
+export async function fetchSlabCountForVersion(versionId) {
+  if (!versionId) return null;
+  try {
+    const slabs = await fetchSlabs(versionId);
+    return Array.isArray(slabs) ? slabs.length : 0;
+  } catch {
+    return null;
+  }
+}
 
 function buildAssetPayload(asset) {
   if (!asset) return null;
@@ -106,11 +144,12 @@ export function buildStep1UpdatePayload(state, { requiresReapproval = false } = 
 export function buildSanitizedStep1UpdatePayload(state, options = {}) {
   const payload = buildStep1UpdatePayload(state, options);
   const { details } = state.agreement ?? {};
+  const ctx = resolveWizardIncomeContext(state, options.sourceAgreement, options.incomeTypes ?? []);
   return sanitizeAgreementPayload(
     payload,
-    options.incomeTypes ?? [],
-    details?.incomeTypeId,
-    details?.incomeTypeName,
+    ctx.incomeTypes,
+    ctx.incomeTypeId,
+    ctx.incomeTypeName,
   );
 }
 
@@ -147,51 +186,194 @@ export function validateFoundationalMetadata(state, enqueueSnackbar) {
   return true;
 }
 
-export function validateCommercialConfigurationStep(state, enqueueSnackbar, incomeTypes = []) {
+export function validateCommercialConfigurationStep(state, enqueueSnackbar, incomeTypes = [], sourceAgreement = null) {
   if (!validateFoundationalMetadata(state, enqueueSnackbar)) return false;
 
+  const fieldErrors = collectConfigurationStepErrors(state, incomeTypes, sourceAgreement);
+  if (Object.keys(fieldErrors).length === 0) return true;
+
+  enqueueSnackbar(getFirstWizardFieldErrorMessage(fieldErrors), { variant: 'warning' });
+  return false;
+}
+
+function collectSettlementRoutingFieldErrors(details, isAssetRental) {
+  const errors = {};
+  if (!details?.paymentRealizationType) {
+    errors.paymentRealization = 'Payment realization type is required';
+  }
+  const requiresInvoiceVendor = details?.paymentRealizationType === PAYMENT_REALIZATION_TYPE.DIRECT_PAYMENT_INVOICE;
+  if (requiresInvoiceVendor && !details?.invoiceVendorId) {
+    errors.invoiceVendor = isAssetRental
+      ? 'Select the Finance / Non-Trade invoice vendor for Asset Rentals'
+      : 'Invoice vendor is required for Direct Payment / Invoice';
+  }
+  if (!isAssetRental && !details?.calculationBasis) {
+    errors.calculationBasis = 'Calculation basis is required';
+  }
+  return errors;
+}
+
+export function collectConfigurationStepErrors(state, incomeTypes = [], sourceAgreement = null) {
+  const fieldErrors = {};
+  const ctx = resolveWizardIncomeContext(state, sourceAgreement, incomeTypes);
   const { agreement, productRules } = state;
+  const details = agreement?.details ?? {};
+  const asset = agreement?.asset ?? {};
   const isAssetRental = isAssetRentalIncomeType(
-    incomeTypes,
-    agreement?.details?.incomeTypeId,
-    agreement?.details?.incomeTypeName,
+    ctx.incomeTypes,
+    ctx.incomeTypeId,
+    ctx.incomeTypeName,
   );
   const isAdHoc = isAdHocIncomeType(
-    incomeTypes,
-    agreement?.details?.incomeTypeId,
-    agreement?.details?.incomeTypeName,
+    ctx.incomeTypes,
+    ctx.incomeTypeId,
+    ctx.incomeTypeName,
+  );
+  const isDataFee = isDataFeeIncomeType(
+    ctx.incomeTypes,
+    ctx.incomeTypeId,
+    ctx.incomeTypeName,
   );
 
   if (!isAssetRental && !state.vendorIds?.length) {
-    enqueueSnackbar('Select at least one supply vendor', { variant: 'warning' });
-    return false;
+    fieldErrors.supplyVendors = 'Select at least one supply vendor';
   }
 
-  if (!validateContractDetailsFields(agreement?.details, enqueueSnackbar, {
-    skipDocuments: isAssetRental,
-    skipFoundational: true,
-  })) {
-    return false;
+  if (!isAssetRental && !details.documents?.length) {
+    fieldErrors.documents = 'At least one document is required';
   }
 
   if (isAssetRental) {
-    if (!validateAssetRentalConfigurationFields(agreement, enqueueSnackbar)) return false;
-    return validateSettlementRoutingFields(agreement?.details, true, enqueueSnackbar);
-  }
-  if (isAdHoc) {
-    if (!validateAdHocFields(agreement, enqueueSnackbar)) return false;
-    if (!productRules?.productRules?.length) {
-      enqueueSnackbar('Select at least one product', { variant: 'warning' });
-      return false;
+    if (!asset?.assetCategory) {
+      fieldErrors.assetCategory = 'Asset category is required for Asset Rentals';
     }
-    return validateSettlementRoutingFields(agreement?.details, false, enqueueSnackbar);
+    if (!asset?.assetType?.trim()) {
+      fieldErrors.assetType = 'Asset type is required for Asset Rentals';
+    }
+    if (!details.stateIds?.length) {
+      fieldErrors.states = 'Select at least one state for Asset Rentals';
+    }
+    if (!asset?.storeCount || Number(asset.storeCount) <= 0) {
+      fieldErrors.storeCount = 'Enter the number of participating stores';
+    }
+    if (!hasStoreOutletListDocument(details)) {
+      fieldErrors.storeOutletList = 'Upload the list of participating outlets';
+    }
+    Object.assign(fieldErrors, collectSettlementRoutingFieldErrors(details, true));
+    return fieldErrors;
+  }
+
+  if (isDataFee && !details.stateIds?.length) {
+    fieldErrors.states = 'Select at least one state for Data Fee';
+  }
+
+  if (isAdHoc) {
+    if (!details.adhocSubType) {
+      fieldErrors.adhocSubType = 'Select QPS or Consumer Price Off for Ad-Hoc Activities';
+    } else if (details.adhocSubType === ADHOC_SUB_TYPES.CONSUMER_PRICE_OFF) {
+      if (!details.stateIds?.length) {
+        fieldErrors.states = 'Select at least one state for Consumer Price Off';
+      }
+      if (!details.quantityCap || Number(details.quantityCap) <= 0) {
+        fieldErrors.quantityCap = 'Enter quantity / value cap for Consumer Price Off';
+      }
+    }
+    if (!productRules?.productRules?.length) {
+      fieldErrors.products = 'Select at least one product';
+    }
+    Object.assign(fieldErrors, collectSettlementRoutingFieldErrors(details, false));
+    return fieldErrors;
   }
 
   if (!productRules?.productRules?.length) {
-    enqueueSnackbar('Select at least one product', { variant: 'warning' });
-    return false;
+    fieldErrors.products = 'Select at least one product';
   }
-  return validateSettlementRoutingFields(agreement?.details, isAssetRental, enqueueSnackbar);
+  Object.assign(fieldErrors, collectSettlementRoutingFieldErrors(details, false));
+  return fieldErrors;
+}
+
+function resolveCommercialEnableFlags(commercials = {}) {
+  const enableFlat = commercials.enableFlatBaseline === true
+    || (commercials.enableFlatBaseline == null
+      && ['FLAT', 'HYBRID'].includes(commercials.commercialStructure));
+  const enableSlab = commercials.enableSlabIncentives === true
+    || (commercials.enableSlabIncentives == null
+      && ['SLAB', 'HYBRID'].includes(commercials.commercialStructure));
+  return { enableFlat, enableSlab };
+}
+
+export function collectCommercialStructureStepErrors(state, incomeTypes = [], sourceAgreement = null) {
+  const fieldErrors = {};
+  const ctx = resolveWizardIncomeContext(state, sourceAgreement, incomeTypes);
+  const isAssetRental = isAssetRentalIncomeType(
+    ctx.incomeTypes,
+    ctx.incomeTypeId,
+    ctx.incomeTypeName,
+  );
+  const agreement = state.agreement ?? {};
+  const asset = agreement.asset ?? {};
+  const commercials = agreement.commercials ?? {};
+
+  if (isAssetRental) {
+    if (asset?.payoutMode === 'PER_STORE') {
+      if (!asset.payoutPerStore || Number(asset.payoutPerStore) <= 0) {
+        fieldErrors.payoutPerStore = 'Enter payout per store';
+      }
+    } else if (!asset?.flatPayout || Number(asset.flatPayout) <= 0) {
+      fieldErrors.flatPayout = 'Enter flat payout amount';
+    }
+    return fieldErrors;
+  }
+
+  const { enableFlat, enableSlab } = resolveCommercialEnableFlags(commercials);
+
+  if (!enableFlat && !enableSlab) {
+    fieldErrors.commercialComponent = 'Enable at least one commercial component';
+  }
+  if (enableFlat) {
+    if (!commercials.commercialValue) {
+      fieldErrors.commercialValue = 'Flat baseline value is required';
+    }
+    if (!commercials.flatBaselineFrequency) {
+      fieldErrors.flatBaselineFrequency = 'Flat baseline frequency is required';
+    }
+  }
+  return fieldErrors;
+}
+
+export async function collectCommercialStructureStepErrorsAsync(
+  state,
+  incomeTypes = [],
+  sourceAgreement = null,
+  serverAgreementId = null,
+) {
+  const fieldErrors = collectCommercialStructureStepErrors(state, incomeTypes, sourceAgreement);
+  const ctx = resolveWizardIncomeContext(state, sourceAgreement, incomeTypes);
+  const isAssetRental = isAssetRentalIncomeType(
+    ctx.incomeTypes,
+    ctx.incomeTypeId,
+    ctx.incomeTypeName,
+  );
+  if (isAssetRental) return fieldErrors;
+
+  const { enableSlab } = resolveCommercialEnableFlags(state.agreement?.commercials ?? {});
+  if (!enableSlab || fieldErrors.commercialComponent) return fieldErrors;
+
+  const versionId = serverAgreementId ?? sourceAgreement?.id;
+  if (!versionId) {
+    fieldErrors.slabs = 'Please add at least one slab row, or disable Slab-Based Incentives.';
+    return fieldErrors;
+  }
+
+  try {
+    const slabs = await fetchSlabs(versionId);
+    if (!Array.isArray(slabs) || slabs.length === 0) {
+      fieldErrors.slabs = 'Please add at least one slab row, or disable Slab-Based Incentives.';
+    }
+  } catch {
+    fieldErrors.slabs = 'Unable to validate slab incentives';
+  }
+  return fieldErrors;
 }
 
 function validateSettlementRoutingFields(details, isAssetRental, enqueueSnackbar) {
@@ -234,11 +416,25 @@ function validateAssetRentalConfigurationFields(agreement, enqueueSnackbar) {
     enqueueSnackbar('Enter the number of participating stores', { variant: 'warning' });
     return false;
   }
-  if (!details?.storeOutletList) {
+  if (!hasStoreOutletListDocument(details)) {
     enqueueSnackbar('Upload the list of participating outlets', { variant: 'warning' });
     return false;
   }
   return true;
+}
+
+function hasStoreOutletListDocument(details) {
+  const outlet = details?.storeOutletList;
+  if (
+    outlet?.documentType === 'STORE_OUTLET_LIST'
+    && (outlet.file || outlet.fileName)
+  ) {
+    return true;
+  }
+  const documents = details?.documents ?? [];
+  return documents.some(
+    (doc) => doc.documentType === 'STORE_OUTLET_LIST' && (doc.file || doc.fileName || doc.id),
+  );
 }
 
 function validateAssetRentalPayoutFields(agreement, enqueueSnackbar) {
@@ -324,47 +520,79 @@ export function buildContractDetailsSnapshot(agreement) {
   };
 }
 
-export function validateAgreementDetailsStep(state, enqueueSnackbar, incomeTypes = []) {
-  return validateCommercialConfigurationStep(state, enqueueSnackbar, incomeTypes);
+export function validateAgreementDetailsStep(state, enqueueSnackbar, incomeTypes = [], sourceAgreement = null) {
+  return validateCommercialConfigurationStep(state, enqueueSnackbar, incomeTypes, sourceAgreement);
 }
 
-export function validateCommercialStructureStep(state, enqueueSnackbar, incomeTypes = []) {
-  const { agreement } = state;
-  const isAssetRental = isAssetRentalIncomeType(
-    incomeTypes,
-    agreement?.details?.incomeTypeId,
-    agreement?.details?.incomeTypeName,
-  );
-  if (isAssetRental) {
-    return validateAssetRentalPayoutFields(agreement, enqueueSnackbar);
-  }
-
-  const { commercials } = agreement ?? {};
-  const enableFlat = commercials?.enableFlatBaseline
-    ?? ['FLAT', 'HYBRID'].includes(commercials?.commercialStructure);
-  const enableSlab = commercials?.enableSlabIncentives
-    ?? ['SLAB', 'HYBRID'].includes(commercials?.commercialStructure);
-
-  if (!enableFlat && !enableSlab) {
-    enqueueSnackbar('Enable at least one commercial component', { variant: 'warning' });
-    return false;
-  }
-  if (enableFlat) {
-    if (!commercials?.commercialValue) {
-      enqueueSnackbar('Flat baseline value is required', { variant: 'warning' });
-      return false;
-    }
-    if (!commercials?.flatBaselineFrequency) {
-      enqueueSnackbar('Flat baseline frequency is required', { variant: 'warning' });
-      return false;
-    }
-  }
+export function validateCommercialStructureStepSync(
+  state,
+  enqueueSnackbar,
+  incomeTypes = [],
+  sourceAgreement = null,
+) {
+  const base = validateCommercialStructureBase(state, enqueueSnackbar, incomeTypes, sourceAgreement);
+  if (!base.ok) return false;
+  if (base.enableSlab) return false;
   return true;
 }
 
-export function validateCurrentAgreementDetails(state, enqueueSnackbar) {
-  if (!validateAgreementDetailsStep(state, enqueueSnackbar)) return false;
-  return validateCommercialStructureStep(state, enqueueSnackbar);
+function validateCommercialStructureBase(
+  state,
+  enqueueSnackbar,
+  incomeTypes = [],
+  sourceAgreement = null,
+) {
+  const fieldErrors = collectCommercialStructureStepErrors(state, incomeTypes, sourceAgreement);
+  const { enableSlab } = resolveCommercialEnableFlags(state.agreement?.commercials ?? {});
+
+  if (Object.keys(fieldErrors).length > 0) {
+    enqueueSnackbar(getFirstWizardFieldErrorMessage(fieldErrors), { variant: 'warning' });
+    return { ok: false, enableSlab };
+  }
+  return { ok: true, enableSlab };
+}
+
+export function resolveHighestAccessibleStep(state, sourceAgreement = null, incomeTypes = []) {
+  const noop = () => {};
+  if (!validateStep1Fields(state, noop)) return 0;
+  if (!validateCommercialConfigurationStep(state, noop, incomeTypes, sourceAgreement)) return 1;
+  if (!validateCommercialStructureStepSync(state, noop, incomeTypes, sourceAgreement)) return 2;
+  return 3;
+}
+
+export async function validateCommercialStructureStep(
+  state,
+  enqueueSnackbar,
+  incomeTypes = [],
+  sourceAgreement = null,
+  serverAgreementId = null,
+) {
+  const fieldErrors = await collectCommercialStructureStepErrorsAsync(
+    state,
+    incomeTypes,
+    sourceAgreement,
+    serverAgreementId,
+  );
+  if (Object.keys(fieldErrors).length === 0) return true;
+  enqueueSnackbar(getFirstWizardFieldErrorMessage(fieldErrors), { variant: 'warning' });
+  return false;
+}
+
+export async function validateCurrentAgreementDetails(
+  state,
+  enqueueSnackbar,
+  incomeTypes = [],
+  sourceAgreement = null,
+  serverAgreementId = null,
+) {
+  if (!validateAgreementDetailsStep(state, enqueueSnackbar, incomeTypes, sourceAgreement)) return false;
+  return validateCommercialStructureStep(
+    state,
+    enqueueSnackbar,
+    incomeTypes,
+    sourceAgreement,
+    serverAgreementId,
+  );
 }
 
 export function validateStep2LoopFields(state, enqueueSnackbar) {

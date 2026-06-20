@@ -5,6 +5,7 @@ import {
 import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
 import SearchableSelect from '../../../components/forms/SearchableSelect';
+import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 import { isAssetRentalIncomeType } from '../../../utils/incomeTypeUtils';
 import {
   CALCULATION_BASIS,
@@ -38,6 +39,8 @@ export default function SettlementRoutingFields({
   incomeTypeId,
   incomeTypeName,
   onUpdateDetails,
+  hideSectionTitle = false,
+  fieldErrors = {},
 }) {
   const isAssetRental = isAssetRentalIncomeType([], incomeTypeId, incomeTypeName);
   const [supplyVendorOptions, setSupplyVendorOptions] = useState([]);
@@ -132,16 +135,19 @@ export default function SettlementRoutingFields({
 
   return (
     <Box>
-      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 2 }}>
-        Settlement & Payment Routing
-      </Typography>
+      {!hideSectionTitle && (
+        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 2 }}>
+          Settlement & Payment Routing
+        </Typography>
+      )}
 
       <Grid container spacing={3}>
         <Grid size={12}>
-          <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-            Payment Realization Type *
-          </Typography>
-          <RadioGroup
+          <WizardFieldAnchor field="paymentRealization" error={fieldErrors.paymentRealization}>
+            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+              Payment Realization Type *
+            </Typography>
+            <RadioGroup
             row
             value={activePaymentRealization}
             onChange={(e) => {
@@ -163,14 +169,16 @@ export default function SettlementRoutingFields({
               />
             ))}
           </RadioGroup>
+          </WizardFieldAnchor>
         </Grid>
 
         {!isAssetRental && (
           <Grid size={12}>
-            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-              Calculation Basis *
-            </Typography>
-            <RadioGroup
+            <WizardFieldAnchor field="calculationBasis" error={fieldErrors.calculationBasis}>
+              <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+                Calculation Basis *
+              </Typography>
+              <RadioGroup
               row
               value={activeBasis}
               onChange={(e) => onUpdateDetails({ calculationBasis: e.target.value })}
@@ -186,6 +194,7 @@ export default function SettlementRoutingFields({
                 label={CALCULATION_BASIS_LABELS.VENDOR_INWARD}
               />
             </RadioGroup>
+            </WizardFieldAnchor>
           </Grid>
         )}
 
@@ -195,6 +204,7 @@ export default function SettlementRoutingFields({
 
         {showInvoiceVendor && (
           <Grid size={12}>
+            <WizardFieldAnchor field="invoiceVendor" error={fieldErrors.invoiceVendor}>
             <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
               Invoice Vendor Routing *
             </Typography>
@@ -244,18 +254,18 @@ export default function SettlementRoutingFields({
             disabled={!useManualVendorSearch && !vendorIds.length}
             required
           />
+            </WizardFieldAnchor>
           </Grid>
         )}
 
         <Grid size={{ xs: 12, md: 6 }}>
           <TextField
-            label="Payout Buffer (days)"
+            label="Payout Lead Time (days)"
             type="number"
             fullWidth
             size="small"
             value={payoutBufferDays ?? ''}
             onChange={(e) => onUpdateDetails({ payoutBufferDays: e.target.value })}
-            helperText="Days after invoice before payout is released"
             slotProps={{ htmlInput: { min: 0 } }}
           />
         </Grid>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box, Typography, Grid, TextField, Button, Checkbox, FormControlLabel,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -14,6 +14,8 @@ import {
   validateSlabAgainstExisting,
 } from '../../../api/commercialApi';
 import { ensureDraftVersionForCommercial } from '../../../utils/commercialDraftOrchestration';
+import CollapsibleSection from '../../../components/wizard/CollapsibleSection';
+import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 import CommercialValueInput from '../../../components/forms/CommercialValueInput';
 import {
   PAYOUT_FREQUENCY,
@@ -59,6 +61,7 @@ export default function HybridCommercialFields({
   buildVersionedEditPayload,
   onDraftVersionCreated,
   lockOneTimeFrequency = false,
+  fieldErrors = {},
 }) {
   const { enqueueSnackbar } = useSnackbar();
   const hybridFlags = deriveHybridFlags(commercials.commercialStructure);
@@ -71,6 +74,7 @@ export default function HybridCommercialFields({
   const [draftSlab, setDraftSlab] = useState(EMPTY_LINEAR_SLAB);
   const [editingSlabId, setEditingSlabId] = useState(null);
   const [commercialVersionId, setCommercialVersionId] = useState(serverAgreementId);
+  const correctedGhostSlabRef = useRef(false);
 
   const frequencyOptions = useMemo(
     () => (lockOneTimeFrequency
@@ -145,6 +149,22 @@ export default function HybridCommercialFields({
   useEffect(() => {
     loadSlabs();
   }, [loadSlabs]);
+
+  useEffect(() => {
+    if (loadingSlabs || correctedGhostSlabRef.current) return;
+    if (slabs.length > 0) return;
+    const structure = commercials.commercialStructure;
+    const ghostSlabState = structure === 'HYBRID' || structure === 'SLAB' || enableSlabIncentives;
+    if (!ghostSlabState) return;
+    correctedGhostSlabRef.current = true;
+    syncStructureFlags(true, false);
+  }, [
+    loadingSlabs,
+    slabs.length,
+    commercials.commercialStructure,
+    enableSlabIncentives,
+    syncStructureFlags,
+  ]);
 
   const updateDraft = (field, value) => {
     setDraftSlab((prev) => ({ ...prev, [field]: value }));
@@ -249,16 +269,30 @@ export default function HybridCommercialFields({
     }
   };
 
+  const baseHasError = Boolean(
+    fieldErrors.commercialComponent
+    || fieldErrors.commercialValue
+    || fieldErrors.flatBaselineFrequency,
+  );
+  const slabsHasError = Boolean(fieldErrors.slabs || fieldErrors.commercialComponent);
+
   return (
     <Box>
-      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>
-        Commercial Structure *
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Enable a flat baseline, slab incentives, or both.
-      </Typography>
-
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2.5 }}>
+      <CollapsibleSection
+        title="Base Commercials"
+        description={
+          lockOneTimeFrequency
+            ? 'Flat baseline payout value, type, and frequency. QPS agreements lock payout frequency to One-Time.'
+            : 'Flat baseline payout value, type, and frequency.'
+        }
+        forceExpand={baseHasError}
+        hasError={baseHasError}
+      >
+        {fieldErrors.commercialComponent && (
+          <Alert severity="error" sx={{ mb: 2 }} data-wizard-field="commercialComponent" className="has-error">
+            {fieldErrors.commercialComponent}
+          </Alert>
+        )}
         <FormControlLabel
           control={(
             <Checkbox
@@ -267,46 +301,38 @@ export default function HybridCommercialFields({
             />
           )}
           label="Enable Flat Baseline Payout"
+          sx={{ mb: 2 }}
         />
-        <FormControlLabel
-          control={(
-            <Checkbox
-              checked={enableSlabIncentives}
-              onChange={(e) => syncStructureFlags(enableFlatBaseline, e.target.checked)}
-            />
-          )}
-          label="Enable Slab-Based Incentives"
-        />
-      </Box>
 
-      {!enableFlatBaseline && !enableSlabIncentives && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Select at least one commercial component to continue.
-        </Alert>
-      )}
+        {!enableFlatBaseline && !enableSlabIncentives && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Enable flat baseline or slab incentives to continue.
+          </Alert>
+        )}
 
-      {enableFlatBaseline && (
-        <Paper elevation={0} sx={{ p: 2, mb: 3, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-          <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 2 }}>
-            Flat Baseline Payout
-          </Typography>
+        {enableFlatBaseline && (
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <CommercialValueInput
-                label="Baseline Value"
-                required
-                value={commercials.commercialValue}
-                onChangeValue={(value) => onUpdate({ commercialValue: value })}
-                type={commercials.valueType || commercials.flatValueType || 'FIXED'}
-                onChangeType={(type) => onUpdate({ valueType: type, flatValueType: type })}
-              />
+              <WizardFieldAnchor field="commercialValue" error={fieldErrors.commercialValue}>
+                <CommercialValueInput
+                  label="Baseline Value"
+                  required
+                  value={commercials.commercialValue}
+                  onChangeValue={(value) => onUpdate({ commercialValue: value })}
+                  type={commercials.valueType || commercials.flatValueType || 'FIXED'}
+                  onChangeType={(type) => onUpdate({ valueType: type, flatValueType: type })}
+                  error={Boolean(fieldErrors.commercialValue)}
+                  helperText={fieldErrors.commercialValue ? '' : undefined}
+                />
+              </WizardFieldAnchor>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth size="small" required>
-                <InputLabel>Base Frequency</InputLabel>
-                <Select
+              <WizardFieldAnchor field="flatBaselineFrequency" error={fieldErrors.flatBaselineFrequency}>
+                <FormControl fullWidth size="small" required error={Boolean(fieldErrors.flatBaselineFrequency)}>
+                  <InputLabel>Payout Frequency</InputLabel>
+                  <Select
                   value={commercials.flatBaselineFrequency || (lockOneTimeFrequency ? PAYOUT_FREQUENCY.ONE_TIME : PAYOUT_FREQUENCY.MONTHLY)}
-                  label="Base Frequency *"
+                  label="Payout Frequency *"
                   onChange={(e) => onUpdate({ flatBaselineFrequency: e.target.value })}
                   disabled={lockOneTimeFrequency}
                 >
@@ -315,132 +341,144 @@ export default function HybridCommercialFields({
                   ))}
                 </Select>
               </FormControl>
+              </WizardFieldAnchor>
             </Grid>
           </Grid>
-          {lockOneTimeFrequency && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-              QPS agreements lock payout frequency to One-Time.
-            </Typography>
+        )}
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Performance Targets (Slabs)"
+        description="1D slab table for tiered incentives above baseline performance."
+        forceExpand={slabsHasError}
+        hasError={slabsHasError}
+      >
+        <WizardFieldAnchor field="slabs" error={fieldErrors.slabs}>
+        <FormControlLabel
+          control={(
+            <Checkbox
+              checked={enableSlabIncentives}
+              onChange={(e) => syncStructureFlags(enableFlatBaseline, e.target.checked)}
+            />
           )}
-        </Paper>
-      )}
+          label="Enable Slab-Based Incentives"
+          sx={{ mb: 2 }}
+        />
 
-      {enableSlabIncentives && (
-        <Paper elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-          <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 2 }}>
-            Slab-Based Incentives (1D)
-          </Typography>
-
-          {loadingSlabs ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-              <CircularProgress size={24} />
-            </Box>
-          ) : (
-            <TableContainer component={Paper} elevation={0} sx={{ mb: 2, border: '1px solid', borderColor: 'divider' }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 600 }}>Cap / Target</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Commercial Type</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Payout Value</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Frequency</TableCell>
-                    <TableCell width={100} />
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {slabs.length === 0 ? (
+        {enableSlabIncentives && (
+          <>
+            {loadingSlabs ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : (
+              <TableContainer component={Paper} elevation={0} sx={{ mb: 2, border: '1px solid', borderColor: 'divider' }}>
+                <Table size="small">
+                  <TableHead>
                     <TableRow>
-                      <TableCell colSpan={5}>
-                        <Typography variant="body2" color="text.secondary">No slabs added yet.</Typography>
-                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Cap / Target</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Commercial Type</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Payout Value</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Frequency</TableCell>
+                      <TableCell width={100} />
                     </TableRow>
-                  ) : (
-                    slabs.map((slab) => (
-                      <TableRow key={slab.id} selected={editingSlabId === slab.id}>
-                        <TableCell>{slab.toValue}</TableCell>
-                        <TableCell>{slab.valueType === 'PERCENTAGE' ? 'Percentage %' : 'Fixed ₹'}</TableCell>
-                        <TableCell>{slab.commercialValue}</TableCell>
-                        <TableCell>
-                          {PAYOUT_FREQUENCY_OPTIONS.find((option) => option.value === slab.payoutFrequency)?.label
-                            || slab.payoutFrequency
-                            || '—'}
-                        </TableCell>
-                        <TableCell>
-                          <IconButton size="small" onClick={() => handleEditSlab(slab)} aria-label="Edit slab">
-                            <Edit fontSize="small" />
-                          </IconButton>
-                          <IconButton size="small" color="error" onClick={() => handleDeleteSlab(slab.id)} aria-label="Delete slab">
-                            <Delete fontSize="small" />
-                          </IconButton>
+                  </TableHead>
+                  <TableBody>
+                    {slabs.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5}>
+                          <Typography variant="body2" color="text.secondary">No slabs added yet.</Typography>
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-
-          <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid size={{ xs: 12, sm: 3 }}>
-              <TextField
-                label="Cap / Target Threshold *"
-                type="number"
-                fullWidth
-                size="small"
-                value={draftSlab.threshold}
-                onChange={(e) => updateDraft('threshold', e.target.value)}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 3 }}>
-              <CommercialValueInput
-                label="Payout Value *"
-                value={draftSlab.commercialValue}
-                onChangeValue={(value) => updateDraft('commercialValue', value)}
-                type={draftSlab.valueType}
-                onChangeType={(type) => updateDraft('valueType', type)}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 3 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Slab Payout Frequency</InputLabel>
-                <Select
-                  value={draftSlab.payoutFrequency}
-                  label="Slab Payout Frequency"
-                  onChange={(e) => updateDraft('payoutFrequency', e.target.value)}
-                  disabled={lockOneTimeFrequency}
-                >
-                  {frequencyOptions.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
-
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              size="small"
-              startIcon={savingSlab ? <CircularProgress size={16} /> : <Add />}
-              onClick={handleSaveSlab}
-              disabled={savingSlab}
-            >
-              {editingSlabId ? 'Update Slab Row' : 'Add Slab Row'}
-            </Button>
-            {editingSlabId && (
-              <Button size="small" variant="outlined" onClick={resetDraft} disabled={savingSlab}>
-                Cancel Edit
-              </Button>
+                    ) : (
+                      slabs.map((slab) => (
+                        <TableRow key={slab.id} selected={editingSlabId === slab.id}>
+                          <TableCell>{slab.toValue}</TableCell>
+                          <TableCell>{slab.valueType === 'PERCENTAGE' ? 'Percentage %' : 'Fixed ₹'}</TableCell>
+                          <TableCell>{slab.commercialValue}</TableCell>
+                          <TableCell>
+                            {PAYOUT_FREQUENCY_OPTIONS.find((option) => option.value === slab.payoutFrequency)?.label
+                              || slab.payoutFrequency
+                              || '—'}
+                          </TableCell>
+                          <TableCell>
+                            <IconButton size="small" onClick={() => handleEditSlab(slab)} aria-label="Edit slab">
+                              <Edit fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" color="error" onClick={() => handleDeleteSlab(slab.id)} aria-label="Delete slab">
+                              <Delete fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             )}
-          </Box>
 
-          {!serverAgreementId && (
-            <Alert severity="warning" sx={{ mt: 2 }}>
-              Save the agreement draft before adding slab rows.
-            </Alert>
-          )}
-        </Paper>
-      )}
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid size={{ xs: 12, sm: 3 }}>
+                <TextField
+                  label="Cap / Target Threshold *"
+                  type="number"
+                  fullWidth
+                  size="small"
+                  value={draftSlab.threshold}
+                  onChange={(e) => updateDraft('threshold', e.target.value)}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 3 }}>
+                <CommercialValueInput
+                  label="Payout Value *"
+                  value={draftSlab.commercialValue}
+                  onChangeValue={(value) => updateDraft('commercialValue', value)}
+                  type={draftSlab.valueType}
+                  onChangeType={(type) => updateDraft('valueType', type)}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 3 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Slab Payout Frequency</InputLabel>
+                  <Select
+                    value={draftSlab.payoutFrequency}
+                    label="Slab Payout Frequency"
+                    onChange={(e) => updateDraft('payoutFrequency', e.target.value)}
+                    disabled={lockOneTimeFrequency}
+                  >
+                    {frequencyOptions.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                size="small"
+                startIcon={savingSlab ? <CircularProgress size={16} /> : <Add />}
+                onClick={handleSaveSlab}
+                disabled={savingSlab}
+              >
+                {editingSlabId ? 'Update Slab Row' : 'Add Slab Row'}
+              </Button>
+              {editingSlabId && (
+                <Button size="small" variant="outlined" onClick={resetDraft} disabled={savingSlab}>
+                  Cancel Edit
+                </Button>
+              )}
+            </Box>
+
+            {!serverAgreementId && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                Save the agreement draft before adding slab rows.
+              </Alert>
+            )}
+          </>
+        )}
+        </WizardFieldAnchor>
+      </CollapsibleSection>
     </Box>
   );
 }

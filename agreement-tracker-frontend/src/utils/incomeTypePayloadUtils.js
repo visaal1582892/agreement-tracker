@@ -1,3 +1,4 @@
+import { resolveCommercialStructure } from '../constants/commercialStructure';
 import { isAdHocIncomeType, isAssetRentalIncomeType } from './incomeTypeUtils';
 import { ADHOC_SUB_TYPES } from '../constants/adhocSubTypes';
 
@@ -75,6 +76,16 @@ export function sanitizeAgreementPayload(payload, incomeTypes, incomeTypeId, inc
     sanitized.productRules = { manufacturers: [], divisionRules: [], productRules: [] };
     sanitized.details.adhocSubType = null;
     sanitized.details.quantityCap = null;
+    sanitized.details.calculationBasis = null;
+    sanitized.commercials = {
+      commercialStructure: null,
+      commercialValue: null,
+      flatValueType: null,
+      flatBaselineFrequency: null,
+      enableFlatBaseline: false,
+      enableSlabIncentives: false,
+      calculationFormula: null,
+    };
     if (!sanitized.asset?.assetType?.trim()) {
       sanitized.asset = null;
     }
@@ -86,6 +97,15 @@ export function sanitizeAgreementPayload(payload, incomeTypes, incomeTypeId, inc
     } else if (sanitized.details.adhocSubType === ADHOC_SUB_TYPES.QPS) {
       sanitized.details.quantityCap = null;
     }
+
+    const enableFlatBaseline = Boolean(sanitized.commercials.enableFlatBaseline);
+    const enableSlabIncentives = Boolean(sanitized.commercials.enableSlabIncentives);
+    sanitized.commercials.enableFlatBaseline = enableFlatBaseline;
+    sanitized.commercials.enableSlabIncentives = enableSlabIncentives;
+    sanitized.commercials.commercialStructure = resolveCommercialStructure(
+      enableFlatBaseline,
+      enableSlabIncentives,
+    ) ?? (enableFlatBaseline ? 'FLAT' : null);
   }
 
   return sanitized;

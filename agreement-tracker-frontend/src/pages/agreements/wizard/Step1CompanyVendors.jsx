@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Box, Typography, Grid, Alert, TextField } from '@mui/material';
-import { BRAND } from '../../../config/theme';
+import { Alert, Grid, TextField, Typography } from '@mui/material';
 import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
 import SearchableSelect from '../../../components/forms/SearchableSelect';
+import WizardSectionCard from '../../../components/wizard/WizardSectionCard';
 
 export default function Step1CompanyVendors({ state, updateFields, groupFieldsLocked = false }) {
   const [companyOptions, setCompanyOptions] = useState([]);
@@ -116,14 +116,10 @@ export default function Step1CompanyVendors({ state, updateFields, groupFieldsLo
   };
 
   return (
-    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-      <Typography sx={{ fontSize: '1rem', fontWeight: 700, color: BRAND.textPrimary, mb: 0.5 }}>
-        Company & Group Setup
-      </Typography>
-      <Typography sx={{ fontSize: '0.875rem', color: '#64748B', mb: 3 }}>
-        Select company and agreement group for this agreement.
-      </Typography>
-
+    <WizardSectionCard
+      title="Partner Details"
+      description="Select the company and agreement group for this wizard session."
+    >
       {fetchError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setFetchError(null)}>
           {fetchError}
@@ -137,7 +133,7 @@ export default function Step1CompanyVendors({ state, updateFields, groupFieldsLo
         </Alert>
       )}
 
-      <Grid container spacing={3} sx={{ flex: 1 }}>
+      <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 6 }}>
           <SearchableSelect
             label="Company"
@@ -189,6 +185,6 @@ export default function Step1CompanyVendors({ state, updateFields, groupFieldsLo
           )}
         </Grid>
       </Grid>
-    </Box>
+    </WizardSectionCard>
   );
 }

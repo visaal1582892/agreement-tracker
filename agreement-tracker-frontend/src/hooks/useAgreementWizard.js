@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react';
+import { mapCommercialsFromApi } from '../utils/agreementWizardUtils';
+import { BLANK_ASSET } from '../utils/incomeTypePayloadUtils';
 
 export function createBlankAgreement() {
   return {
@@ -82,9 +84,13 @@ function mapAssetFromApi(agreement) {
       remarks: '',
     };
   }
-  const payoutMode = asset.flatPayout != null && asset.flatPayout !== ''
+  const hasFlat = asset.flatPayout != null && asset.flatPayout !== '';
+  const hasPerStore = asset.payoutPerStore != null && asset.payoutPerStore !== '';
+  const payoutMode = hasFlat
     ? 'FLAT'
-    : 'PER_STORE';
+    : hasPerStore
+      ? 'PER_STORE'
+      : (asset.payoutMode || 'FLAT');
   return {
     assetCategory: asset.assetCategory ?? 'PHYSICAL_ASSET',
     assetType: asset.assetType ?? '',
@@ -165,10 +171,56 @@ export function useAgreementWizard() {
     }));
   }, []);
 
-  const resetVariableFieldsForAnother = useCallback(() => {
+  const resetAfterIncomeTypeChange = useCallback(() => {
+    setState((prev) => {
+      const blank = createBlankAgreement();
+      const preservedDetails = prev.agreement?.details ?? {};
+      return {
+        ...prev,
+        agreementName: '',
+        vendorIds: [],
+        productRules: {
+          manufacturers: [],
+          divisionRules: [],
+          productRules: [],
+        },
+        agreement: {
+          id: prev.agreement?.id ?? blank.id,
+          details: {
+            ...blank.details,
+            incomeTypeId: preservedDetails.incomeTypeId ?? null,
+            incomeTypeName: preservedDetails.incomeTypeName ?? null,
+            agreementTypeId: preservedDetails.agreementTypeId ?? null,
+            startDate: preservedDetails.startDate ?? null,
+            expiryDate: preservedDetails.expiryDate ?? null,
+            notes: preservedDetails.notes ?? '',
+            stateIds: [],
+            documents: [],
+            storeOutletList: null,
+            adhocSubType: null,
+            quantityCap: '',
+            invoiceVendorId: null,
+            payoutBufferDays: '',
+            calculationBasis: 'VENDOR_INVOICE',
+            paymentRealizationType: 'DIRECT_PAYMENT_INVOICE',
+          },
+          asset: { ...BLANK_ASSET },
+          commercials: { ...blank.commercials },
+        },
+      };
+    });
+  }, []);
+
+  const resetForCreateAnother = useCallback(() => {
     setState((prev) => ({
       ...prev,
+      step: 0,
       agreementName: '',
+      companyId: prev.companyId,
+      companyName: prev.companyName,
+      companyAgreementGroupId: prev.companyAgreementGroupId,
+      companyAgreementGroupName: prev.companyAgreementGroupName,
+      newCompanyAgreementGroupName: prev.newCompanyAgreementGroupName,
       vendorIds: [],
       productRules: {
         manufacturers: [],
@@ -179,8 +231,13 @@ export function useAgreementWizard() {
     }));
   }, []);
 
-  const hydrateFromEdit = useCallback((agreement) => {
+  const resetVariableFieldsForAnother = useCallback(() => {
+    resetForCreateAnother();
+  }, [resetForCreateAnother]);
+
+  const hydrateFromEdit = useCallback((agreement, options = {}) => {
     if (!agreement) return;
+    const commercials = mapCommercialsFromApi(agreement, options.slabCount);
     setState({
       step: 0,
       agreementName: agreement.agreementName ?? '',
@@ -211,18 +268,7 @@ export function useAgreementWizard() {
           paymentRealizationType: agreement.paymentRealizationType ?? 'DIRECT_PAYMENT_INVOICE',
         },
         asset: mapAssetFromApi(agreement),
-        commercials: {
-          commercialStructure: agreement.commercialStructure ?? 'FLAT',
-          commercialValue: agreement.commercialValue ?? '',
-          valueType: agreement.flatValueType ?? agreement.valueType ?? 'FIXED',
-          flatValueType: agreement.flatValueType ?? agreement.valueType ?? 'FIXED',
-          flatBaselineFrequency: agreement.flatBaselineFrequency ?? 'MONTHLY',
-          enableFlatBaseline: ['FLAT', 'HYBRID'].includes(agreement.commercialStructure),
-          enableSlabIncentives: ['SLAB', 'HYBRID'].includes(agreement.commercialStructure),
-          calculationFormula: agreement.calculationFormula ?? '',
-          selectedFrequencies: [],
-          slabType: 'PURCHASE',
-        },
+        commercials,
       },
     });
   }, []);
@@ -256,6 +302,8 @@ export function useAgreementWizard() {
     reset,
     clearStep2Fields,
     resetVariableFieldsForAnother,
+    resetAfterIncomeTypeChange,
+    resetForCreateAnother,
     hydrateFromEdit,
     applyCloneResponse,
   };

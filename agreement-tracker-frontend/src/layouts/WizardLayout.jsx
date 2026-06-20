@@ -24,6 +24,8 @@ export default function WizardLayout({
   onDraftTabChange,
   onDraftTabDelete,
   submitButtonLabel = 'Submit for Approval',
+  onStepClick,
+  maxReachableStep,
   children,
   onBack,
   onCancel,
@@ -41,6 +43,7 @@ export default function WizardLayout({
   isSavingLoop,
 }) {
   const busy = isSavingDraft || isSubmitting || isSavingLoop;
+  const reachableStep = maxReachableStep ?? activeStep;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
@@ -152,8 +155,16 @@ export default function WizardLayout({
         }}>
           <Stepper activeStep={activeStep} alternativeLabel>
             {STEPS.map((label, index) => (
-              <Step key={label}>
+              <Step key={label} completed={index < activeStep}>
                 <StepLabel
+                  onClick={() => {
+                    if (index <= reachableStep && onStepClick) {
+                      onStepClick(index);
+                    }
+                  }}
+                  sx={{
+                    cursor: index <= reachableStep && onStepClick ? 'pointer' : 'default',
+                  }}
                   slotProps={{
                     stepIcon: {
                       sx: {
@@ -245,42 +256,6 @@ export default function WizardLayout({
 
             {footerMode === 'details' && (
               <>
-                {onSaveAndClose && (
-                  <Button
-                    variant="outlined"
-                    onClick={onSaveAndClose}
-                    disabled={busy}
-                    sx={{
-                      borderRadius: 2.5,
-                      px: 2.5,
-                      minWidth: 130,
-                      fontWeight: 600,
-                      borderColor: '#E2E8F0',
-                      color: '#334155',
-                      '&:hover': { borderColor: '#CBD5E1', bgcolor: '#fff' },
-                    }}
-                  >
-                    {isSavingDraft ? 'Saving…' : 'Save & Close'}
-                  </Button>
-                )}
-                {onSaveAndCreateAnother && (
-                  <Button
-                    variant="outlined"
-                    onClick={onSaveAndCreateAnother}
-                    disabled={busy}
-                    sx={{
-                      borderRadius: 2.5,
-                      px: 2.5,
-                      minWidth: 190,
-                      fontWeight: 600,
-                      borderColor: '#E2E8F0',
-                      color: '#334155',
-                      '&:hover': { borderColor: '#CBD5E1', bgcolor: '#fff' },
-                    }}
-                  >
-                    {isSavingLoop ? 'Saving…' : 'Save & Create Another'}
-                  </Button>
-                )}
                 {onDetailsNext ? (
                   <Button
                     variant="contained"

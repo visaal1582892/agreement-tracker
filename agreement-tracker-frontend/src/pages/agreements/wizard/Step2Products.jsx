@@ -8,6 +8,8 @@ import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
 import { BRAND } from '../../../config/theme';
 import SearchableSelect from '../../../components/forms/SearchableSelect';
+import WizardSectionTitle from '../../../components/wizard/WizardSectionTitle';
+import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 
 const panelSx = {
   border: `1px solid ${BRAND.borderLight}`,
@@ -31,7 +33,7 @@ const panelHeaderSx = {
   flexDirection: 'column',
   gap: 1,
   mb: 1,
-  minHeight: 128,
+  minHeight: 88,
 };
 
 const panelHeaderTitleRowSx = {
@@ -163,7 +165,7 @@ function countedLabel(base, count) {
   return `${base} (${count})`;
 }
 
-export default function Step2Products({ state, updateProductRules }) {
+export default function Step2Products({ state, updateProductRules, info, error }) {
   const [vendorProducts, setVendorProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState(null);
@@ -424,12 +426,15 @@ export default function Step2Products({ state, updateProductRules }) {
 
   const selectedProductChips = visibleProducts.filter((p) => resolvedProductIds.includes(p.id));
 
+  const sectionInfo = info ?? 'Select vendors to load products. Add manufacturers to reveal divisions and narrow the product list.';
+
   return (
     <Box>
-      <Typography variant="h6" fontWeight={600} mb={0.5}>Applicable Products</Typography>
-      <Typography variant="body2" color="text.secondary" mb={3}>
-        Select vendors to load products. Add manufacturers to reveal divisions and narrow the product list.
-      </Typography>
+      <WizardSectionTitle
+        title="Applicable Products"
+        info={sectionInfo}
+        mb={2}
+      />
 
       {!state.vendorIds?.length && (
         <Alert severity="warning" sx={{ mb: 2 }}>Select vendors above first.</Alert>
@@ -444,6 +449,7 @@ export default function Step2Products({ state, updateProductRules }) {
         </Box>
       )}
 
+      <WizardFieldAnchor field="products" error={error}>
       <Grid container spacing={2.5} sx={{ alignItems: 'flex-start' }}>
         <Grid size={{ xs: 12, md: 4 }}>
           <Box sx={panelSx}>
@@ -454,7 +460,6 @@ export default function Step2Products({ state, updateProductRules }) {
                 </Typography>
               </Box>
               <SearchableSelect
-                label={countedLabel('Manufacturers', selectedManufacturers.length)}
                 placeholder="Filter by manufacturer…"
                 isMulti
                 options={manufacturerOptions}
@@ -637,6 +642,7 @@ export default function Step2Products({ state, updateProductRules }) {
           </Box>
         </Grid>
       </Grid>
+      </WizardFieldAnchor>
 
       <Box sx={{ mt: 2.5, p: 2, borderRadius: '10px', border: `1px solid ${BRAND.borderLight}`, bgcolor: BRAND.bgGray }}>
         <Typography variant="caption" color="text.secondary" fontWeight={600}>

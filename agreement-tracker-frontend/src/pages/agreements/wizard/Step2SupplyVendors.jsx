@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Box, Typography, Grid } from '@mui/material';
+import { Box, Grid } from '@mui/material';
 import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
-import { BRAND } from '../../../config/theme';
 import SearchableSelect from '../../../components/forms/SearchableSelect';
 import BulkVendorInput from '../../../components/forms/BulkVendorInput';
+import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 
-export default function Step2SupplyVendors({ vendorIds = [], onVendorChange }) {
+export default function Step2SupplyVendors({ vendorIds = [], onVendorChange, error }) {
   const [vendorOptions, setVendorOptions] = useState([]);
   const [selectedVendors, setSelectedVendors] = useState([]);
   const [loadingVendors, setLoadingVendors] = useState(false);
@@ -46,27 +46,26 @@ export default function Step2SupplyVendors({ vendorIds = [], onVendorChange }) {
   };
 
   return (
-    <Box sx={{ mb: 3 }}>
-      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>
-        Supply Vendors *
-      </Typography>
+    <Box sx={{ mb: 0 }}>
       <Grid container spacing={3}>
         <Grid size={12}>
-          <SearchableSelect
-            label={`Supply Vendors (${selectedVendors.length})`}
-            placeholder="Search vendors by name or code…"
-            isMulti
-            options={vendorOptions}
-            value={selectedVendors}
-            onChange={handleVendorChange}
-            onSearch={searchVendors}
-            getOptionLabel={(vendor) => `${vendor.vendorCode} — ${vendor.vendorName}`}
-            isOptionEqualToValue={(option, value) => option.id === value.id}
-            loading={loadingVendors}
-            maxVisibleChips={2}
-            required
-          />
-          <BulkVendorInput selectedVendors={selectedVendors} onChange={handleVendorChange} />
+          <WizardFieldAnchor field="supplyVendors" error={error}>
+            <SearchableSelect
+              label="Supply Vendors *"
+              placeholder="Search vendors by name or code…"
+              isMulti
+              options={vendorOptions}
+              value={selectedVendors}
+              onChange={handleVendorChange}
+              onSearch={searchVendors}
+              getOptionLabel={(vendor) => `${vendor.vendorCode} — ${vendor.vendorName}`}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              loading={loadingVendors}
+              maxVisibleChips={2}
+              required
+            />
+            <BulkVendorInput selectedVendors={selectedVendors} onChange={handleVendorChange} />
+          </WizardFieldAnchor>
         </Grid>
       </Grid>
     </Box>

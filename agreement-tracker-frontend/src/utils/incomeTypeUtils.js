@@ -9,6 +9,16 @@ export function resolveIncomeTypeName(incomeTypes, incomeTypeId, incomeTypeName 
   return match?.name ?? null;
 }
 
+/** Merge wizard state + hydrated API row for income-type checks. */
+export function resolveWizardIncomeContext(state, sourceAgreement = null, incomeTypes = []) {
+  const details = state?.agreement?.details ?? {};
+  return {
+    incomeTypes,
+    incomeTypeId: details.incomeTypeId ?? sourceAgreement?.incomeTypeId ?? null,
+    incomeTypeName: details.incomeTypeName ?? sourceAgreement?.incomeTypeName ?? null,
+  };
+}
+
 export function isAssetRentalIncomeType(incomeTypes, incomeTypeId, incomeTypeName = null) {
   const name = resolveIncomeTypeName(incomeTypes, incomeTypeId, incomeTypeName);
   return name === INCOME_TYPE_NAMES.ASSET_RENTALS;

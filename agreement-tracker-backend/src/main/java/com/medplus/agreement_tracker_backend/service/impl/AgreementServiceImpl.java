@@ -46,6 +46,7 @@ import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
 import com.medplus.agreement_tracker_backend.enums.CalculationBasis;
 import com.medplus.agreement_tracker_backend.enums.CommercialStructure;
 import com.medplus.agreement_tracker_backend.enums.PaymentRealizationType;
+import com.medplus.agreement_tracker_backend.enums.PayoutFrequency;
 import com.medplus.agreement_tracker_backend.enums.RuleType;
 import com.medplus.agreement_tracker_backend.exception.BusinessException;
 import com.medplus.agreement_tracker_backend.exception.IncompleteAgreementException;
@@ -386,7 +387,7 @@ public class AgreementServiceImpl implements AgreementService {
             validateStep2Fields(request);
         }
         if (validateCommercialStructure) {
-            validateCommercialStructureFields(request);
+            validateCommercialStructureFields(agreementVersionId, request);
         }
 
         AgreementVersion version = loadAndValidateOwnership(agreementVersionId, currentUserId);
@@ -407,26 +408,28 @@ public class AgreementServiceImpl implements AgreementService {
             }
         }
 
-        applyDraftFields(version, request.details(), request.commercials());
+        Long incomeTypeId = resolveIncomeTypeId(version, request.details());
+        UpdateDraftRequest scrubbed = scrubRequestForIncomeType(request, incomeTypeId);
+
+        applyDraftFields(version, scrubbed.details(), scrubbed.commercials());
         version.setUpdatedByUserId(currentUserId);
         version = agreementVersionRepository.save(version);
-        if (request.details() != null && request.details().stateIds() != null) {
-            replaceAgreementStates(parent, request.details().stateIds(), currentUserId);
+        if (scrubbed.details() != null && scrubbed.details().stateIds() != null) {
+            replaceAgreementStates(parent, scrubbed.details().stateIds(), currentUserId);
         }
         syncAgreementName(parent, version, currentUserId);
 
-        if (request.vendorIds() != null) {
-            replaceVendors(version, request.vendorIds(), currentUserId);
+        if (scrubbed.vendorIds() != null) {
+            replaceVendors(version, scrubbed.vendorIds(), currentUserId);
         }
 
-        Long incomeTypeId = resolveIncomeTypeId(version, request.details());
         syncIncomeTypeSpecificData(
                 version,
                 incomeTypeId,
                 currentUserId,
-                request.productRules(),
-                request.asset(),
-                request.details(),
+                scrubbed.productRules(),
+                scrubbed.asset(),
+                scrubbed.details(),
                 validateStep2);
         version = agreementVersionRepository.save(version);
 
@@ -1249,7 +1252,11 @@ public class AgreementServiceImpl implements AgreementService {
                 version.setPaymentRealizationType(PaymentRealizationType.valueOf(details.paymentRealizationType()));
             }
         }
-        if (commercials != null) {
+        Long incomeTypeId = details != null && details.incomeTypeId() != null
+                ? details.incomeTypeId()
+                : version.getIncomeType() != null ? version.getIncomeType().getId() : null;
+        boolean assetRental = isAssetRentalIncomeType(incomeTypeId);
+        if (commercials != null && !assetRental) {
             if (commercials.commercialStructure() != null) {
                 version.setCommercialStructure(commercials.commercialStructure());
             }
@@ -1265,6 +1272,12 @@ public class AgreementServiceImpl implements AgreementService {
             if (commercials.calculationFormula() != null) {
                 version.setCalculationFormula(commercials.calculationFormula());
             }
+        } else if (assetRental) {
+            version.setCommercialStructure(null);
+            version.setCommercialValue(null);
+            version.setFlatValueType(null);
+            version.setFlatBaselineFrequency(null);
+            version.setCalculationFormula(null);
         }
     }
 
@@ -1287,30 +1300,71 @@ public class AgreementServiceImpl implements AgreementService {
         }
     }
 
+    private static final ProductRulesPayload EMPTY_PRODUCT_RULES =
+            new ProductRulesPayload(List.of(), List.of(), List.of());
+
     private void validateStep2Fields(UpdateDraftRequest request) {
         validateStep1Fields(request);
-
         DraftDetailsPayload details = request.details();
-        boolean assetRental = details != null && isAssetRentalIncomeType(details.incomeTypeId());
-
-        if (!assetRental && (request.vendorIds() == null || request.vendorIds().isEmpty())) {
-            throw new BusinessException("At least one vendor is required");
+        if (details == null || details.incomeTypeId() == null) {
+            throw new BusinessException("Income type is required");
         }
-
-        if (details != null && assetRental) {
-            validateAssetRentalConfiguration(request.asset(), details);
-        } else if (details != null && isAdHocIncomeType(details.incomeTypeId())) {
+        Long incomeTypeId = details.incomeTypeId();
+        if (isAssetRentalIncomeType(incomeTypeId)) {
+            validateAssetRentalStep2(request);
+        } else if (isDataFeeIncomeType(incomeTypeId)) {
+            validateDataFeeStep2(request);
+        } else if (isCommercialContractsIncomeType(incomeTypeId)) {
+            validateCommercialContractsStep2(request, details);
+        } else if (isAdHocIncomeType(incomeTypeId)) {
             validateAdHocPayload(request, details);
         } else {
-            ProductRulesPayload rulesPayload = request.productRules();
-            List<RuleDTO> productRules = rulesPayload != null && rulesPayload.productRules() != null
-                    ? rulesPayload.productRules() : List.of();
-            if (productRules.isEmpty()) {
-                throw new BusinessException("At least one product rule is required");
+            validateProductsAndVendorsStep2(request);
+        }
+        validateSettlementRouting(details, request.vendorIds(), isAssetRentalIncomeType(incomeTypeId));
+    }
+
+    private void validateAssetRentalStep2(UpdateDraftRequest request) {
+        if (request.vendorIds() != null && !request.vendorIds().isEmpty()) {
+            throw new BusinessException("Supply vendors are not applicable for Asset Rentals");
+        }
+        ProductRulesPayload rulesPayload = request.productRules();
+        if (rulesPayload != null) {
+            boolean hasProducts = rulesPayload.productRules() != null && !rulesPayload.productRules().isEmpty();
+            boolean hasManufacturers = rulesPayload.manufacturers() != null && !rulesPayload.manufacturers().isEmpty();
+            boolean hasDivisions = rulesPayload.divisionRules() != null && !rulesPayload.divisionRules().isEmpty();
+            if (hasProducts || hasManufacturers || hasDivisions) {
+                throw new BusinessException("Product scope is not applicable for Asset Rentals");
             }
         }
+        validateAssetRentalConfiguration(request.asset(), request.details());
+    }
 
-        validateSettlementRouting(details, request.vendorIds(), assetRental);
+    private void validateDataFeeStep2(UpdateDraftRequest request) {
+        validateProductsAndVendorsStep2(request);
+        DraftDetailsPayload details = request.details();
+        if (details == null || details.stateIds() == null || details.stateIds().isEmpty()) {
+            throw new BusinessException("At least one state is required for Data Fee");
+        }
+    }
+
+    private void validateCommercialContractsStep2(UpdateDraftRequest request, DraftDetailsPayload details) {
+        validateProductsAndVendorsStep2(request);
+        if (details.stateIds() == null || details.stateIds().isEmpty()) {
+            throw new BusinessException("At least one state is required for Commercial Contracts");
+        }
+    }
+
+    private void validateProductsAndVendorsStep2(UpdateDraftRequest request) {
+        if (request.vendorIds() == null || request.vendorIds().isEmpty()) {
+            throw new BusinessException("At least one vendor is required");
+        }
+        ProductRulesPayload rulesPayload = request.productRules();
+        List<RuleDTO> productRules = rulesPayload != null && rulesPayload.productRules() != null
+                ? rulesPayload.productRules() : List.of();
+        if (productRules.isEmpty()) {
+            throw new BusinessException("At least one product rule is required");
+        }
     }
 
     private void validateSettlementRouting(DraftDetailsPayload details, List<Long> vendorIds, boolean assetRental) {
@@ -1358,25 +1412,38 @@ public class AgreementServiceImpl implements AgreementService {
         }
     }
 
-    private void validateCommercialStructureFields(UpdateDraftRequest request) {
+    private void validateCommercialStructureFields(Long agreementVersionId, UpdateDraftRequest request) {
         DraftDetailsPayload details = request.details();
         if (details == null || details.incomeTypeId() == null) {
             throw new BusinessException("Income type is required");
         }
-        if (isAssetRentalIncomeType(details.incomeTypeId())) {
+        Long incomeTypeId = details.incomeTypeId();
+        if (isAssetRentalIncomeType(incomeTypeId)) {
             validateAssetRentalPayout(request.asset());
             return;
         }
-        DraftCommercialsPayload commercials = request.commercials();
+        if (isDataFeeIncomeType(incomeTypeId)) {
+            validateDataFeeCommercials(agreementVersionId, request.commercials());
+            return;
+        }
+        if (isAdHocIncomeType(incomeTypeId)) {
+            validateHybridCommercials(agreementVersionId, request.commercials());
+            validateQpsOneTimeFrequency(details, request.commercials());
+            return;
+        }
+        validateHybridCommercials(agreementVersionId, request.commercials());
+    }
+
+    private void validateDataFeeCommercials(Long agreementVersionId, DraftCommercialsPayload commercials) {
+        validateHybridCommercials(agreementVersionId, commercials);
+    }
+
+    private void validateHybridCommercials(Long agreementVersionId, DraftCommercialsPayload commercials) {
         if (commercials == null) {
             throw new BusinessException("Commercial configuration is required");
         }
-        boolean enableFlat = Boolean.TRUE.equals(commercials.enableFlatBaseline())
-                || commercials.commercialStructure() == CommercialStructure.FLAT
-                || commercials.commercialStructure() == CommercialStructure.HYBRID;
-        boolean enableSlab = Boolean.TRUE.equals(commercials.enableSlabIncentives())
-                || commercials.commercialStructure() == CommercialStructure.SLAB
-                || commercials.commercialStructure() == CommercialStructure.HYBRID;
+        boolean enableFlat = resolveEnableFlatBaseline(commercials);
+        boolean enableSlab = resolveEnableSlabIncentives(commercials);
         if (!enableFlat && !enableSlab) {
             throw new BusinessException("Enable at least one commercial component (flat baseline or slab incentives)");
         }
@@ -1386,6 +1453,205 @@ public class AgreementServiceImpl implements AgreementService {
         if (enableFlat && commercials.flatBaselineFrequency() == null) {
             throw new BusinessException("Flat baseline frequency is required when flat payout is enabled");
         }
+        if (enableSlab && slabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementVersionId).isEmpty()) {
+            throw new BusinessException("Please add at least one slab row, or disable Slab-Based Incentives");
+        }
+    }
+
+    private void validateQpsOneTimeFrequency(DraftDetailsPayload details, DraftCommercialsPayload commercials) {
+        if (details == null || commercials == null) {
+            return;
+        }
+        if (!"QPS".equals(details.adhocSubType())) {
+            return;
+        }
+        if (resolveEnableFlatBaseline(commercials)
+                && commercials.flatBaselineFrequency() != PayoutFrequency.ONE_TIME) {
+            throw new BusinessException("QPS agreements require One-Time payout frequency");
+        }
+    }
+
+    private UpdateDraftRequest scrubRequestForIncomeType(UpdateDraftRequest request, Long incomeTypeId) {
+        if (incomeTypeId == null) {
+            return request;
+        }
+        if (isAssetRentalIncomeType(incomeTypeId)) {
+            return new UpdateDraftRequest(
+                    request.agreementName(),
+                    request.companyId(),
+                    List.of(),
+                    EMPTY_PRODUCT_RULES,
+                    scrubDetailsForAssetRental(request.details()),
+                    null,
+                    request.asset(),
+                    request.requiresReapproval());
+        }
+        if (isDataFeeIncomeType(incomeTypeId)) {
+            return new UpdateDraftRequest(
+                    request.agreementName(),
+                    request.companyId(),
+                    request.vendorIds(),
+                    request.productRules(),
+                    scrubDetailsForDataFee(request.details()),
+                    request.commercials(),
+                    null,
+                    request.requiresReapproval());
+        }
+        if (isCommercialContractsIncomeType(incomeTypeId)) {
+            return new UpdateDraftRequest(
+                    request.agreementName(),
+                    request.companyId(),
+                    request.vendorIds(),
+                    request.productRules(),
+                    scrubDetailsForStandardContract(request.details()),
+                    request.commercials(),
+                    null,
+                    request.requiresReapproval());
+        }
+        if (isAdHocIncomeType(incomeTypeId)) {
+            return new UpdateDraftRequest(
+                    request.agreementName(),
+                    request.companyId(),
+                    request.vendorIds(),
+                    request.productRules(),
+                    scrubDetailsForAdHoc(request.details()),
+                    scrubCommercialsForAdHoc(request.commercials(), request.details()),
+                    null,
+                    request.requiresReapproval());
+        }
+        return new UpdateDraftRequest(
+                request.agreementName(),
+                request.companyId(),
+                request.vendorIds(),
+                request.productRules(),
+                scrubDetailsForStandardContract(request.details()),
+                request.commercials(),
+                null,
+                request.requiresReapproval());
+    }
+
+    private DraftDetailsPayload scrubDetailsForAssetRental(DraftDetailsPayload details) {
+        if (details == null) {
+            return null;
+        }
+        return new DraftDetailsPayload(
+                details.incomeTypeId(),
+                details.agreementTypeId(),
+                details.startDate(),
+                details.expiryDate(),
+                details.notes(),
+                details.stateIds(),
+                null,
+                null,
+                details.invoiceVendorId(),
+                details.payoutBufferDays(),
+                null,
+                details.paymentRealizationType());
+    }
+
+    private DraftDetailsPayload scrubDetailsForDataFee(DraftDetailsPayload details) {
+        if (details == null) {
+            return null;
+        }
+        return new DraftDetailsPayload(
+                details.incomeTypeId(),
+                details.agreementTypeId(),
+                details.startDate(),
+                details.expiryDate(),
+                details.notes(),
+                details.stateIds(),
+                null,
+                null,
+                details.invoiceVendorId(),
+                details.payoutBufferDays(),
+                details.calculationBasis(),
+                details.paymentRealizationType());
+    }
+
+    private DraftDetailsPayload scrubDetailsForStandardContract(DraftDetailsPayload details) {
+        if (details == null) {
+            return null;
+        }
+        return new DraftDetailsPayload(
+                details.incomeTypeId(),
+                details.agreementTypeId(),
+                details.startDate(),
+                details.expiryDate(),
+                details.notes(),
+                details.stateIds(),
+                null,
+                null,
+                details.invoiceVendorId(),
+                details.payoutBufferDays(),
+                details.calculationBasis(),
+                details.paymentRealizationType());
+    }
+
+    private DraftDetailsPayload scrubDetailsForAdHoc(DraftDetailsPayload details) {
+        if (details == null) {
+            return null;
+        }
+        boolean isQps = "QPS".equals(details.adhocSubType());
+        return new DraftDetailsPayload(
+                details.incomeTypeId(),
+                details.agreementTypeId(),
+                details.startDate(),
+                details.expiryDate(),
+                details.notes(),
+                details.stateIds(),
+                details.adhocSubType(),
+                isQps ? null : details.quantityCap(),
+                details.invoiceVendorId(),
+                details.payoutBufferDays(),
+                details.calculationBasis(),
+                details.paymentRealizationType());
+    }
+
+    private DraftCommercialsPayload scrubCommercialsForFlatOnly(DraftCommercialsPayload commercials) {
+        if (commercials == null) {
+            return null;
+        }
+        return new DraftCommercialsPayload(
+                CommercialStructure.FLAT,
+                commercials.commercialValue(),
+                commercials.flatValueType(),
+                commercials.flatBaselineFrequency(),
+                true,
+                false,
+                null);
+    }
+
+    private DraftCommercialsPayload scrubCommercialsForAdHoc(DraftCommercialsPayload commercials,
+                                                               DraftDetailsPayload details) {
+        if (commercials == null) {
+            return null;
+        }
+        if (details != null && "QPS".equals(details.adhocSubType())) {
+            return new DraftCommercialsPayload(
+                    commercials.commercialStructure(),
+                    commercials.commercialValue(),
+                    commercials.flatValueType(),
+                    PayoutFrequency.ONE_TIME,
+                    commercials.enableFlatBaseline(),
+                    commercials.enableSlabIncentives(),
+                    commercials.calculationFormula());
+        }
+        return commercials;
+    }
+
+    private boolean resolveEnableFlatBaseline(DraftCommercialsPayload commercials) {
+        if (commercials.enableFlatBaseline() != null) {
+            return Boolean.TRUE.equals(commercials.enableFlatBaseline());
+        }
+        CommercialStructure structure = commercials.commercialStructure();
+        return structure == CommercialStructure.FLAT || structure == CommercialStructure.HYBRID;
+    }
+
+    private boolean resolveEnableSlabIncentives(DraftCommercialsPayload commercials) {
+        if (commercials.enableSlabIncentives() != null) {
+            return Boolean.TRUE.equals(commercials.enableSlabIncentives());
+        }
+        return commercials.commercialStructure() == CommercialStructure.SLAB;
     }
 
     private void validateAssetRentalPayload(DraftAssetPayload asset, DraftDetailsPayload details) {
@@ -1399,6 +1665,24 @@ public class AgreementServiceImpl implements AgreementService {
         }
         return incomeTypeRepository.findById(incomeTypeId)
                 .map(incomeType -> IncomeTypeNames.AD_HOC_ACTIVITIES.equalsIgnoreCase(incomeType.getName()))
+                .orElse(false);
+    }
+
+    private boolean isDataFeeIncomeType(Long incomeTypeId) {
+        if (incomeTypeId == null) {
+            return false;
+        }
+        return incomeTypeRepository.findById(incomeTypeId)
+                .map(incomeType -> IncomeTypeNames.DATA_FEE.equalsIgnoreCase(incomeType.getName()))
+                .orElse(false);
+    }
+
+    private boolean isCommercialContractsIncomeType(Long incomeTypeId) {
+        if (incomeTypeId == null) {
+            return false;
+        }
+        return incomeTypeRepository.findById(incomeTypeId)
+                .map(incomeType -> IncomeTypeNames.COMMERCIAL_CONTRACTS.equalsIgnoreCase(incomeType.getName()))
                 .orElse(false);
     }
 
