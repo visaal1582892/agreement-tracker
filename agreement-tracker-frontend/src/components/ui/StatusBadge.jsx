@@ -1,6 +1,12 @@
 import { Box, Typography, alpha } from '@mui/material';
 
 const STATUS_CONFIG = {
+  PENDING:          { label: 'Pending',           bg: '#FEF3C7', color: '#B45309', dot: '#F59E0B' },
+  PENDING_APPROVAL: { label: 'Pending Approval',  bg: '#FEF3C7', color: '#B45309', dot: '#F59E0B' },
+  PENDING_ACTIVATION: { label: 'Pending Campaign ID', bg: '#E0E7FF', color: '#4338CA', dot: '#6366F1' },
+  LIVE:             { label: 'Live',              bg: '#DCFCE7', color: '#15803D', dot: '#22C55E' },
+  COMPLETED:        { label: 'Completed',         bg: '#F1F5F9', color: '#64748B', dot: '#94A3B8' },
+  INACTIVE:         { label: 'Inactive',          bg: '#F1F5F9', color: '#64748B', dot: '#94A3B8' },
   SUPERSEDED:       { label: 'Superseded',        bg: '#F1F5F9', color: '#94A3B8', dot: '#CBD5E1' },
   ACTIVE:           { label: 'Active',           bg: '#DCFCE7', color: '#15803D', dot: '#22C55E' },
   EXPIRED:          { label: 'Expired',           bg: '#FEE2E2', color: '#B91C1C', dot: '#EF4444' },

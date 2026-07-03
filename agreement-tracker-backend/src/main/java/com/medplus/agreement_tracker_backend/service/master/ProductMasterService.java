@@ -45,6 +45,20 @@ public class ProductMasterService {
         return toResponse(findOrThrow(id));
     }
 
+    @Transactional(readOnly = true)
+    public List<ProductMasterResponse> findAllActive() {
+        return productRepository.findAllActiveWithRelations().stream().map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductMasterResponse> findByManufacturerIds(List<Long> manufacturerIds) {
+        if (manufacturerIds == null || manufacturerIds.isEmpty()) {
+            return List.of();
+        }
+        return productRepository.findByManufacturerIdsAndIsActiveTrue(manufacturerIds).stream()
+                .map(this::toResponse).toList();
+    }
+
     /** Wizard backward-compat: products filtered by vendor + optional manufacturer/division. */
     @Transactional(readOnly = true)
     public List<ProductMasterResponse> findByVendorIds(List<Long> vendorIds) {

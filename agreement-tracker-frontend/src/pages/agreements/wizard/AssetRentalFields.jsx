@@ -1,41 +1,40 @@
-import { useRef, useState } from 'react';
+import { useEffect } from 'react';
 import {
   Autocomplete, Box, Typography, Grid, FormControl, InputLabel, Select, MenuItem,
-  TextField, Button, alpha,
+  TextField,
 } from '@mui/material';
-import { UploadFile } from '@mui/icons-material';
-import { BRAND } from '../../../config/theme';
+
+import { ASSET_TYPE_OPTIONS } from '../../../constants/assetTypes';
+import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 
 const ASSET_CATEGORY_OPTIONS = [
   { value: 'PHYSICAL_ASSET', label: 'Physical Asset' },
   { value: 'ACTIVITY', label: 'Activity' },
 ];
 
-const ASSET_TYPE_OPTIONS = ['Shelf', 'Window', 'Sampling'];
-
 export default function AssetRentalFields({
   asset,
   stateOptions,
   selectedStateIds,
-  storeOutletList,
   onUpdateAsset,
   onUpdateDetails,
+  fieldErrors = {},
 }) {
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef(null);
-
   const selectedStates = stateOptions.filter((state) => selectedStateIds.includes(state.id));
+  const isActivityCategory = asset?.assetCategory === 'ACTIVITY';
 
-  const handleStoreOutletAdd = (file) => {
-    if (!file) return;
-    onUpdateDetails({
-      storeOutletList: {
-        file,
-        fileName: file.name,
-        documentType: 'STORE_OUTLET_LIST',
-        preview: URL.createObjectURL(file),
-      },
-    });
+  useEffect(() => {
+    if (isActivityCategory && asset?.assetType) {
+      onUpdateAsset({ assetType: null });
+    }
+  }, [isActivityCategory, asset?.assetType, onUpdateAsset]);
+
+  const handleCategoryChange = (nextCategory) => {
+    if (nextCategory === 'ACTIVITY') {
+      onUpdateAsset({ assetCategory: nextCategory, assetType: null });
+      return;
+    }
+    onUpdateAsset({ assetCategory: nextCategory });
   };
 
   return (
@@ -51,7 +50,7 @@ export default function AssetRentalFields({
             <Select
               value={asset?.assetCategory || 'PHYSICAL_ASSET'}
               label="Asset Category *"
-              onChange={(e) => onUpdateAsset({ assetCategory: e.target.value })}
+              onChange={(e) => handleCategoryChange(e.target.value)}
             >
               {ASSET_CATEGORY_OPTIONS.map((option) => (
                 <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
@@ -60,20 +59,22 @@ export default function AssetRentalFields({
           </FormControl>
         </Grid>
 
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <FormControl fullWidth size="small" required>
-            <InputLabel>Asset Type</InputLabel>
-            <Select
-              value={asset?.assetType || ''}
-              label="Asset Type *"
-              onChange={(e) => onUpdateAsset({ assetType: e.target.value })}
-            >
-              {ASSET_TYPE_OPTIONS.map((type) => (
-                <MenuItem key={type} value={type}>{type}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
+        {!isActivityCategory && (
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl fullWidth size="small" required>
+              <InputLabel>Asset Type</InputLabel>
+              <Select
+                value={asset?.assetType || ''}
+                label="Asset Type *"
+                onChange={(e) => onUpdateAsset({ assetType: e.target.value })}
+              >
+                {ASSET_TYPE_OPTIONS.map((type) => (
+                  <MenuItem key={type} value={type}>{type}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+        )}
 
         <Grid size={12}>
           <Autocomplete
@@ -90,68 +91,28 @@ export default function AssetRentalFields({
         </Grid>
 
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField
-            label="Number of Participating Stores *"
-            type="number"
-            fullWidth
-            size="small"
-            value={asset?.storeCount ?? ''}
-            onChange={(e) => onUpdateAsset({ storeCount: e.target.value })}
-            slotProps={{ htmlInput: { min: 1 } }}
-          />
-        </Grid>
-
-        <Grid size={12}>
-          <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
-            Upload List of Participating Outlets *
-          </Typography>
-          <Box
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              handleStoreOutletAdd(e.dataTransfer.files[0]);
-            }}
-            onClick={() => fileInputRef.current?.click()}
-            sx={{
-              border: `2px dashed ${BRAND.borderLight}`,
-              borderRadius: '10px',
-              bgcolor: dragOver ? alpha(BRAND.red, 0.04) : BRAND.bgGray,
-              p: 2.5,
-              textAlign: 'center',
-              cursor: 'pointer',
-              transition: 'background-color 0.15s ease, border-color 0.15s ease',
-              '&:hover': { bgcolor: alpha(BRAND.red, 0.03), borderColor: '#94A3B8' },
-            }}
-          >
-            <UploadFile sx={{ fontSize: 36, color: BRAND.textSecondary, mb: 0.5 }} />
-            <Typography variant="body2" color="text.secondary" mb={1}>
-              Drag & drop or click to upload participating outlet list
-            </Typography>
-            <Button
-              variant="outlined"
+          <WizardFieldAnchor field="storeCount" error={fieldErrors.storeCount}>
+            <TextField
+              label="Number of Participating Stores *"
+              type="number"
+              fullWidth
               size="small"
-              onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-            >
-              Browse File
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              hidden
+              value={asset?.storeCount ?? ''}
               onChange={(e) => {
-                handleStoreOutletAdd(e.target.files[0]);
-                e.target.value = '';
+                const { value } = e.target;
+                if (value === '') {
+                  onUpdateAsset({ storeCount: '' });
+                  return;
+                }
+                const parsed = Number(value);
+                if (!Number.isFinite(parsed)) return;
+                onUpdateAsset({ storeCount: String(Math.trunc(parsed)) });
               }}
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
+              error={Boolean(fieldErrors.storeCount)}
+              helperText={fieldErrors.storeCount || 'Must be a whole number greater than 0'}
+              slotProps={{ htmlInput: { min: 1, step: 1 } }}
             />
-          </Box>
-          {storeOutletList?.fileName && (
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              Selected: <strong>{storeOutletList.fileName}</strong>
-            </Typography>
-          )}
+          </WizardFieldAnchor>
         </Grid>
       </Grid>
     </Box>

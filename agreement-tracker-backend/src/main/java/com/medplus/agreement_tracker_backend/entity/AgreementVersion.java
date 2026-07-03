@@ -5,6 +5,7 @@ import com.medplus.agreement_tracker_backend.enums.AdHocSubType;
 import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
 import com.medplus.agreement_tracker_backend.enums.CalculationBasis;
 import com.medplus.agreement_tracker_backend.enums.CommercialStructure;
+import com.medplus.agreement_tracker_backend.enums.LeadTimeBasis;
 import com.medplus.agreement_tracker_backend.enums.PaymentRealizationType;
 import com.medplus.agreement_tracker_backend.enums.PayoutFrequency;
 import com.medplus.agreement_tracker_backend.enums.SlabValueType;
@@ -86,6 +87,13 @@ public class AgreementVersion extends AuditableEntity {
     private Integer payoutBufferDays;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "lead_time_basis", length = 30)
+    private LeadTimeBasis leadTimeBasis;
+
+    @Column(name = "invoice_generation_lead_time")
+    private Integer invoiceGenerationLeadTime;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "calculation_basis", nullable = false, length = 20)
     @Builder.Default
     private CalculationBasis calculationBasis = CalculationBasis.VENDOR_INVOICE;
@@ -106,6 +114,10 @@ public class AgreementVersion extends AuditableEntity {
 
     @Column(name = "expiry_date")
     private LocalDate expiryDate;
+
+    @Column(name = "financial_year_start_month", nullable = false)
+    @Builder.Default
+    private Integer financialYearStartMonth = 4;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "approval_status", nullable = false, length = 20)
@@ -141,5 +153,13 @@ public class AgreementVersion extends AuditableEntity {
 
     @OneToMany(mappedBy = "agreementVersion", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
-    private List<AgreementTarget> targets = new ArrayList<>();
+    private List<AgreementStoreMapping> storeMappings = new ArrayList<>();
+
+    @OneToMany(mappedBy = "agreementVersion", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<AgreementAssetPayoutPeriod> assetPayoutPeriods = new ArrayList<>();
+
+    @OneToMany(mappedBy = "agreementVersion", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<AgreementJbpCommercialPeriod> jbpCommercialPeriods = new ArrayList<>();
 }

@@ -3,6 +3,7 @@ package com.medplus.agreement_tracker_backend.service.impl;
 import com.medplus.agreement_tracker_backend.constants.IncomeTypeNames;
 import com.medplus.agreement_tracker_backend.dto.request.CreateAgreementRequest;
 import com.medplus.agreement_tracker_backend.dto.request.DraftAgreementItemRequest;
+import com.medplus.agreement_tracker_backend.dto.request.AssetPayoutPeriodDto;
 import com.medplus.agreement_tracker_backend.dto.request.DraftAssetPayload;
 import com.medplus.agreement_tracker_backend.dto.request.DraftCommercialsPayload;
 import com.medplus.agreement_tracker_backend.dto.request.DraftDetailsPayload;
@@ -23,9 +24,13 @@ import com.medplus.agreement_tracker_backend.entity.Agreement;
 import com.medplus.agreement_tracker_backend.entity.AgreementActionRequest;
 import com.medplus.agreement_tracker_backend.entity.AgreementApproval;
 import com.medplus.agreement_tracker_backend.entity.AgreementAsset;
+import com.medplus.agreement_tracker_backend.entity.AgreementAssetPayoutPeriod;
 import com.medplus.agreement_tracker_backend.entity.AgreementAudit;
 import com.medplus.agreement_tracker_backend.entity.AgreementComputedProduct;
 import com.medplus.agreement_tracker_backend.entity.AgreementDivisionRule;
+import com.medplus.agreement_tracker_backend.entity.AgreementJbpCommercialPeriod;
+import com.medplus.agreement_tracker_backend.entity.AgreementJbpConfiguration;
+import com.medplus.agreement_tracker_backend.entity.AgreementJbpVersionFrequency;
 import com.medplus.agreement_tracker_backend.entity.AgreementManufacturer;
 import com.medplus.agreement_tracker_backend.entity.AgreementProductRule;
 import com.medplus.agreement_tracker_backend.entity.AgreementSlab;
@@ -43,8 +48,10 @@ import com.medplus.agreement_tracker_backend.enums.ActionRequestStatus;
 import com.medplus.agreement_tracker_backend.enums.AdHocSubType;
 import com.medplus.agreement_tracker_backend.enums.ApprovalAction;
 import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
+import com.medplus.agreement_tracker_backend.enums.AssetCategory;
 import com.medplus.agreement_tracker_backend.enums.CalculationBasis;
 import com.medplus.agreement_tracker_backend.enums.CommercialStructure;
+import com.medplus.agreement_tracker_backend.enums.LeadTimeBasis;
 import com.medplus.agreement_tracker_backend.enums.PaymentRealizationType;
 import com.medplus.agreement_tracker_backend.enums.PayoutFrequency;
 import com.medplus.agreement_tracker_backend.enums.RuleType;
@@ -55,16 +62,20 @@ import com.medplus.agreement_tracker_backend.exception.UnauthorizedException;
 import com.medplus.agreement_tracker_backend.repository.AgreementActionRequestRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementApprovalRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementAssetRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementAssetPayoutPeriodRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementAuditRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementComputedProductRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementDivisionRuleRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementJbpCommercialPeriodRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementJbpConfigurationRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementJbpVersionFrequencyRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementManufacturerRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementProductRuleRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementDocumentRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementReminderRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementSlabRepository;
+import com.medplus.agreement_tracker_backend.repository.AgreementStoreMappingRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementRepository;
-import com.medplus.agreement_tracker_backend.repository.AgreementTargetRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementSpec;
 import com.medplus.agreement_tracker_backend.repository.AgreementTypeRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementVendorRepository;
@@ -77,6 +88,7 @@ import com.medplus.agreement_tracker_backend.repository.UserRepository;
 import com.medplus.agreement_tracker_backend.repository.VendorMasterRepository;
 import com.medplus.agreement_tracker_backend.service.AgreementService;
 import com.medplus.agreement_tracker_backend.service.CompanyAgreementGroupService;
+import com.medplus.agreement_tracker_backend.service.StoreMappingService;
 import com.medplus.agreement_tracker_backend.util.AgreementStatusResolver;
 import com.medplus.agreement_tracker_backend.validation.Step1Validation;
 import com.medplus.agreement_tracker_backend.validation.Step2Validation;
@@ -97,7 +109,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -116,7 +131,9 @@ public class AgreementServiceImpl implements AgreementService {
     private final AgreementDivisionRuleRepository divisionRuleRepository;
     private final AgreementProductRuleRepository productRuleRepository;
     private final AgreementSlabRepository slabRepository;
-    private final AgreementTargetRepository targetRepository;
+    private final AgreementJbpCommercialPeriodRepository jbpCommercialPeriodRepository;
+    private final AgreementJbpConfigurationRepository jbpConfigurationRepository;
+    private final AgreementJbpVersionFrequencyRepository jbpVersionFrequencyRepository;
     private final AgreementComputedProductRepository computedProductRepository;
     private final AgreementApprovalRepository approvalRepository;
     private final AgreementAuditRepository auditRepository;
@@ -124,6 +141,9 @@ public class AgreementServiceImpl implements AgreementService {
     private final AgreementReminderRepository reminderRepository;
     private final AgreementDocumentRepository documentRepository;
     private final AgreementAssetRepository assetRepository;
+    private final AgreementAssetPayoutPeriodRepository assetPayoutPeriodRepository;
+    private final AgreementStoreMappingRepository storeMappingRepository;
+    private final StoreMappingService storeMappingService;
     private final UserRepository userRepository;
     private final IncomeTypeRepository incomeTypeRepository;
     private final AgreementTypeRepository agreementTypeRepository;
@@ -151,7 +171,9 @@ public class AgreementServiceImpl implements AgreementService {
             AgreementDivisionRuleRepository divisionRuleRepository,
             AgreementProductRuleRepository productRuleRepository,
             AgreementSlabRepository slabRepository,
-            AgreementTargetRepository targetRepository,
+            AgreementJbpCommercialPeriodRepository jbpCommercialPeriodRepository,
+            AgreementJbpConfigurationRepository jbpConfigurationRepository,
+            AgreementJbpVersionFrequencyRepository jbpVersionFrequencyRepository,
             AgreementComputedProductRepository computedProductRepository,
             AgreementApprovalRepository approvalRepository,
             AgreementAuditRepository auditRepository,
@@ -159,6 +181,9 @@ public class AgreementServiceImpl implements AgreementService {
             AgreementReminderRepository reminderRepository,
             AgreementDocumentRepository documentRepository,
             AgreementAssetRepository assetRepository,
+            AgreementAssetPayoutPeriodRepository assetPayoutPeriodRepository,
+            AgreementStoreMappingRepository storeMappingRepository,
+            StoreMappingService storeMappingService,
             UserRepository userRepository,
             IncomeTypeRepository incomeTypeRepository,
             AgreementTypeRepository agreementTypeRepository,
@@ -177,7 +202,9 @@ public class AgreementServiceImpl implements AgreementService {
         this.divisionRuleRepository = divisionRuleRepository;
         this.productRuleRepository = productRuleRepository;
         this.slabRepository = slabRepository;
-        this.targetRepository = targetRepository;
+        this.jbpCommercialPeriodRepository = jbpCommercialPeriodRepository;
+        this.jbpConfigurationRepository = jbpConfigurationRepository;
+        this.jbpVersionFrequencyRepository = jbpVersionFrequencyRepository;
         this.computedProductRepository = computedProductRepository;
         this.approvalRepository = approvalRepository;
         this.auditRepository = auditRepository;
@@ -185,6 +212,9 @@ public class AgreementServiceImpl implements AgreementService {
         this.reminderRepository = reminderRepository;
         this.documentRepository = documentRepository;
         this.assetRepository = assetRepository;
+        this.assetPayoutPeriodRepository = assetPayoutPeriodRepository;
+        this.storeMappingRepository = storeMappingRepository;
+        this.storeMappingService = storeMappingService;
         this.userRepository = userRepository;
         this.incomeTypeRepository = incomeTypeRepository;
         this.agreementTypeRepository = agreementTypeRepository;
@@ -282,6 +312,7 @@ public class AgreementServiceImpl implements AgreementService {
                 .calculationFormula(source.getCalculationFormula())
                 .startDate(source.getStartDate())
                 .expiryDate(source.getExpiryDate())
+                .financialYearStartMonth(source.getFinancialYearStartMonth())
                 .approvalStatus(ApprovalStatus.DRAFT)
                 .notes(source.getNotes())
                 .build();
@@ -354,6 +385,13 @@ public class AgreementServiceImpl implements AgreementService {
         newVersion.setUpdatedByUserId(currentUserId);
         newVersion = agreementVersionRepository.save(newVersion);
 
+        storeMappingService.copyMappings(source.getId(), newVersion.getId());
+        copyAssetPayoutPeriods(source.getId(), newVersion.getId());
+        copyJbpVersionFrequencies(source.getId(), newVersion);
+        copySlabs(source.getId(), newVersion, currentUserId);
+        Map<Long, Long> jbpConfigurationIdMap = copyJbpConfigurations(source.getId(), newVersion);
+        copyJbpCommercialPeriods(source.getId(), newVersion, jbpConfigurationIdMap);
+
         if (Boolean.TRUE.equals(request.requiresReapproval())
                 && source.getApprovalStatus() == ApprovalStatus.APPROVED) {
             parent.setCurrentVersionId(newVersion.getId());
@@ -401,6 +439,8 @@ public class AgreementServiceImpl implements AgreementService {
 
         Agreement parent = version.getAgreement();
 
+        Long previousIncomeTypeId = version.getIncomeType() != null ? version.getIncomeType().getId() : null;
+
         if (request.companyId() != null) {
             Long currentCompanyId = parent.getCompanyAgreementGroup().getCompany().getId();
             if (!request.companyId().equals(currentCompanyId)) {
@@ -414,6 +454,14 @@ public class AgreementServiceImpl implements AgreementService {
         applyDraftFields(version, scrubbed.details(), scrubbed.commercials());
         version.setUpdatedByUserId(currentUserId);
         version = agreementVersionRepository.save(version);
+
+        Long newIncomeTypeId = resolveIncomeTypeId(version, scrubbed.details());
+        if (previousIncomeTypeId != null && newIncomeTypeId != null
+                && !Objects.equals(previousIncomeTypeId, newIncomeTypeId)) {
+            storeMappingRepository.deleteByAgreementVersionId(version.getId());
+            assetPayoutPeriodRepository.deleteByAgreementVersionId(version.getId());
+        }
+
         if (scrubbed.details() != null && scrubbed.details().stateIds() != null) {
             replaceAgreementStates(parent, scrubbed.details().stateIds(), currentUserId);
         }
@@ -484,6 +532,9 @@ public class AgreementServiceImpl implements AgreementService {
         newVersion.setUpdatedByUserId(currentUserId);
         newVersion = agreementVersionRepository.save(newVersion);
 
+        storeMappingService.copyMappings(approvedVersion.getId(), newVersion.getId());
+        copyAssetPayoutPeriods(approvedVersion.getId(), newVersion.getId());
+
         parent.setCurrentVersionId(newVersion.getId());
         parent.setUpdatedByUserId(currentUserId);
         agreementRepository.save(parent);
@@ -539,6 +590,8 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     private void clearAssetForVersion(AgreementVersion version) {
+        storeMappingRepository.deleteByAgreementVersionId(version.getId());
+        assetPayoutPeriodRepository.deleteByAgreementVersionId(version.getId());
         assetRepository.deleteByAgreementVersionId(version.getId());
         version.setAsset(null);
     }
@@ -581,6 +634,8 @@ public class AgreementServiceImpl implements AgreementService {
 
         copyVendors(source.getId(), clone, currentUserId);
         copyRulesAndComputed(source.getId(), clone, currentUserId);
+        storeMappingService.copyMappings(source.getId(), clone.getId());
+        copyAssetPayoutPeriods(source.getId(), clone.getId());
 
         recordAudit(parent.getId(), clone.getId(), "AGREEMENT_CLONED",
                 String.valueOf(sourceAgreementVersionId), null, currentUserId);
@@ -938,6 +993,7 @@ public class AgreementServiceImpl implements AgreementService {
                 .calculationFormula(source.getCalculationFormula())
                 .startDate(source.getStartDate())
                 .expiryDate(source.getExpiryDate())
+                .financialYearStartMonth(source.getFinancialYearStartMonth())
                 .approvalStatus(ApprovalStatus.DRAFT)
                 .notes(source.getNotes())
                 .build();
@@ -1002,7 +1058,9 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     private void hardDeleteAgreementVersion(Long versionId) {
-        targetRepository.deleteByAgreementVersionId(versionId);
+        jbpCommercialPeriodRepository.deleteByAgreementVersionId(versionId);
+        jbpConfigurationRepository.deleteByAgreementVersionId(versionId);
+        jbpVersionFrequencyRepository.deleteByAgreementVersionId(versionId);
         slabRepository.deleteByAgreementVersionId(versionId);
         vendorRepository.deleteByAgreementVersionId(versionId);
         manufacturerRuleRepository.deleteByAgreementVersionId(versionId);
@@ -1014,6 +1072,8 @@ public class AgreementServiceImpl implements AgreementService {
         documentRepository.deleteByAgreementVersionId(versionId);
         actionRequestRepository.deleteByAgreementVersionId(versionId);
         auditRepository.deleteByAgreementVersionId(versionId);
+        storeMappingRepository.deleteByAgreementVersionId(versionId);
+        assetPayoutPeriodRepository.deleteByAgreementVersionId(versionId);
         agreementVersionRepository.deleteById(versionId);
     }
 
@@ -1242,14 +1302,41 @@ public class AgreementServiceImpl implements AgreementService {
                 version.setInvoiceVendor(vendorMasterRepository.findById(details.invoiceVendorId())
                         .orElseThrow(() -> new ResourceNotFoundException("Vendor", details.invoiceVendorId())));
             }
+            if (details.paymentRealizationType() != null) {
+                PaymentRealizationType paymentType = PaymentRealizationType.valueOf(details.paymentRealizationType());
+                version.setPaymentRealizationType(paymentType);
+                if (paymentType == PaymentRealizationType.INVOICE_DISCOUNT) {
+                    version.setPayoutBufferDays(null);
+                    version.setLeadTimeBasis(null);
+                    version.setInvoiceGenerationLeadTime(null);
+                } else if (paymentType == PaymentRealizationType.CREDIT_NOTE) {
+                    version.setLeadTimeBasis(null);
+                    version.setInvoiceGenerationLeadTime(null);
+                }
+            }
             if (details.payoutBufferDays() != null) {
                 version.setPayoutBufferDays(details.payoutBufferDays());
+            } else if (details.paymentRealizationType() != null
+                    && PaymentRealizationType.INVOICE_DISCOUNT.name().equals(details.paymentRealizationType())) {
+                version.setPayoutBufferDays(null);
+            }
+            if (details.leadTimeBasis() != null) {
+                version.setLeadTimeBasis(LeadTimeBasis.valueOf(details.leadTimeBasis()));
+            } else if (details.paymentRealizationType() != null
+                    && !PaymentRealizationType.DIRECT_PAYMENT_INVOICE.name().equals(details.paymentRealizationType())) {
+                version.setLeadTimeBasis(null);
+            }
+            if (details.invoiceGenerationLeadTime() != null) {
+                version.setInvoiceGenerationLeadTime(details.invoiceGenerationLeadTime());
+            } else if (details.paymentRealizationType() != null
+                    && !PaymentRealizationType.DIRECT_PAYMENT_INVOICE.name().equals(details.paymentRealizationType())) {
+                version.setInvoiceGenerationLeadTime(null);
+            } else if (details.leadTimeBasis() != null
+                    && !LeadTimeBasis.INVOICE_DATE.name().equals(details.leadTimeBasis())) {
+                version.setInvoiceGenerationLeadTime(null);
             }
             if (details.calculationBasis() != null) {
                 version.setCalculationBasis(CalculationBasis.valueOf(details.calculationBasis()));
-            }
-            if (details.paymentRealizationType() != null) {
-                version.setPaymentRealizationType(PaymentRealizationType.valueOf(details.paymentRealizationType()));
             }
         }
         Long incomeTypeId = details != null && details.incomeTypeId() != null
@@ -1257,10 +1344,17 @@ public class AgreementServiceImpl implements AgreementService {
                 : version.getIncomeType() != null ? version.getIncomeType().getId() : null;
         boolean assetRental = isAssetRentalIncomeType(incomeTypeId);
         if (commercials != null && !assetRental) {
-            if (commercials.commercialStructure() != null) {
-                version.setCommercialStructure(commercials.commercialStructure());
-            }
-            if (commercials.commercialValue() != null) {
+            CommercialStructure incomingStructure = commercials.commercialStructure();
+            if (incomingStructure != null) {
+                version.setCommercialStructure(incomingStructure);
+                if (incomingStructure == CommercialStructure.FLAT) {
+                    if (commercials.commercialValue() != null) {
+                        version.setCommercialValue(commercials.commercialValue());
+                    }
+                } else if (incomingStructure == CommercialStructure.SLAB) {
+                    version.setCommercialValue(null);
+                }
+            } else if (commercials.commercialValue() != null) {
                 version.setCommercialValue(commercials.commercialValue());
             }
             if (commercials.flatValueType() != null) {
@@ -1271,6 +1365,10 @@ public class AgreementServiceImpl implements AgreementService {
             }
             if (commercials.calculationFormula() != null) {
                 version.setCalculationFormula(commercials.calculationFormula());
+            }
+            if (commercials.financialYearStartMonth() != null) {
+                version.setFinancialYearStartMonth(com.medplus.agreement_tracker_backend.util.DynamicFinancialYearPeriodGenerator
+                        .resolveStartMonth(commercials.financialYearStartMonth()));
             }
         } else if (assetRental) {
             version.setCommercialStructure(null);
@@ -1374,9 +1472,32 @@ public class AgreementServiceImpl implements AgreementService {
         if (details.paymentRealizationType() == null || details.paymentRealizationType().isBlank()) {
             throw new BusinessException("Payment realization type is required");
         }
-        if (PaymentRealizationType.DIRECT_PAYMENT_INVOICE.name().equals(details.paymentRealizationType())
-                && details.invoiceVendorId() == null) {
-            throw new BusinessException("Invoice vendor is required for Direct Payment / Invoice");
+        String paymentType = details.paymentRealizationType();
+        if (PaymentRealizationType.INVOICE_DISCOUNT.name().equals(paymentType)) {
+            return;
+        }
+        if (PaymentRealizationType.CREDIT_NOTE.name().equals(paymentType)) {
+            if (details.payoutBufferDays() == null) {
+                throw new BusinessException("Payout lead time is required for Credit Note");
+            }
+            return;
+        }
+        if (PaymentRealizationType.DIRECT_PAYMENT_INVOICE.name().equals(paymentType)) {
+            if (details.leadTimeBasis() == null || details.leadTimeBasis().isBlank()) {
+                throw new BusinessException("Lead time basis is required for Invoice");
+            }
+            LeadTimeBasis basis = LeadTimeBasis.valueOf(details.leadTimeBasis());
+            if (basis == LeadTimeBasis.ACTIVITY_COMPLETION_DATE && details.payoutBufferDays() == null) {
+                throw new BusinessException("Payout lead time is required for Activity Completion Date basis");
+            }
+            if (basis == LeadTimeBasis.INVOICE_DATE) {
+                if (details.invoiceGenerationLeadTime() == null) {
+                    throw new BusinessException("Invoice generation lead time is required for Invoice date basis");
+                }
+                if (details.payoutBufferDays() == null) {
+                    throw new BusinessException("Payout lead time is required for Invoice date basis");
+                }
+            }
         }
         if (assetRental) {
             return;
@@ -1389,6 +1510,9 @@ public class AgreementServiceImpl implements AgreementService {
     private void validateAssetRentalConfiguration(DraftAssetPayload asset, DraftDetailsPayload details) {
         if (asset == null || asset.assetCategory() == null) {
             throw new BusinessException("Asset category is required for Asset Rentals");
+        }
+        if (asset.assetCategory() == AssetCategory.ACTIVITY) {
+            return;
         }
         if (asset.assetType() == null || asset.assetType().isBlank()) {
             throw new BusinessException("Asset type is required for Asset Rentals");
@@ -1406,9 +1530,22 @@ public class AgreementServiceImpl implements AgreementService {
             throw new BusinessException("Asset payout amount is required for Asset Rentals");
         }
         boolean hasFlatPayout = asset.flatPayout() != null && asset.flatPayout().signum() > 0;
-        boolean hasPerStorePayout = asset.payoutPerStore() != null && asset.payoutPerStore().signum() > 0;
-        if (!hasFlatPayout && !hasPerStorePayout) {
+        boolean hasSchedule = asset.assetPayoutPeriods() != null && !asset.assetPayoutPeriods().isEmpty();
+        if (!hasFlatPayout && !hasSchedule) {
             throw new BusinessException("Asset payout amount is required for Asset Rentals");
+        }
+        if (hasFlatPayout && hasSchedule) {
+            throw new BusinessException("Choose either flat payout or per-store payout schedule, not both");
+        }
+        if (hasSchedule) {
+            for (AssetPayoutPeriodDto period : asset.assetPayoutPeriods()) {
+                if (period.periodMonths() == null || period.periodMonths() <= 0) {
+                    throw new BusinessException("Each payout period must have a valid month count");
+                }
+                if (period.payoutPerStore() == null || period.payoutPerStore().signum() <= 0) {
+                    throw new BusinessException("Each payout period must have a payout per store amount");
+                }
+            }
         }
     }
 
@@ -1423,22 +1560,56 @@ public class AgreementServiceImpl implements AgreementService {
             return;
         }
         if (isDataFeeIncomeType(incomeTypeId)) {
-            validateDataFeeCommercials(agreementVersionId, request.commercials());
+            validateDataFeeCommercials(agreementVersionId, incomeTypeId, request.commercials());
             return;
         }
         if (isAdHocIncomeType(incomeTypeId)) {
-            validateHybridCommercials(agreementVersionId, request.commercials());
+            validateHybridCommercials(agreementVersionId, incomeTypeId, request.commercials());
             validateQpsOneTimeFrequency(details, request.commercials());
             return;
         }
-        validateHybridCommercials(agreementVersionId, request.commercials());
+        if (isCommercialContractsIncomeType(incomeTypeId)) {
+            validateCommercialContractsCommercials(agreementVersionId, request.commercials());
+            return;
+        }
+        validateHybridCommercials(agreementVersionId, incomeTypeId, request.commercials());
     }
 
-    private void validateDataFeeCommercials(Long agreementVersionId, DraftCommercialsPayload commercials) {
-        validateHybridCommercials(agreementVersionId, commercials);
+    private void validateCommercialContractsCommercials(
+            Long agreementVersionId,
+            DraftCommercialsPayload commercials) {
+        if (commercials == null) {
+            throw new BusinessException("Commercial configuration is required");
+        }
+        if (resolveEnableFlatBaseline(commercials)) {
+            if (commercials.commercialValue() == null) {
+                throw new BusinessException("Flat baseline value is required when flat payout is enabled");
+            }
+            if (commercials.flatBaselineFrequency() == null) {
+                throw new BusinessException("Flat baseline frequency is required when flat payout is enabled");
+            }
+            return;
+        }
+        if (resolveEnableSlabIncentives(commercials)
+                || commercials.commercialStructure() == CommercialStructure.SLAB) {
+            validateJbpMatrixPresent(agreementVersionId);
+            return;
+        }
+        throw new BusinessException(
+                "Select Flat Baseline Payout or Slab-Based Complex Incentive (JBP)");
     }
 
-    private void validateHybridCommercials(Long agreementVersionId, DraftCommercialsPayload commercials) {
+    private void validateDataFeeCommercials(
+            Long agreementVersionId,
+            Long incomeTypeId,
+            DraftCommercialsPayload commercials) {
+        validateHybridCommercials(agreementVersionId, incomeTypeId, commercials);
+    }
+
+    private void validateHybridCommercials(
+            Long agreementVersionId,
+            Long incomeTypeId,
+            DraftCommercialsPayload commercials) {
         if (commercials == null) {
             throw new BusinessException("Commercial configuration is required");
         }
@@ -1453,8 +1624,42 @@ public class AgreementServiceImpl implements AgreementService {
         if (enableFlat && commercials.flatBaselineFrequency() == null) {
             throw new BusinessException("Flat baseline frequency is required when flat payout is enabled");
         }
-        if (enableSlab && slabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementVersionId).isEmpty()) {
+        if (enableSlab) {
+            validateLegacySlabStructureForStep(agreementVersionId, incomeTypeId);
+        }
+    }
+
+    private void validateJbpMatrixPresent(Long agreementVersionId) {
+        boolean hasJbpConfig = jbpConfigurationRepository.existsByAgreementVersionId(agreementVersionId);
+        boolean hasJbpPeriods = jbpCommercialPeriodRepository.existsByAgreementVersionId(agreementVersionId);
+        if (!hasJbpConfig || !hasJbpPeriods) {
+            throw new BusinessException(
+                    "JBP Matrix Configuration is missing. Please populate and upload the custom workbook.");
+        }
+    }
+
+    private void validateLegacySlabStructureForStep(Long agreementVersionId, Long incomeTypeId) {
+        if (isCommercialContractsIncomeType(incomeTypeId)) {
+            validateJbpMatrixPresent(agreementVersionId);
+            return;
+        }
+        if (slabRepository.findByAgreementVersionIdOrderByMinCapAsc(agreementVersionId).isEmpty()) {
             throw new BusinessException("Please add at least one slab row, or disable Slab-Based Incentives");
+        }
+    }
+
+    private void validateSlabStructureForSubmit(AgreementVersion version, String agreementName) {
+        Long incomeTypeId = version.getIncomeType() != null ? version.getIncomeType().getId() : null;
+        if (isCommercialContractsIncomeType(incomeTypeId)) {
+            try {
+                validateJbpMatrixPresent(version.getId());
+            } catch (BusinessException ex) {
+                throw validationFailure(agreementName, ex.getMessage());
+            }
+            return;
+        }
+        if (slabRepository.findByAgreementVersionIdOrderByMinCapAsc(version.getId()).isEmpty()) {
+            throw validationFailure(agreementName, "Missing slabs for slab-based incentives.");
         }
     }
 
@@ -1545,6 +1750,8 @@ public class AgreementServiceImpl implements AgreementService {
                 null,
                 details.invoiceVendorId(),
                 details.payoutBufferDays(),
+                details.leadTimeBasis(),
+                details.invoiceGenerationLeadTime(),
                 null,
                 details.paymentRealizationType());
     }
@@ -1564,6 +1771,8 @@ public class AgreementServiceImpl implements AgreementService {
                 null,
                 details.invoiceVendorId(),
                 details.payoutBufferDays(),
+                details.leadTimeBasis(),
+                details.invoiceGenerationLeadTime(),
                 details.calculationBasis(),
                 details.paymentRealizationType());
     }
@@ -1583,6 +1792,8 @@ public class AgreementServiceImpl implements AgreementService {
                 null,
                 details.invoiceVendorId(),
                 details.payoutBufferDays(),
+                details.leadTimeBasis(),
+                details.invoiceGenerationLeadTime(),
                 details.calculationBasis(),
                 details.paymentRealizationType());
     }
@@ -1591,7 +1802,11 @@ public class AgreementServiceImpl implements AgreementService {
         if (details == null) {
             return null;
         }
-        boolean isQps = "QPS".equals(details.adhocSubType());
+        String resolvedSubType = details.adhocSubType();
+        if (resolvedSubType == null || resolvedSubType.isBlank()
+                || "CONSUMER_PRICE_OFF".equals(resolvedSubType)) {
+            resolvedSubType = "QPS";
+        }
         return new DraftDetailsPayload(
                 details.incomeTypeId(),
                 details.agreementTypeId(),
@@ -1599,10 +1814,12 @@ public class AgreementServiceImpl implements AgreementService {
                 details.expiryDate(),
                 details.notes(),
                 details.stateIds(),
-                details.adhocSubType(),
-                isQps ? null : details.quantityCap(),
+                resolvedSubType,
+                null,
                 details.invoiceVendorId(),
                 details.payoutBufferDays(),
+                details.leadTimeBasis(),
+                details.invoiceGenerationLeadTime(),
                 details.calculationBasis(),
                 details.paymentRealizationType());
     }
@@ -1618,7 +1835,8 @@ public class AgreementServiceImpl implements AgreementService {
                 commercials.flatBaselineFrequency(),
                 true,
                 false,
-                null);
+                null,
+                commercials.financialYearStartMonth());
     }
 
     private DraftCommercialsPayload scrubCommercialsForAdHoc(DraftCommercialsPayload commercials,
@@ -1634,7 +1852,8 @@ public class AgreementServiceImpl implements AgreementService {
                     PayoutFrequency.ONE_TIME,
                     commercials.enableFlatBaseline(),
                     commercials.enableSlabIncentives(),
-                    commercials.calculationFormula());
+                    commercials.calculationFormula(),
+                    commercials.financialYearStartMonth());
         }
         return commercials;
     }
@@ -1644,7 +1863,7 @@ public class AgreementServiceImpl implements AgreementService {
             return Boolean.TRUE.equals(commercials.enableFlatBaseline());
         }
         CommercialStructure structure = commercials.commercialStructure();
-        return structure == CommercialStructure.FLAT || structure == CommercialStructure.HYBRID;
+        return structure == CommercialStructure.FLAT;
     }
 
     private boolean resolveEnableSlabIncentives(DraftCommercialsPayload commercials) {
@@ -1687,31 +1906,18 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     private void validateAdHocPayload(UpdateDraftRequest request, DraftDetailsPayload details) {
-        if (details.adhocSubType() == null || details.adhocSubType().isBlank()) {
-            throw new BusinessException("Ad-Hoc activity sub-type is required");
+        String subType = details.adhocSubType();
+        if (subType == null || subType.isBlank() || "CONSUMER_PRICE_OFF".equals(subType)) {
+            subType = "QPS";
         }
-        if ("QPS".equals(details.adhocSubType())) {
-            ProductRulesPayload rulesPayload = request.productRules();
-            List<RuleDTO> productRules = rulesPayload != null && rulesPayload.productRules() != null
-                    ? rulesPayload.productRules() : List.of();
-            if (productRules.isEmpty()) {
-                throw new BusinessException("At least one product rule is required for QPS");
-            }
-            return;
+        if (!"QPS".equals(subType)) {
+            throw new BusinessException("Ad-Hoc activity sub-type must be QPS");
         }
-        if ("CONSUMER_PRICE_OFF".equals(details.adhocSubType())) {
-            if (details.stateIds() == null || details.stateIds().isEmpty()) {
-                throw new BusinessException("At least one state is required for Consumer Price Off");
-            }
-            ProductRulesPayload rulesPayload = request.productRules();
-            List<RuleDTO> productRules = rulesPayload != null && rulesPayload.productRules() != null
-                    ? rulesPayload.productRules() : List.of();
-            if (productRules.isEmpty()) {
-                throw new BusinessException("At least one product rule is required for Consumer Price Off");
-            }
-            if (details.quantityCap() == null || details.quantityCap().signum() <= 0) {
-                throw new BusinessException("Quantity / value cap is required for Consumer Price Off");
-            }
+        ProductRulesPayload rulesPayload = request.productRules();
+        List<RuleDTO> productRules = rulesPayload != null && rulesPayload.productRules() != null
+                ? rulesPayload.productRules() : List.of();
+        if (productRules.isEmpty()) {
+            throw new BusinessException("At least one product rule is required for QPS");
         }
     }
 
@@ -1725,10 +1931,13 @@ public class AgreementServiceImpl implements AgreementService {
     }
 
     private boolean hasPersistableAssetPayload(DraftAssetPayload payload) {
-        return payload != null
-                && payload.assetCategory() != null
-                && payload.assetType() != null
-                && !payload.assetType().isBlank();
+        if (payload == null || payload.assetCategory() == null) {
+            return false;
+        }
+        if (payload.assetCategory() == AssetCategory.ACTIVITY) {
+            return true;
+        }
+        return payload.assetType() != null && !payload.assetType().isBlank();
     }
 
     private boolean shouldPersistAsset(DraftAssetPayload payload, boolean validateStep2) {
@@ -1746,17 +1955,30 @@ public class AgreementServiceImpl implements AgreementService {
         AgreementAsset asset = assetRepository.findByAgreementVersionId(version.getId())
                 .orElseGet(() -> AgreementAsset.builder().agreementVersion(version).build());
 
+        boolean hasFlatPayout = payload.flatPayout() != null && payload.flatPayout().signum() > 0;
+        boolean hasSchedule = payload.assetPayoutPeriods() != null && !payload.assetPayoutPeriods().isEmpty();
+
+        if (hasFlatPayout) {
+            assetPayoutPeriodRepository.deleteByAgreementVersionId(version.getId());
+            asset.setFlatPayout(payload.flatPayout());
+            asset.setPayoutPerStore(null);
+        } else if (hasSchedule) {
+            asset.setFlatPayout(null);
+            asset.setPayoutPerStore(null);
+            replaceAssetPayoutPeriods(version, payload.assetPayoutPeriods());
+        }
+
         if (payload.assetCategory() != null) {
             asset.setAssetCategory(payload.assetCategory());
         }
-        if (payload.assetType() != null) {
+        if (payload.assetCategory() == AssetCategory.ACTIVITY) {
+            asset.setAssetType(null);
+        } else if (payload.assetType() != null) {
             asset.setAssetType(payload.assetType().trim());
         }
         if (payload.storeCount() != null) {
             asset.setStoreCount(payload.storeCount());
         }
-        asset.setPayoutPerStore(payload.payoutPerStore());
-        asset.setFlatPayout(payload.flatPayout());
         if (payload.remarks() != null) {
             asset.setRemarks(payload.remarks().trim());
         }
@@ -1767,6 +1989,36 @@ public class AgreementServiceImpl implements AgreementService {
         asset.setUpdatedByUserId(userId);
         assetRepository.save(asset);
         version.setAsset(asset);
+    }
+
+    private void replaceAssetPayoutPeriods(AgreementVersion version, List<AssetPayoutPeriodDto> periods) {
+        assetPayoutPeriodRepository.deleteByAgreementVersionId(version.getId());
+        if (periods == null || periods.isEmpty()) {
+            return;
+        }
+        for (AssetPayoutPeriodDto period : periods) {
+            assetPayoutPeriodRepository.save(AgreementAssetPayoutPeriod.builder()
+                    .agreementVersion(version)
+                    .periodMonths(period.periodMonths())
+                    .payoutPerStore(period.payoutPerStore())
+                    .build());
+        }
+    }
+
+    private void copyAssetPayoutPeriods(Long sourceVersionId, Long targetVersionId) {
+        AgreementVersion target = agreementVersionRepository.findById(targetVersionId)
+                .orElseThrow(() -> new ResourceNotFoundException("AgreementVersion", targetVersionId));
+        assetPayoutPeriodRepository.deleteByAgreementVersionId(targetVersionId);
+
+        List<AgreementAssetPayoutPeriod> sourcePeriods =
+                assetPayoutPeriodRepository.findByAgreementVersionIdOrderByPeriodMonthsAscIdAsc(sourceVersionId);
+        for (AgreementAssetPayoutPeriod sourcePeriod : sourcePeriods) {
+            assetPayoutPeriodRepository.save(AgreementAssetPayoutPeriod.builder()
+                    .agreementVersion(target)
+                    .periodMonths(sourcePeriod.getPeriodMonths())
+                    .payoutPerStore(sourcePeriod.getPayoutPerStore())
+                    .build());
+        }
     }
 
     private AgreementVersionResponse.AssetSummary toAssetSummary(AgreementAsset asset) {
@@ -1820,8 +2072,7 @@ public class AgreementServiceImpl implements AgreementService {
         if (version.getExpiryDate().isBefore(version.getStartDate())) {
             throw validationFailure(agreementName, "Expiry Date must be on or after Start Date.");
         }
-        if (version.getCommercialStructure() == CommercialStructure.FLAT
-                || version.getCommercialStructure() == CommercialStructure.HYBRID) {
+        if (version.getCommercialStructure() == CommercialStructure.FLAT) {
             if (version.getCommercialValue() == null) {
                 throw validationFailure(agreementName, "Missing Commercial Value for flat baseline.");
             }
@@ -1829,11 +2080,8 @@ public class AgreementServiceImpl implements AgreementService {
                 throw validationFailure(agreementName, "Missing flat baseline frequency.");
             }
         }
-        if (version.getCommercialStructure() == CommercialStructure.SLAB
-                || version.getCommercialStructure() == CommercialStructure.HYBRID) {
-            if (slabRepository.findByAgreementVersionIdOrderByFromValueAsc(version.getId()).isEmpty()) {
-                throw validationFailure(agreementName, "Missing slabs for slab-based incentives.");
-            }
+        if (version.getCommercialStructure() == CommercialStructure.SLAB) {
+            validateSlabStructureForSubmit(version, agreementName);
         }
         if (vendorRepository.findByAgreementVersionId(version.getId()).isEmpty()) {
             throw validationFailure(agreementName, "Missing Vendor.");
@@ -1848,16 +2096,35 @@ public class AgreementServiceImpl implements AgreementService {
         if (asset == null || asset.getAssetCategory() == null) {
             throw validationFailure(agreementName, "Missing Asset Category.");
         }
-        if (asset.getAssetType() == null || asset.getAssetType().isBlank()) {
+        if (asset.getAssetCategory() != AssetCategory.ACTIVITY
+                && (asset.getAssetType() == null || asset.getAssetType().isBlank())) {
             throw validationFailure(agreementName, "Missing Asset Type.");
         }
         if (asset.getStoreCount() == null || asset.getStoreCount() <= 0) {
             throw validationFailure(agreementName, "Missing participating store count.");
         }
         boolean hasFlatPayout = asset.getFlatPayout() != null && asset.getFlatPayout().signum() > 0;
-        boolean hasPerStorePayout = asset.getPayoutPerStore() != null && asset.getPayoutPerStore().signum() > 0;
-        if (!hasFlatPayout && !hasPerStorePayout) {
+        List<AgreementAssetPayoutPeriod> payoutPeriods = assetPayoutPeriodRepository
+                .findByAgreementVersionIdOrderByPeriodMonthsAscIdAsc(version.getId());
+        boolean hasSchedule = !payoutPeriods.isEmpty();
+        if (!hasFlatPayout && !hasSchedule) {
             throw validationFailure(agreementName, "Missing Asset Payout amount.");
+        }
+        long mappedStoreCount = storeMappingRepository
+                .findByAgreementVersionIdOrderByStoreStoreCodeAsc(version.getId())
+                .size();
+        if (mappedStoreCount == 0) {
+            throw validationFailure(agreementName, "Upload at least one participating store.");
+        }
+        if (hasSchedule) {
+            for (AgreementAssetPayoutPeriod period : payoutPeriods) {
+                if (period.getPeriodMonths() == null || period.getPeriodMonths() <= 0) {
+                    throw validationFailure(agreementName, "Each payout period must have a valid month count.");
+                }
+                if (period.getPayoutPerStore() == null || period.getPayoutPerStore().signum() <= 0) {
+                    throw validationFailure(agreementName, "Each payout period must have a payout per store amount.");
+                }
+            }
         }
     }
 
@@ -1958,15 +2225,9 @@ public class AgreementServiceImpl implements AgreementService {
             productRuleRepository.save(apr);
         }
 
-        List<Long> vendorIds = vendorRepository.findByAgreementVersionId(version.getId())
-                .stream().map(AgreementVendor::getVendorId).toList();
-        if (vendorIds.isEmpty()) {
-            return;
-        }
-
         List<ProductMaster> baseProducts = safeManufacturerIds.isEmpty()
-                ? productMasterRepository.findByVendorIds(vendorIds)
-                : productMasterRepository.findByVendorIdsAndManufacturerIds(vendorIds, safeManufacturerIds);
+                ? productMasterRepository.findAllActiveWithRelations()
+                : productMasterRepository.findByManufacturerIdsAndIsActiveTrue(safeManufacturerIds);
 
         List<ProductMaster> afterDivisionFilter = applyDivisionRules(baseProducts, safeDivisionRules);
         List<ProductMaster> finalProducts = applyProductRules(afterDivisionFilter, safeProductRules);
@@ -2010,18 +2271,79 @@ public class AgreementServiceImpl implements AgreementService {
         return products.stream().filter(p -> !productIds.contains(p.getId())).toList();
     }
 
-    private void copySlabs(Long sourceVersionId, AgreementVersion target, Long userId) {
-        slabRepository.findByAgreementVersionIdOrderByFromValueAsc(sourceVersionId).forEach(s -> {
+    private Map<Long, Long> copySlabs(Long sourceVersionId, AgreementVersion target, Long userId) {
+        Map<Long, Long> idMap = new HashMap<>();
+        slabRepository.findByAgreementVersionIdOrderByMinCapAsc(sourceVersionId).forEach(s -> {
             AgreementSlab copy = AgreementSlab.builder()
                     .agreementVersion(target)
                     .slabType(s.getSlabType())
-                    .fromValue(s.getFromValue())
-                    .toValue(s.getToValue())
+                    .minCap(s.getMinCap())
+                    .maxCap(s.getMaxCap())
+                    .capUnit(s.getCapUnit())
                     .valueType(s.getValueType())
                     .commercialValue(s.getCommercialValue())
+                    .payoutFrequency(s.getPayoutFrequency())
                     .build();
             copy.setCreatedByUserId(userId);
-            slabRepository.save(copy);
+            copy = slabRepository.save(copy);
+            idMap.put(s.getId(), copy.getId());
+        });
+        return idMap;
+    }
+
+    private Map<Long, Long> copyJbpConfigurations(Long sourceVersionId, AgreementVersion target) {
+        Map<Long, Long> idMap = new HashMap<>();
+        jbpConfigurationRepository.findHydratedByAgreementVersionId(sourceVersionId).forEach(source -> {
+            AgreementJbpConfiguration copy = AgreementJbpConfiguration.builder()
+                    .agreementVersion(target)
+                    .frequency(source.getFrequency())
+                    .slabCount(source.getSlabCount())
+                    .build();
+            copy = jbpConfigurationRepository.save(copy);
+            copy.setSelectedPeriods(new LinkedHashSet<>(source.getSelectedPeriods()));
+            jbpConfigurationRepository.save(copy);
+            idMap.put(source.getId(), copy.getId());
+        });
+        return idMap;
+    }
+
+    private void copyJbpVersionFrequencies(Long sourceVersionId, AgreementVersion target) {
+        jbpVersionFrequencyRepository.findByAgreementVersionIdOrderByFrequencyAsc(sourceVersionId).forEach(source ->
+                jbpVersionFrequencyRepository.save(AgreementJbpVersionFrequency.builder()
+                        .agreementVersion(target)
+                        .frequency(source.getFrequency())
+                        .build()));
+    }
+
+    private void copyJbpCommercialPeriods(
+            Long sourceVersionId,
+            AgreementVersion target,
+            Map<Long, Long> configurationIdMap) {
+        if (configurationIdMap.isEmpty()) {
+            return;
+        }
+        jbpCommercialPeriodRepository.findByAgreementVersionId(sourceVersionId).forEach(sourcePeriod -> {
+            Long newConfigurationId = configurationIdMap.get(sourcePeriod.getJbpConfiguration().getId());
+            if (newConfigurationId == null) {
+                return;
+            }
+            AgreementJbpConfiguration targetConfiguration = jbpConfigurationRepository.findById(newConfigurationId)
+                    .orElseThrow(() -> new ResourceNotFoundException("AgreementJbpConfiguration", newConfigurationId));
+            AgreementJbpCommercialPeriod copy = AgreementJbpCommercialPeriod.builder()
+                    .agreementVersion(target)
+                    .jbpConfiguration(targetConfiguration)
+                    .targetType(sourcePeriod.getTargetType())
+                    .target(sourcePeriod.getTarget())
+                    .qualifierPercent(sourcePeriod.getQualifierPercent())
+                    .payoutType(sourcePeriod.getPayoutType())
+                    .payout(sourcePeriod.getPayout())
+                    .maxPurchase(sourcePeriod.getMaxPurchase())
+                    .maxPayout(sourcePeriod.getMaxPayout())
+                    .slabTierNumber(sourcePeriod.getSlabTierNumber())
+                    .timePeriod(sourcePeriod.getTimePeriod())
+                    .parentTimePeriod(sourcePeriod.getParentTimePeriod())
+                    .build();
+            jbpCommercialPeriodRepository.save(copy);
         });
     }
 
@@ -2146,6 +2468,27 @@ public class AgreementServiceImpl implements AgreementService {
                 .map(this::toAssetSummary)
                 .orElse(null);
 
+        List<AgreementVersionResponse.StoreMappingSummary> storeMappings =
+                storeMappingRepository.findByAgreementVersionIdOrderByStoreStoreCodeAsc(version.getId())
+                        .stream()
+                        .map(mapping -> new AgreementVersionResponse.StoreMappingSummary(
+                                mapping.getId(),
+                                mapping.getStore().getId(),
+                                mapping.getStore().getStoreCode(),
+                                mapping.getStore().getStoreName(),
+                                mapping.getStore().getState().getId(),
+                                mapping.getStore().getState().getStateName()))
+                        .toList();
+
+        List<AgreementVersionResponse.AssetPayoutPeriodSummary> assetPayoutPeriods =
+                assetPayoutPeriodRepository.findByAgreementVersionIdOrderByPeriodMonthsAscIdAsc(version.getId())
+                        .stream()
+                        .map(period -> new AgreementVersionResponse.AssetPayoutPeriodSummary(
+                                period.getId(),
+                                period.getPeriodMonths(),
+                                period.getPayoutPerStore()))
+                        .toList();
+
         return new AgreementVersionResponse(
                 version.getId(),
                 parent.getId(),
@@ -2171,10 +2514,13 @@ public class AgreementServiceImpl implements AgreementService {
                 version.getInvoiceVendor() != null ? version.getInvoiceVendor().getId() : null,
                 version.getInvoiceVendor() != null ? version.getInvoiceVendor().getVendorName() : null,
                 version.getPayoutBufferDays(),
+                version.getLeadTimeBasis(),
+                version.getInvoiceGenerationLeadTime(),
                 version.getCalculationBasis(),
                 version.getPaymentRealizationType(),
                 version.getStartDate(),
                 version.getExpiryDate(),
+                version.getFinancialYearStartMonth(),
                 version.getApprovalStatus(),
                 statusResolver.resolve(version),
                 version.isInProgressFlag(),
@@ -2189,6 +2535,9 @@ public class AgreementServiceImpl implements AgreementService {
                 productRules,
                 products,
                 assetSummary,
+                storeMappings,
+                assetPayoutPeriods,
+                jbpCommercialPeriodRepository.existsByAgreementVersionId(version.getId()),
                 resolvePendingActionRequest(parent.getId()),
                 version.getCreatedAt(),
                 version.getUpdatedAt()

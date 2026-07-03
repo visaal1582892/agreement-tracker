@@ -1,56 +1,70 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Box, Typography, Grid, TextField, Button, Checkbox, FormControlLabel,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, IconButton, Alert, CircularProgress, FormControl, InputLabel, Select, MenuItem,
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
+  Grid,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Radio,
+  RadioGroup,
+  Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
 } from '@mui/material';
-import { Add, Delete, Edit } from '@mui/icons-material';
+import { Add, Delete as DeleteIcon, Edit as EditIcon } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
 import {
   createSlab,
   deleteSlab,
+  detectSlabTierGaps,
   fetchSlabs,
+  toCcSlabPayload,
+  toSlabPayload,
   updateSlab,
+  validateCcTierAgainstExisting,
   validateSlabAgainstExisting,
+  validateSlabCapRange,
 } from '../../../api/commercialApi';
 import { ensureDraftVersionForCommercial } from '../../../utils/commercialDraftOrchestration';
+import { isCommercialContractsIncomeType } from '../../../utils/incomeTypeUtils';
 import CollapsibleSection from '../../../components/wizard/CollapsibleSection';
+import CommercialContactsCutoffSection from './CommercialContactsCutoffSection';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 import CommercialValueInput from '../../../components/forms/CommercialValueInput';
+import { CAP_UNIT, CAP_UNIT_OPTIONS } from '../../../constants/capUnit';
 import {
   PAYOUT_FREQUENCY,
   PAYOUT_FREQUENCY_OPTIONS,
-  deriveHybridFlags,
-  resolveCommercialStructure,
+  STRUCTURE_TYPE,
+  resolveStructureType,
+  structureTypeToRadioValue,
+  resolveFlatBaselineFrequency,
 } from '../../../constants/commercialStructure';
 
-const EMPTY_LINEAR_SLAB = {
-  threshold: '',
+const EMPTY_SLAB_DRAFT = {
+  minCap: '',
+  maxCap: '',
   valueType: 'PERCENTAGE',
   commercialValue: '',
   payoutFrequency: PAYOUT_FREQUENCY.MONTHLY,
 };
-
-function toLinearSlabPayload(row, fromValue) {
-  return {
-    fromValue,
-    toValue: Number(row.threshold),
-    valueType: row.valueType,
-    commercialValue: Number(row.commercialValue),
-    payoutFrequency: row.payoutFrequency,
-    slabType: 'PURCHASE',
-  };
-}
-
-function buildLinearFromValues(rows) {
-  const sorted = [...rows].sort((a, b) => Number(a.threshold) - Number(b.threshold));
-  let previousTo = 0;
-  return sorted.map((row) => {
-    const payload = toLinearSlabPayload(row, previousTo);
-    previousTo = payload.toValue;
-    return payload;
-  });
-}
 
 export default function HybridCommercialFields({
   commercials,
@@ -60,21 +74,27 @@ export default function HybridCommercialFields({
   versionSourceId,
   buildVersionedEditPayload,
   onDraftVersionCreated,
+  incomeTypeId,
+  incomeTypeName,
   lockOneTimeFrequency = false,
   fieldErrors = {},
 }) {
   const { enqueueSnackbar } = useSnackbar();
-  const hybridFlags = deriveHybridFlags(commercials.commercialStructure);
-  const enableFlatBaseline = commercials.enableFlatBaseline ?? hybridFlags.enableFlatBaseline;
-  const enableSlabIncentives = commercials.enableSlabIncentives ?? hybridFlags.enableSlabIncentives;
+  const structureType = resolveStructureType(commercials.commercialStructure);
+  const isLegacyHybrid = structureType === STRUCTURE_TYPE.LEGACY_HYBRID;
+  const isFlat = structureType === STRUCTURE_TYPE.FLAT;
+  const isSlabs = structureType === STRUCTURE_TYPE.SLABS;
+  const isCommercialContracts = isCommercialContractsIncomeType([], incomeTypeId, incomeTypeName);
+  const selectedFrequencies = commercials.selectedFrequencies || [];
 
   const [slabs, setSlabs] = useState([]);
   const [loadingSlabs, setLoadingSlabs] = useState(false);
   const [savingSlab, setSavingSlab] = useState(false);
-  const [draftSlab, setDraftSlab] = useState(EMPTY_LINEAR_SLAB);
+  const [draftSlab, setDraftSlab] = useState(EMPTY_SLAB_DRAFT);
   const [editingSlabId, setEditingSlabId] = useState(null);
   const [commercialVersionId, setCommercialVersionId] = useState(serverAgreementId);
-  const correctedGhostSlabRef = useRef(false);
+  const [capUnit, setCapUnit] = useState(commercials.slabCapUnit || CAP_UNIT.RUPEES);
+  const [draftCapError, setDraftCapError] = useState(null);
 
   const frequencyOptions = useMemo(
     () => (lockOneTimeFrequency
@@ -83,26 +103,30 @@ export default function HybridCommercialFields({
     [lockOneTimeFrequency],
   );
 
+  const tierGapWarnings = useMemo(() => detectSlabTierGaps(slabs), [slabs]);
+
   useEffect(() => {
     setCommercialVersionId(serverAgreementId);
   }, [serverAgreementId]);
 
   useEffect(() => {
-    if (lockOneTimeFrequency) {
-      if (commercials.flatBaselineFrequency !== PAYOUT_FREQUENCY.ONE_TIME) {
-        onUpdate({ flatBaselineFrequency: PAYOUT_FREQUENCY.ONE_TIME });
-      }
+    if (lockOneTimeFrequency && commercials.flatBaselineFrequency !== PAYOUT_FREQUENCY.ONE_TIME) {
+      onUpdate({ flatBaselineFrequency: PAYOUT_FREQUENCY.ONE_TIME });
     }
   }, [lockOneTimeFrequency, commercials.flatBaselineFrequency, onUpdate]);
 
-  const syncStructureFlags = useCallback((nextFlat, nextSlab, patch = {}) => {
+  useEffect(() => {
+    if (lockOneTimeFrequency && commercials.selectedFrequencies?.[0] !== PAYOUT_FREQUENCY.ONE_TIME) {
+      onUpdate({ selectedFrequencies: [PAYOUT_FREQUENCY.ONE_TIME] });
+    }
+  }, [lockOneTimeFrequency, commercials.selectedFrequencies, onUpdate]);
+
+  useEffect(() => {
+    if (!isFlat || commercials.flatBaselineFrequency) return;
     onUpdate({
-      enableFlatBaseline: nextFlat,
-      enableSlabIncentives: nextSlab,
-      commercialStructure: resolveCommercialStructure(nextFlat, nextSlab),
-      ...patch,
+      flatBaselineFrequency: resolveFlatBaselineFrequency(commercials, { lockOneTimeFrequency }),
     });
-  }, [onUpdate]);
+  }, [isFlat, commercials.flatBaselineFrequency, lockOneTimeFrequency, onUpdate]);
 
   const resolveMutationVersionId = useCallback(async () => {
     if (!buildVersionedEditPayload || !sourceAgreement) {
@@ -131,77 +155,137 @@ export default function HybridCommercialFields({
   ]);
 
   const loadSlabs = useCallback(async () => {
-    if (!serverAgreementId || !enableSlabIncentives) {
-      setSlabs([]);
+    if (!serverAgreementId) {
       return;
     }
     setLoadingSlabs(true);
     try {
       const data = await fetchSlabs(serverAgreementId);
-      setSlabs(data);
+      const list = Array.isArray(data) ? data : [];
+      setSlabs(list);
+      if (list[0]?.capUnit) {
+        setCapUnit(list[0].capUnit);
+        onUpdate({ slabCapUnit: list[0].capUnit });
+      }
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to load slabs', { variant: 'error' });
     } finally {
       setLoadingSlabs(false);
     }
-  }, [serverAgreementId, enableSlabIncentives, enqueueSnackbar]);
+  }, [serverAgreementId, enqueueSnackbar, onUpdate]);
 
   useEffect(() => {
-    loadSlabs();
-  }, [loadSlabs]);
+    if (serverAgreementId && isSlabs) {
+      loadSlabs();
+    }
+  }, [serverAgreementId, isSlabs, loadSlabs]);
 
-  useEffect(() => {
-    if (loadingSlabs || correctedGhostSlabRef.current) return;
-    if (slabs.length > 0) return;
-    const structure = commercials.commercialStructure;
-    const ghostSlabState = structure === 'HYBRID' || structure === 'SLAB' || enableSlabIncentives;
-    if (!ghostSlabState) return;
-    correctedGhostSlabRef.current = true;
-    syncStructureFlags(true, false);
-  }, [
-    loadingSlabs,
-    slabs.length,
-    commercials.commercialStructure,
-    enableSlabIncentives,
-    syncStructureFlags,
-  ]);
+  const applyStructureSelection = async (nextStructureType) => {
+    if (nextStructureType === STRUCTURE_TYPE.FLAT) {
+      onUpdate({
+        commercialStructure: 'FLAT',
+        enableFlatBaseline: true,
+        enableSlabIncentives: false,
+        commercialValue: commercials.commercialValue ?? '',
+        flatBaselineFrequency: resolveFlatBaselineFrequency(commercials, { lockOneTimeFrequency }),
+      });
+      resetDraft();
+      return;
+    }
+
+    onUpdate({
+      commercialStructure: 'SLAB',
+      enableFlatBaseline: false,
+      enableSlabIncentives: true,
+      commercialValue: '',
+    });
+    resetDraft();
+  };
+
+  const handleStructureChange = async (event) => {
+    const nextType = event.target.value === 'SLABS' ? STRUCTURE_TYPE.SLABS : STRUCTURE_TYPE.FLAT;
+    await applyStructureSelection(nextType);
+  };
 
   const updateDraft = (field, value) => {
-    setDraftSlab((prev) => ({ ...prev, [field]: value }));
+    setDraftSlab((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'minCap' || field === 'maxCap') {
+        setDraftCapError(validateSlabCapRange(next.minCap, next.maxCap));
+      }
+      return next;
+    });
   };
 
   const resetDraft = () => {
     setDraftSlab({
-      ...EMPTY_LINEAR_SLAB,
+      ...EMPTY_SLAB_DRAFT,
       payoutFrequency: lockOneTimeFrequency ? PAYOUT_FREQUENCY.ONE_TIME : PAYOUT_FREQUENCY.MONTHLY,
     });
     setEditingSlabId(null);
+    setDraftCapError(null);
   };
 
-  const validateDraftSlab = () => {
-    if (!draftSlab.threshold || draftSlab.commercialValue === '') {
-      enqueueSnackbar('Complete cap threshold and payout value before saving', { variant: 'warning' });
-      return false;
-    }
-    if (Number(draftSlab.threshold) <= 0) {
-      enqueueSnackbar('Cap / target threshold must be greater than 0', { variant: 'warning' });
-      return false;
-    }
-    const peers = slabs.filter((slab) => slab.id !== editingSlabId);
-    const sorted = [...peers.map((slab) => ({
-      threshold: String(slab.toValue),
-      valueType: slab.valueType,
-      commercialValue: String(slab.commercialValue),
-      payoutFrequency: slab.payoutFrequency,
-    })), draftSlab].sort((a, b) => Number(a.threshold) - Number(b.threshold));
+  const handleCapUnitChange = async (_, nextUnit) => {
+    if (!nextUnit || nextUnit === capUnit) return;
+    setCapUnit(nextUnit);
+    onUpdate({ slabCapUnit: nextUnit });
+    if (!slabs.length) return;
 
-    const payloads = buildLinearFromValues(sorted);
-    const currentPayload = payloads.find((payload) => payload.toValue === Number(draftSlab.threshold));
-    const conflict = validateSlabAgainstExisting(
-      peers,
-      currentPayload,
-      editingSlabId,
-    );
+    const versionId = await resolveMutationVersionId();
+    if (!versionId) return;
+
+    try {
+      await Promise.all(slabs.map((slab) => updateSlab(
+        versionId,
+        slab.id,
+        toSlabPayload({ ...slab, capUnit: nextUnit }, nextUnit),
+      )));
+      await loadSlabs();
+      enqueueSnackbar('Cap unit updated for all slab rows', { variant: 'success' });
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to update cap unit', { variant: 'error' });
+      setCapUnit(slabs[0]?.capUnit || CAP_UNIT.RUPEES);
+    }
+  };
+
+  const validateDraftSlab = (ccTierMode = false) => {
+    if (ccTierMode) {
+      if (draftSlab.minCap === '' || draftSlab.commercialValue === '') {
+        enqueueSnackbar('Complete Target Value and Payout Value before saving', { variant: 'warning' });
+        return false;
+      }
+      if (!draftSlab.payoutFrequency) {
+        enqueueSnackbar('Payout frequency is required for each tier', { variant: 'warning' });
+        return false;
+      }
+      const payload = toCcSlabPayload(draftSlab, capUnit);
+      const conflict = validateCcTierAgainstExisting(slabs, payload, editingSlabId);
+      if (conflict) {
+        enqueueSnackbar(conflict, { variant: 'warning' });
+        return false;
+      }
+      return true;
+    }
+
+    if (draftSlab.minCap === '' || draftSlab.maxCap === '' || draftSlab.commercialValue === '') {
+      enqueueSnackbar('Complete Min Cap, Max Cap, and payout value before saving', { variant: 'warning' });
+      return false;
+    }
+    if (!draftSlab.payoutFrequency) {
+      enqueueSnackbar('Payout frequency is required for each slab row', { variant: 'warning' });
+      return false;
+    }
+
+    const capError = validateSlabCapRange(draftSlab.minCap, draftSlab.maxCap);
+    if (capError) {
+      setDraftCapError(capError);
+      enqueueSnackbar(capError, { variant: 'warning' });
+      return false;
+    }
+
+    const payload = toSlabPayload({ ...draftSlab, capUnit }, capUnit);
+    const conflict = validateSlabAgainstExisting(slabs, payload, editingSlabId);
     if (conflict) {
       enqueueSnackbar(conflict, { variant: 'warning' });
       return false;
@@ -209,8 +293,8 @@ export default function HybridCommercialFields({
     return true;
   };
 
-  const handleSaveSlab = async () => {
-    if (!validateDraftSlab()) return;
+  const handleSaveSlab = async (ccTierMode = false) => {
+    if (!validateDraftSlab(ccTierMode)) return;
     setSavingSlab(true);
     try {
       const versionId = await resolveMutationVersionId();
@@ -218,16 +302,9 @@ export default function HybridCommercialFields({
         enqueueSnackbar('Save the agreement draft first before adding slabs', { variant: 'warning' });
         return;
       }
-      const payload = toLinearSlabPayload(
-        draftSlab,
-        editingSlabId
-          ? Number(slabs.find((slab) => slab.id === editingSlabId)?.fromValue ?? 0)
-          : Number(slabs.length ? Math.max(...slabs.map((slab) => Number(slab.toValue))) : 0),
-      );
-      if (payload.toValue <= payload.fromValue) {
-        enqueueSnackbar('Cap threshold must exceed the previous slab boundary', { variant: 'warning' });
-        return;
-      }
+      const payload = ccTierMode
+        ? toCcSlabPayload(draftSlab, capUnit)
+        : toSlabPayload({ ...draftSlab, capUnit }, capUnit);
       if (editingSlabId) {
         await updateSlab(versionId, editingSlabId, payload);
         enqueueSnackbar('Slab updated', { variant: 'success' });
@@ -237,6 +314,15 @@ export default function HybridCommercialFields({
       }
       resetDraft();
       await loadSlabs();
+      if (!ccTierMode) {
+        const gaps = detectSlabTierGaps([
+          ...slabs.filter((slab) => slab.id !== editingSlabId),
+          { ...draftSlab, id: editingSlabId ?? 'draft' },
+        ]);
+        if (gaps.length) {
+          enqueueSnackbar(gaps[0], { variant: 'info' });
+        }
+      }
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to save slab', { variant: 'error' });
     } finally {
@@ -247,13 +333,15 @@ export default function HybridCommercialFields({
   const handleEditSlab = (slab) => {
     setEditingSlabId(slab.id);
     setDraftSlab({
-      threshold: String(slab.toValue),
+      minCap: String(slab.minCap),
+      maxCap: String(slab.maxCap),
       valueType: slab.valueType,
       commercialValue: String(slab.commercialValue),
       payoutFrequency: lockOneTimeFrequency
         ? PAYOUT_FREQUENCY.ONE_TIME
         : (slab.payoutFrequency || PAYOUT_FREQUENCY.MONTHLY),
     });
+    setDraftCapError(null);
   };
 
   const handleDeleteSlab = async (slabId) => {
@@ -269,69 +357,288 @@ export default function HybridCommercialFields({
     }
   };
 
-  const baseHasError = Boolean(
+  const sectionHasError = Boolean(
     fieldErrors.commercialComponent
     || fieldErrors.commercialValue
-    || fieldErrors.flatBaselineFrequency,
+    || fieldErrors.flatBaselineFrequency
+    || fieldErrors.slabs,
   );
-  const slabsHasError = Boolean(fieldErrors.slabs || fieldErrors.commercialComponent);
+
+  const cutoffVersionId = commercialVersionId ?? serverAgreementId;
+
+  const renderSlabBuilder = ({
+    minCapLabel = 'Min Cap *',
+    maxCapLabel = 'Max Cap *',
+    tableTitle = 'Slab Table',
+    ccSingleTargetMode = false,
+  } = {}) => (
+    <>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, gap: 2, flexWrap: 'wrap' }}>
+        <Typography variant="subtitle2" fontWeight={700}>
+          {tableTitle}
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Cap Unit
+          </Typography>
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={capUnit}
+            onChange={handleCapUnitChange}
+            sx={{
+              height: 32,
+              '& .MuiToggleButton-root': {
+                width: 56,
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                textTransform: 'none',
+              },
+            }}
+          >
+            {CAP_UNIT_OPTIONS.map((option) => (
+              <ToggleButton key={option.value} value={option.value}>
+                {option.label}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </Box>
+      </Box>
+
+      {!ccSingleTargetMode && tierGapWarnings.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {tierGapWarnings.join(' · ')}
+        </Alert>
+      )}
+
+      {loadingSlabs ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+          <CircularProgress size={24} />
+        </Box>
+      ) : (
+        <TableContainer
+          component={Paper}
+          variant="outlined"
+          sx={{ borderRadius: 2, overflow: 'hidden', mb: 3 }}
+        >
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>
+                  {ccSingleTargetMode ? 'Target Value' : minCapLabel.replace(' *', '')}
+                </TableCell>
+                {!ccSingleTargetMode && (
+                  <TableCell sx={{ fontWeight: 600 }}>{maxCapLabel.replace(' *', '')}</TableCell>
+                )}
+                <TableCell sx={{ fontWeight: 600 }}>Payout</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Frequency</TableCell>
+                <TableCell align="center" sx={{ width: 96, fontWeight: 700, fontSize: 12 }}>
+                  Actions
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {slabs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={ccSingleTargetMode ? 4 : 5}>
+                    <Typography variant="body2" color="text.secondary">No tiers added yet.</Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                slabs.map((slab) => (
+                  <TableRow key={slab.id} selected={editingSlabId === slab.id}>
+                    <TableCell>{slab.minCap}</TableCell>
+                    {!ccSingleTargetMode && <TableCell>{slab.maxCap}</TableCell>}
+                    <TableCell>
+                      {slab.valueType === 'PERCENTAGE'
+                        ? `${slab.commercialValue}%`
+                        : `₹${slab.commercialValue}`}
+                    </TableCell>
+                    <TableCell>
+                      {PAYOUT_FREQUENCY_OPTIONS.find((option) => option.value === slab.payoutFrequency)?.label
+                        || slab.payoutFrequency
+                        || '—'}
+                    </TableCell>
+                    <TableCell align="center" sx={{ width: 96, py: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 0.5 }}>
+                        <Tooltip title="Edit tier">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditSlab(slab)}
+                            aria-label="Edit tier"
+                            sx={{
+                              color: 'text.secondary',
+                              '&:hover': {
+                                color: 'primary.main',
+                                bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+                              },
+                            }}
+                          >
+                            <EditIcon sx={{ fontSize: 17 }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete tier">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeleteSlab(slab.id)}
+                            aria-label="Delete tier"
+                          >
+                            <DeleteIcon sx={{ fontSize: 17 }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid size={{ xs: 12, sm: ccSingleTargetMode ? 3 : 2 }}>
+          <TextField
+            label={ccSingleTargetMode ? 'Target Value *' : minCapLabel}
+            type="number"
+            fullWidth
+            size="small"
+            value={draftSlab.minCap}
+            onChange={(e) => updateDraft('minCap', e.target.value)}
+            error={Boolean(draftCapError)}
+          />
+        </Grid>
+        {!ccSingleTargetMode && (
+          <Grid size={{ xs: 12, sm: 2 }}>
+            <TextField
+              label={maxCapLabel}
+              type="number"
+              fullWidth
+              size="small"
+              value={draftSlab.maxCap}
+              onChange={(e) => updateDraft('maxCap', e.target.value)}
+              error={Boolean(draftCapError)}
+              helperText={draftCapError || ''}
+            />
+          </Grid>
+        )}
+        <Grid size={{ xs: 12, sm: 3 }}>
+          <CommercialValueInput
+            label="Payout Value *"
+            value={draftSlab.commercialValue}
+            onChangeValue={(value) => updateDraft('commercialValue', value)}
+            type={draftSlab.valueType}
+            onChangeType={(type) => updateDraft('valueType', type)}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 3 }}>
+          <FormControl fullWidth size="small" required>
+            <InputLabel>Payout Frequency</InputLabel>
+            <Select
+              value={draftSlab.payoutFrequency}
+              label="Payout Frequency *"
+              onChange={(e) => updateDraft('payoutFrequency', e.target.value)}
+              disabled={lockOneTimeFrequency}
+            >
+              {frequencyOptions.map((option) => (
+                <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
+      </Grid>
+
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Button
+          size="small"
+          startIcon={savingSlab ? <CircularProgress size={16} /> : <Add />}
+          onClick={() => handleSaveSlab(ccSingleTargetMode)}
+          disabled={savingSlab || isLegacyHybrid}
+        >
+          {editingSlabId ? 'Update Tier' : 'Add Tier'}
+        </Button>
+        {editingSlabId && (
+          <Button size="small" variant="outlined" onClick={resetDraft} disabled={savingSlab}>
+            Cancel Edit
+          </Button>
+        )}
+      </Box>
+
+      {!serverAgreementId && (
+        <Alert severity="warning" sx={{ mt: 2 }}>
+          Save the agreement draft before adding tier rows.
+        </Alert>
+      )}
+    </>
+  );
 
   return (
-    <Box>
-      <CollapsibleSection
-        title="Base Commercials"
-        description={
-          lockOneTimeFrequency
-            ? 'Flat baseline payout value, type, and frequency. QPS agreements lock payout frequency to One-Time.'
-            : 'Flat baseline payout value, type, and frequency.'
-        }
-        forceExpand={baseHasError}
-        hasError={baseHasError}
-      >
-        {fieldErrors.commercialComponent && (
-          <Alert severity="error" sx={{ mb: 2 }} data-wizard-field="commercialComponent" className="has-error">
-            {fieldErrors.commercialComponent}
-          </Alert>
-        )}
-        <FormControlLabel
-          control={(
-            <Checkbox
-              checked={enableFlatBaseline}
-              onChange={(e) => syncStructureFlags(e.target.checked, enableSlabIncentives)}
-            />
-          )}
-          label="Enable Flat Baseline Payout"
-          sx={{ mb: 2 }}
-        />
+    <CollapsibleSection
+      title="Commercial Terms & Incentive Structure"
+      description={
+        lockOneTimeFrequency
+          ? 'Choose flat payout or slab-based incentive. QPS agreements lock payout frequency to One-Time.'
+          : 'Choose flat payout or slab-based incentive.'
+      }
+      forceExpand={sectionHasError}
+      hasError={sectionHasError}
+    >
+      {isLegacyHybrid && (
+        <Alert severity="warning" sx={{ mb: 2 }} data-wizard-field="commercialComponent" className="has-error">
+          Legacy hybrid structure detected. Select Flat Baseline Payout or Slab-Based Incentive to continue.
+        </Alert>
+      )}
 
-        {!enableFlatBaseline && !enableSlabIncentives && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Enable flat baseline or slab incentives to continue.
-          </Alert>
-        )}
+      {fieldErrors.commercialComponent && !isLegacyHybrid && (
+        <Alert severity="error" sx={{ mb: 2 }} data-wizard-field="commercialComponent" className="has-error">
+          {fieldErrors.commercialComponent}
+        </Alert>
+      )}
 
-        {enableFlatBaseline && (
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <WizardFieldAnchor field="commercialValue" error={fieldErrors.commercialValue}>
-                <CommercialValueInput
-                  label="Baseline Value"
-                  required
-                  value={commercials.commercialValue}
-                  onChangeValue={(value) => onUpdate({ commercialValue: value })}
-                  type={commercials.valueType || commercials.flatValueType || 'FIXED'}
-                  onChangeType={(type) => onUpdate({ valueType: type, flatValueType: type })}
-                  error={Boolean(fieldErrors.commercialValue)}
-                  helperText={fieldErrors.commercialValue ? '' : undefined}
-                />
-              </WizardFieldAnchor>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <WizardFieldAnchor field="flatBaselineFrequency" error={fieldErrors.flatBaselineFrequency}>
-                <FormControl fullWidth size="small" required error={Boolean(fieldErrors.flatBaselineFrequency)}>
-                  <InputLabel>Payout Frequency</InputLabel>
-                  <Select
-                  value={commercials.flatBaselineFrequency || (lockOneTimeFrequency ? PAYOUT_FREQUENCY.ONE_TIME : PAYOUT_FREQUENCY.MONTHLY)}
+      <FormControl component="fieldset" sx={{ mb: 2.5 }}>
+        <FormLabel component="legend" sx={{ fontWeight: 600, mb: 1 }}>
+          Commercial Structure
+        </FormLabel>
+        <RadioGroup
+          row
+          value={structureTypeToRadioValue(structureType)}
+          onChange={handleStructureChange}
+        >
+          <FormControlLabel
+            value="FLAT"
+            control={<Radio size="small" />}
+            label="Flat Baseline Payout"
+          />
+          <FormControlLabel
+            value="SLABS"
+            control={<Radio size="small" />}
+            label="Slab-Based Incentive"
+          />
+        </RadioGroup>
+      </FormControl>
+
+      {isFlat && (
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <WizardFieldAnchor field="commercialValue" error={fieldErrors.commercialValue}>
+              <CommercialValueInput
+                label="Flat Payout"
+                required
+                value={commercials.commercialValue}
+                onChangeValue={(value) => onUpdate({ commercialValue: value })}
+                type={commercials.flatValueType || commercials.valueType || 'FIXED'}
+                onChangeType={(type) => onUpdate({ flatValueType: type, valueType: type })}
+                error={Boolean(fieldErrors.commercialValue)}
+              />
+            </WizardFieldAnchor>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <WizardFieldAnchor field="flatBaselineFrequency" error={fieldErrors.flatBaselineFrequency}>
+              <FormControl fullWidth size="small" required error={Boolean(fieldErrors.flatBaselineFrequency)}>
+                <InputLabel>Payout Frequency</InputLabel>
+                <Select
+                  value={resolveFlatBaselineFrequency(commercials, { lockOneTimeFrequency })}
                   label="Payout Frequency *"
                   onChange={(e) => onUpdate({ flatBaselineFrequency: e.target.value })}
                   disabled={lockOneTimeFrequency}
@@ -341,144 +648,30 @@ export default function HybridCommercialFields({
                   ))}
                 </Select>
               </FormControl>
-              </WizardFieldAnchor>
-            </Grid>
+            </WizardFieldAnchor>
           </Grid>
+        </Grid>
+      )}
+
+      <Box sx={{ display: isFlat ? 'none' : 'block' }}>
+        {isCommercialContracts && isSlabs ? (
+          <CommercialContactsCutoffSection
+            agreementVersionId={cutoffVersionId}
+            slabs={slabs}
+            selectedFrequencies={selectedFrequencies}
+            onFrequenciesChange={(value) => onUpdate({ selectedFrequencies: value })}
+            tierBuilder={renderSlabBuilder({
+              ccSingleTargetMode: true,
+              tableTitle: 'Target Tiers',
+            })}
+            fieldError={fieldErrors.slabs}
+          />
+        ) : (
+          <WizardFieldAnchor field="slabs" error={fieldErrors.slabs}>
+            {renderSlabBuilder()}
+          </WizardFieldAnchor>
         )}
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title="Performance Targets (Slabs)"
-        description="1D slab table for tiered incentives above baseline performance."
-        forceExpand={slabsHasError}
-        hasError={slabsHasError}
-      >
-        <WizardFieldAnchor field="slabs" error={fieldErrors.slabs}>
-        <FormControlLabel
-          control={(
-            <Checkbox
-              checked={enableSlabIncentives}
-              onChange={(e) => syncStructureFlags(enableFlatBaseline, e.target.checked)}
-            />
-          )}
-          label="Enable Slab-Based Incentives"
-          sx={{ mb: 2 }}
-        />
-
-        {enableSlabIncentives && (
-          <>
-            {loadingSlabs ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : (
-              <TableContainer component={Paper} elevation={0} sx={{ mb: 2, border: '1px solid', borderColor: 'divider' }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>Cap / Target</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Commercial Type</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Payout Value</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Frequency</TableCell>
-                      <TableCell width={100} />
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {slabs.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5}>
-                          <Typography variant="body2" color="text.secondary">No slabs added yet.</Typography>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      slabs.map((slab) => (
-                        <TableRow key={slab.id} selected={editingSlabId === slab.id}>
-                          <TableCell>{slab.toValue}</TableCell>
-                          <TableCell>{slab.valueType === 'PERCENTAGE' ? 'Percentage %' : 'Fixed ₹'}</TableCell>
-                          <TableCell>{slab.commercialValue}</TableCell>
-                          <TableCell>
-                            {PAYOUT_FREQUENCY_OPTIONS.find((option) => option.value === slab.payoutFrequency)?.label
-                              || slab.payoutFrequency
-                              || '—'}
-                          </TableCell>
-                          <TableCell>
-                            <IconButton size="small" onClick={() => handleEditSlab(slab)} aria-label="Edit slab">
-                              <Edit fontSize="small" />
-                            </IconButton>
-                            <IconButton size="small" color="error" onClick={() => handleDeleteSlab(slab.id)} aria-label="Delete slab">
-                              <Delete fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-
-            <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid size={{ xs: 12, sm: 3 }}>
-                <TextField
-                  label="Cap / Target Threshold *"
-                  type="number"
-                  fullWidth
-                  size="small"
-                  value={draftSlab.threshold}
-                  onChange={(e) => updateDraft('threshold', e.target.value)}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 3 }}>
-                <CommercialValueInput
-                  label="Payout Value *"
-                  value={draftSlab.commercialValue}
-                  onChangeValue={(value) => updateDraft('commercialValue', value)}
-                  type={draftSlab.valueType}
-                  onChangeType={(type) => updateDraft('valueType', type)}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 3 }}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Slab Payout Frequency</InputLabel>
-                  <Select
-                    value={draftSlab.payoutFrequency}
-                    label="Slab Payout Frequency"
-                    onChange={(e) => updateDraft('payoutFrequency', e.target.value)}
-                    disabled={lockOneTimeFrequency}
-                  >
-                    {frequencyOptions.map((option) => (
-                      <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-            </Grid>
-
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                size="small"
-                startIcon={savingSlab ? <CircularProgress size={16} /> : <Add />}
-                onClick={handleSaveSlab}
-                disabled={savingSlab}
-              >
-                {editingSlabId ? 'Update Slab Row' : 'Add Slab Row'}
-              </Button>
-              {editingSlabId && (
-                <Button size="small" variant="outlined" onClick={resetDraft} disabled={savingSlab}>
-                  Cancel Edit
-                </Button>
-              )}
-            </Box>
-
-            {!serverAgreementId && (
-              <Alert severity="warning" sx={{ mt: 2 }}>
-                Save the agreement draft before adding slab rows.
-              </Alert>
-            )}
-          </>
-        )}
-        </WizardFieldAnchor>
-      </CollapsibleSection>
-    </Box>
+      </Box>
+    </CollapsibleSection>
   );
 }

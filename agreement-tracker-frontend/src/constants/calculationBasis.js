@@ -5,7 +5,7 @@ export const CALCULATION_BASIS = {
 
 export const CALCULATION_BASIS_LABELS = {
   VENDOR_INVOICE: 'Vendor Invoices',
-  VENDOR_INWARD: 'Vendor Inwards (GRN)',
+  VENDOR_INWARD: 'GRN',
 };
 
 export const INVOICE_ROUTING_MODE = {

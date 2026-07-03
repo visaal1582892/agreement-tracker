@@ -25,6 +25,8 @@ import { approveAgreement, rejectAgreement, submitAgreementForApproval } from '.
 import TransferOwnershipModal from '../../components/agreements/TransferOwnershipModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import CommercialsUploadModal from './wizard/CommercialsUploadModal';
+import JbpReviewShowcase from './wizard/JbpReviewShowcase';
+import { isCommercialContractsIncomeType } from '../../utils/incomeTypeUtils';
 import dayjs from 'dayjs';
 
 export default function AgreementDetailPage({
@@ -136,7 +138,16 @@ export default function AgreementDetailPage({
   }, [selectedVersionId, loadVersionDetail]);
 
   useEffect(() => {
-    if (!selectedVersionId || agreement?.commercialStructure !== 'SLAB') {
+    if (!selectedVersionId || !agreement) {
+      setSlabs([]);
+      return;
+    }
+    const isCommercialContracts = isCommercialContractsIncomeType(
+      [],
+      agreement.incomeTypeId,
+      agreement.incomeTypeName,
+    );
+    if (isCommercialContracts || agreement.commercialStructure !== 'SLAB') {
       setSlabs([]);
       return;
     }
@@ -150,7 +161,7 @@ export default function AgreementDetailPage({
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedVersionId, agreement?.commercialStructure]);
+  }, [selectedVersionId, agreement?.commercialStructure, agreement?.incomeTypeId, agreement?.incomeTypeName]);
 
   const refreshAfterMutation = async (updated, versionId = selectedVersionId) => {
     applyVersionPatch(updated);
@@ -255,6 +266,19 @@ export default function AgreementDetailPage({
       { isReadOnlyView },
     )
     : null;
+
+  const isCommercialContracts = isCommercialContractsIncomeType(
+    [],
+    agreement?.incomeTypeId,
+    agreement?.incomeTypeName,
+  );
+  const isSlabStructure = agreement?.commercialStructure === 'SLAB';
+  const showJbpMatrix = Boolean(
+    agreement && isCommercialContracts && (isSlabStructure || agreement.jbpCommitted),
+  );
+  const showLegacyTargetsMatrix = Boolean(
+    agreement && !isCommercialContracts && isSlabStructure,
+  );
 
   const daysToExpiry = agreement?.expiryDate
     ? dayjs(agreement.expiryDate).startOf('day').diff(dayjs().startOf('day'), 'day')
@@ -539,7 +563,14 @@ export default function AgreementDetailPage({
                 </Grid>
               </Paper>
 
-              {agreement.commercialStructure === 'SLAB' && (
+              {showJbpMatrix && (
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>JBP Relational Matrix</Typography>
+                  <JbpReviewShowcase agreementVersionId={selectedVersionId} />
+                </Paper>
+              )}
+
+              {showLegacyTargetsMatrix && (
                 <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
                   <Typography fontWeight={600} sx={{ mb: 1.5 }}>Commercial Targets Matrix</Typography>
                   <CommercialsUploadModal

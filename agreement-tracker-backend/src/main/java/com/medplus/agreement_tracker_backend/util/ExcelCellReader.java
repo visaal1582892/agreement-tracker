@@ -29,16 +29,37 @@ public final class ExcelCellReader {
             return BigDecimal.valueOf(cell.getNumericCellValue());
         }
 
-        String raw = readAsString(cell);
-        if (raw.isEmpty()) {
+        return readAsFormattedDecimal(cell);
+    }
+
+    /**
+     * Reads numeric values from Excel cells including formatted currency strings
+     * (e.g. "1,00,000", "₹50,000.00") without calling getNumericCellValue().
+     */
+    public static BigDecimal readAsFormattedDecimal(Cell cell) {
+        if (cell == null || cell.getCellType() == CellType.BLANK) {
             return null;
         }
-
+        String rawStr = DATA_FORMATTER.formatCellValue(cell).replaceAll("[^0-9.]", "");
+        if (rawStr.isEmpty()) {
+            return null;
+        }
         try {
-            return new BigDecimal(raw.replace(",", ""));
+            return new BigDecimal(rawStr);
         } catch (NumberFormatException ex) {
             return null;
         }
+    }
+
+    public static boolean hasNonBlankNonNumericContent(Cell cell) {
+        if (cell == null || cell.getCellType() == CellType.BLANK) {
+            return false;
+        }
+        String raw = readAsString(cell);
+        if (raw.isEmpty()) {
+            return false;
+        }
+        return readAsFormattedDecimal(cell) == null;
     }
 
     public static boolean isBlank(Cell cell) {

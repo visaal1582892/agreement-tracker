@@ -13,5 +13,6 @@ public record DraftCommercialsPayload(
         PayoutFrequency flatBaselineFrequency,
         Boolean enableFlatBaseline,
         Boolean enableSlabIncentives,
-        String calculationFormula
+        String calculationFormula,
+        Integer financialYearStartMonth
 ) {}

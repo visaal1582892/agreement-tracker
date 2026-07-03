@@ -84,6 +84,7 @@ export default function WizardLayout({
               {draftTabs.map((tab) => (
                 <Tab
                   key={tab.agreementId}
+                  component="div"
                   value={tab.agreementId}
                   label={(
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, maxWidth: '100%' }}>

@@ -22,12 +22,11 @@ import {
   isCommercialContractsIncomeType,
   isDataFeeIncomeType,
 } from '../../../utils/incomeTypeUtils';
-import { ADHOC_SUB_TYPES } from '../../../constants/adhocSubTypes';
 
 const DOCUMENT_TYPES = ['AGREEMENT', 'SUPPORTING_DOC', 'EMAIL', 'OTHER'];
 
-const SCOPE_ERROR_FIELDS = ['supplyVendors', 'products', 'assetCategory', 'assetType', 'adhocSubType'];
-const GEO_ERROR_FIELDS = ['states', 'storeCount', 'storeOutletList', 'quantityCap'];
+const SCOPE_ERROR_FIELDS = ['supplyVendors', 'products', 'assetCategory', 'assetType'];
+const GEO_ERROR_FIELDS = ['states', 'storeCount', 'quantityCap'];
 const SETTLEMENT_ERROR_FIELDS = ['paymentRealization', 'calculationBasis', 'invoiceVendor'];
 
 function sectionHasError(fieldErrors, fields) {
@@ -87,8 +86,7 @@ export default function ConfigurationStep({
   const selectedStates = stateOptions.filter((stateOption) => selectedStateIds.includes(stateOption.id));
   const documents = details.documents ?? [];
   const hasIncomeType = Boolean(details.incomeTypeId);
-  const isPriceOff = isAdHoc && details.adhocSubType === ADHOC_SUB_TYPES.CONSUMER_PRICE_OFF;
-  const showGeographySection = isAssetRental || isCommercialContracts || isPriceOff || isDataFee;
+  const showGeographySection = isAssetRental || isCommercialContracts || isDataFee;
 
   useEffect(() => {
     if (!isDataFee || !stateOptions.length || selectedStateIds.length > 0) return;
@@ -170,10 +168,8 @@ export default function ConfigurationStep({
                 <AdHocActivityFields
                   state={state}
                   details={details}
-                  commercials={agreement.commercials}
                   updateProductRules={updateProductRules}
                   onUpdateDetails={onUpdateDetails}
-                  onUpdateCommercials={onUpdateCommercials}
                   fieldErrors={mergedFieldErrors}
                 />
               </Box>
@@ -195,10 +191,8 @@ export default function ConfigurationStep({
               title="Geography & Limits"
               description={
                 isAssetRental
-                  ? 'Regional scope, participating store count, and outlet list upload.'
-                  : isPriceOff
-                    ? 'Regional scope, store counts, and campaign limits. Quantity/value cap is the maximum units or value before the campaign stops.'
-                    : 'Regional scope, store counts, and campaign limits.'
+                  ? 'Regional scope and participating store count.'
+                  : 'Regional scope, store counts, and campaign limits.'
               }
               forceExpand={geographyHasError}
               hasError={geographyHasError}
@@ -208,7 +202,6 @@ export default function ConfigurationStep({
                   asset={asset}
                   stateOptions={stateOptions}
                   selectedStateIds={selectedStateIds}
-                  storeOutletList={details.storeOutletList}
                   onUpdateAsset={onUpdateAsset}
                   onUpdateDetails={onUpdateDetails}
                   fieldErrors={mergedFieldErrors}
@@ -252,38 +245,6 @@ export default function ConfigurationStep({
                 </WizardFieldAnchor>
               )}
 
-              {isPriceOff && (
-                <Grid container spacing={3}>
-                  <Grid size={12}>
-                    <WizardFieldAnchor field="states" error={mergedFieldErrors.states}>
-                      <Autocomplete
-                      multiple
-                      options={stateOptions}
-                      value={selectedStates}
-                      getOptionLabel={(option) => option.stateName}
-                      isOptionEqualToValue={(option, value) => option.id === value.id}
-                      onChange={(_, newValue) => onUpdateDetails({ stateIds: newValue.map((s) => s.id) })}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Region / States *" size="small" placeholder="Select states" />
-                      )}
-                    />
-                    </WizardFieldAnchor>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <WizardFieldAnchor field="quantityCap" error={mergedFieldErrors.quantityCap}>
-                      <TextField
-                      label="Quantity / Value Cap *"
-                      type="number"
-                      fullWidth
-                      size="small"
-                      value={details.quantityCap ?? ''}
-                      onChange={(e) => onUpdateDetails({ quantityCap: e.target.value })}
-                      slotProps={{ htmlInput: { min: 0, step: '0.01' } }}
-                    />
-                    </WizardFieldAnchor>
-                  </Grid>
-                </Grid>
-              )}
             </CollapsibleSection>
           )}
 
@@ -298,6 +259,8 @@ export default function ConfigurationStep({
               vendorIds={vendorIds}
               invoiceVendorId={details.invoiceVendorId}
               payoutBufferDays={details.payoutBufferDays}
+              leadTimeBasis={details.leadTimeBasis}
+              invoiceGenerationLeadTime={details.invoiceGenerationLeadTime}
               calculationBasis={details.calculationBasis}
               paymentRealizationType={details.paymentRealizationType}
               incomeTypeId={details.incomeTypeId}

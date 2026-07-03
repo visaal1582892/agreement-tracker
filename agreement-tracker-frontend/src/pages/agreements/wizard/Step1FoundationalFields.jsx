@@ -7,6 +7,7 @@ import { ENDPOINTS } from '../../../config/endpoints';
 import { BRAND } from '../../../config/theme';
 import DateRangeFields from '../../../components/forms/DateRangeFields';
 import WizardSectionCard from '../../../components/wizard/WizardSectionCard';
+import { getIncomeTypeDisplayName } from '../../../constants/incomeTypeNames';
 
 const notesFieldSx = {
   '& .MuiOutlinedInput-root': {
@@ -53,7 +54,7 @@ export default function Step1FoundationalFields({
                 onChange={(e) => handleIncomeTypeChange(e.target.value)}
               >
                 {incomeTypes.map((type) => (
-                  <MenuItem key={type.id} value={type.id}>{type.name}</MenuItem>
+                  <MenuItem key={type.id} value={type.id}>{getIncomeTypeDisplayName(type.name)}</MenuItem>
                 ))}
               </Select>
             </FormControl>

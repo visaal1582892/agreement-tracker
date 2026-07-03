@@ -37,13 +37,25 @@ public class ProductMasterController {
     public ResponseEntity<List<ProductMasterResponse>> list(
             @RequestParam(value = "vendorIds[]", required = false) List<Long> vendorIdsBracket,
             @RequestParam(value = "vendorIds", required = false) List<Long> vendorIdsPlain,
+            @RequestParam(value = "manufacturerIds[]", required = false) List<Long> manufacturerIdsBracket,
+            @RequestParam(value = "manufacturerIds", required = false) List<Long> manufacturerIdsPlain,
             @RequestParam(required = false) Long manufacturerId,
             @RequestParam(required = false) List<Long> divisionIds) {
+        List<Long> manufacturerIds = manufacturerIdsBracket != null && !manufacturerIdsBracket.isEmpty()
+                ? manufacturerIdsBracket
+                : manufacturerIdsPlain;
+        if (manufacturerIds != null && !manufacturerIds.isEmpty()) {
+            return ResponseEntity.ok(service.findByManufacturerIds(manufacturerIds));
+        }
+        if (manufacturerId != null) {
+            return ResponseEntity.ok(service.findByManufacturerIds(List.of(manufacturerId)));
+        }
+
         List<Long> vendorIds = vendorIdsBracket != null && !vendorIdsBracket.isEmpty()
                 ? vendorIdsBracket
                 : vendorIdsPlain;
         if (vendorIds == null || vendorIds.isEmpty()) {
-            return ResponseEntity.ok(List.of());
+            return ResponseEntity.ok(service.findAllActive());
         }
         if (divisionIds != null && !divisionIds.isEmpty()) {
             return ResponseEntity.ok(service.findByVendorIdsAndDivisions(vendorIds, divisionIds));

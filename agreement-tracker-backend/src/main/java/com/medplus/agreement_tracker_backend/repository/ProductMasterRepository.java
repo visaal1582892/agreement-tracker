@@ -15,9 +15,30 @@ public interface ProductMasterRepository extends JpaRepository<ProductMaster, Lo
 
     Optional<ProductMaster> findByProductCode(String productCode);
 
+    Optional<ProductMaster> findByProductCodeIgnoreCaseAndIsActiveTrue(String productCode);
+
     List<ProductMaster> findByManufacturerIdAndIsActiveTrue(Long manufacturerId);
 
     List<ProductMaster> findByDivisionIdAndIsActiveTrue(Long divisionId);
+
+    @Query("""
+            SELECT p FROM ProductMaster p
+            JOIN FETCH p.manufacturer
+            JOIN FETCH p.division
+            WHERE p.isActive = true
+            ORDER BY p.productName ASC
+            """)
+    List<ProductMaster> findAllActiveWithRelations();
+
+    @Query("""
+            SELECT p FROM ProductMaster p
+            JOIN FETCH p.manufacturer
+            JOIN FETCH p.division
+            WHERE p.isActive = true
+            AND p.manufacturer.id IN :manufacturerIds
+            ORDER BY p.productName ASC
+            """)
+    List<ProductMaster> findByManufacturerIdsAndIsActiveTrue(@Param("manufacturerIds") List<Long> manufacturerIds);
 
     @Query("""
             SELECT DISTINCT p FROM ProductMaster p

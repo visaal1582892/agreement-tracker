@@ -10,7 +10,9 @@ import {
   Visibility, VisibilityOff, LockOutlined, PersonOutlined,
   CheckCircleOutlined, VerifiedUserOutlined,
 } from '@mui/icons-material';
+import { useSnackbar } from 'notistack';
 import { login, clearError, selectAuthLoading, selectAuthError, selectIsAuthenticated, selectUserRights } from '../../store/slices/authSlice';
+import { SESSION_TIMEOUT_FLAG } from '../../api/axiosInstance';
 import { defaultRouteForRights } from '../../config/rights';
 import { BRAND } from '../../config/theme';
 
@@ -40,9 +42,17 @@ export default function LoginPage() {
   const error = useSelector(selectAuthError);
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const rights = useSelector(selectUserRights);
+  const { enqueueSnackbar } = useSnackbar();
   const [showPassword, setShowPassword] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm();
+
+  useEffect(() => {
+    if (sessionStorage.getItem(SESSION_TIMEOUT_FLAG)) {
+      sessionStorage.removeItem(SESSION_TIMEOUT_FLAG);
+      enqueueSnackbar('Your session has timed out. Please log in again.', { variant: 'warning' });
+    }
+  }, [enqueueSnackbar]);
 
   useEffect(() => {
     if (isAuthenticated) navigate(defaultRouteForRights(rights));

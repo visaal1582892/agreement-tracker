@@ -11,6 +11,9 @@ export const RIGHTS = {
   MASTER_VIEW: 'MASTER_VIEW',
   MASTER_MANAGE: 'MASTER_MANAGE',
   ADMIN_USERS: 'ADMIN_USERS',
+  PRICE_OFF_VIEW: 'PRICE_OFF_VIEW',
+  PRICE_OFF_MANAGE: 'PRICE_OFF_MANAGE',
+  PRICE_OFF_APPROVE: 'PRICE_OFF_APPROVE',
 };
 
 /** Minimum right(s) required to access a route (any match grants access). */
@@ -21,6 +24,8 @@ export const ROUTE_RIGHTS = {
   '/agreements/new': [RIGHTS.AGREEMENT_CREATE],
   '/agreements/wizard': [RIGHTS.AGREEMENT_CREATE, RIGHTS.AGREEMENT_EDIT],
   '/approvals': [RIGHTS.AGREEMENT_APPROVE],
+  '/price-offs': [RIGHTS.PRICE_OFF_MANAGE],
+  '/price-offs/approvals': [RIGHTS.PRICE_OFF_APPROVE],
   '/admin/users': [RIGHTS.ADMIN_USERS],
   '/master': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/companies': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
@@ -66,6 +71,8 @@ export function defaultRouteForRights(userRights) {
     ROUTES.AGREEMENTS_GROUPS,
     ROUTES.AGREEMENTS_LIST,
     ROUTES.APPROVALS,
+    ROUTES.PRICE_OFFS,
+    ROUTES.PRICE_OFFS_APPROVALS,
     ROUTES.MASTER,
   ];
   return candidates.find((path) => hasAnyRequiredRight(userRights, ROUTE_RIGHTS[path])) ?? ROUTES.DASHBOARD;

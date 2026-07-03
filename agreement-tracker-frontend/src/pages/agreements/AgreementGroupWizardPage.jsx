@@ -28,16 +28,24 @@ import {
   validateCommercialStructureStep,
   collectConfigurationStepErrors,
   collectCommercialStructureStepErrorsAsync,
+  getAssetRentalUnmappedStatesWarning,
+  withCommercialsOverride,
 } from '../../utils/agreementWizardUtils';
+import { isAssetRentalIncomeType } from '../../utils/incomeTypeUtils';
 import {
+  getCommercialStepErrorSnackbar,
   getFirstWizardFieldErrorMessage,
   scrollToFirstWizardError,
 } from '../../utils/wizardValidationUx';
+import {
+  purgeAllCommercialStructureData,
+} from '../../api/commercialApi';
 import Step1Setup from './wizard/Step1Setup';
 import ConfigurationStep from './wizard/ConfigurationStep';
 import CommercialStructureStep from './wizard/CommercialStructureStep';
 import Step5GroupReview from './wizard/Step5GroupReview';
 import WizardErrorBoundary from '../../components/wizard/WizardErrorBoundary';
+import { resolveStructureType, STRUCTURE_TYPE } from '../../constants/commercialStructure';
 import { incomeTypeChangedFromBaseline } from '../../utils/wizardStateUtils';
 import {
   incompleteDraftLabels,
@@ -98,6 +106,7 @@ export default function AgreementGroupWizardPage() {
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const [deletingDraft, setDeletingDraft] = useState(false);
   const [baselineIncomeTypeId, setBaselineIncomeTypeId] = useState(null);
+  const [baselineAgreementTypeId, setBaselineAgreementTypeId] = useState(null);
 
   const loadedVersionRef = useRef(null);
   const agreementStepsRef = useRef(agreementSteps);
@@ -119,17 +128,32 @@ export default function AgreementGroupWizardPage() {
     if (sourceAgreement?.incomeTypeId != null) {
       setBaselineIncomeTypeId(sourceAgreement.incomeTypeId);
     }
-  }, [sourceAgreement?.id, sourceAgreement?.incomeTypeId]);
+    if (sourceAgreement?.agreementTypeId != null) {
+      setBaselineAgreementTypeId(sourceAgreement.agreementTypeId);
+    }
+  }, [sourceAgreement?.id, sourceAgreement?.incomeTypeId, sourceAgreement?.agreementTypeId]);
 
-  const maybeSanitizeIncomeTypeChange = useCallback(() => {
-    const current = state.agreement?.details?.incomeTypeId;
-    if (!incomeTypeChangedFromBaseline(baselineIncomeTypeId, current)) return false;
+  const maybeSanitizeClassificationChange = useCallback(() => {
+    const currentIncome = state.agreement?.details?.incomeTypeId;
+    const currentAgreementType = state.agreement?.details?.agreementTypeId;
+    const incomeChanged = incomeTypeChangedFromBaseline(baselineIncomeTypeId, currentIncome);
+    const agreementTypeChanged = baselineAgreementTypeId != null
+      && String(baselineAgreementTypeId) !== String(currentAgreementType);
+    if (!incomeChanged && !agreementTypeChanged) return false;
     resetAfterIncomeTypeChange();
-    enqueueSnackbar('Income Type changed. Downstream configurations have been reset.', { variant: 'warning' });
-    setBaselineIncomeTypeId(current);
+    const message = incomeChanged && agreementTypeChanged
+      ? 'Income Type and Agreement Type changed. Downstream configurations have been reset.'
+      : incomeChanged
+        ? 'Income Type changed. Downstream configurations have been reset.'
+        : 'Agreement Type changed. Downstream configurations have been reset.';
+    enqueueSnackbar(message, { variant: 'warning' });
+    if (incomeChanged) setBaselineIncomeTypeId(currentIncome);
+    if (agreementTypeChanged) setBaselineAgreementTypeId(currentAgreementType);
     return true;
   }, [
+    baselineAgreementTypeId,
     baselineIncomeTypeId,
+    state.agreement?.details?.agreementTypeId,
     state.agreement?.details?.incomeTypeId,
     resetAfterIncomeTypeChange,
     enqueueSnackbar,
@@ -171,7 +195,7 @@ export default function AgreementGroupWizardPage() {
         throw new Error('Only draft agreements can be edited in the group wizard');
       }
       const structure = loaded.commercialStructure;
-      const slabCount = structure === 'HYBRID' || structure === 'SLAB'
+      const slabCount = resolveStructureType(structure) === 'SLABS'
         ? await fetchSlabCountForVersion(loaded.id)
         : null;
       setSourceAgreement(loaded);
@@ -389,13 +413,19 @@ export default function AgreementGroupWizardPage() {
     [state, sourceAgreement],
   );
 
-  const persistDraft = async ({ validateStep1 = false, validateStep2 = false, validateCommercialStructure = false } = {}) => {
+  const persistDraft = async ({
+    validateStep1 = false,
+    validateStep2 = false,
+    validateCommercialStructure = false,
+    stateOverride = null,
+  } = {}) => {
     if (!draftAgreementId) {
       throw new Error('No draft version loaded');
     }
+    const effectiveState = stateOverride ?? state;
     const { data } = await axiosInstance.put(
       ENDPOINTS.AGREEMENT_VERSION_UPDATE(draftAgreementId),
-      buildUpdatePayload(),
+      buildSanitizedStep1UpdatePayload(effectiveState, { sourceAgreement }),
       { params: { validateStep1, validateStep2, validateCommercialStructure } },
     );
     setSourceAgreement(data);
@@ -408,7 +438,7 @@ export default function AgreementGroupWizardPage() {
 
   const handleSetupNext = async () => {
     if (!validateStep1Fields(state, enqueueSnackbar)) return;
-    maybeSanitizeIncomeTypeChange();
+    maybeSanitizeClassificationChange();
     setSavingDraft(true);
     try {
       await persistDraft({ validateStep1: true });
@@ -490,7 +520,7 @@ export default function AgreementGroupWizardPage() {
 
     if (state.step === 0 && stepIndex > 0) {
       if (!validateStep1Fields(state, enqueueSnackbar)) return;
-      maybeSanitizeIncomeTypeChange();
+      maybeSanitizeClassificationChange();
     }
 
     const target = Math.min(stepIndex, maxAccessible);
@@ -521,15 +551,20 @@ export default function AgreementGroupWizardPage() {
     }
   };
 
-  const handleCommercialsNext = async () => {
+  const handleCommercialsNext = async ({ commercialsOverride } = {}) => {
+    const effectiveState = withCommercialsOverride(state, commercialsOverride);
+    if (commercialsOverride) {
+      updateAgreementCommercials(commercialsOverride);
+    }
     const fieldErrors = await collectCommercialStructureStepErrorsAsync(
-      state,
+      effectiveState,
       [],
       sourceAgreement,
       draftAgreementId,
     );
     if (Object.keys(fieldErrors).length > 0) {
-      enqueueSnackbar(getFirstWizardFieldErrorMessage(fieldErrors), { variant: 'warning' });
+      const { message, variant } = getCommercialStepErrorSnackbar(fieldErrors);
+      enqueueSnackbar(message, { variant });
       setCommercialFieldErrors(fieldErrors);
       scrollToFirstWizardError(fieldErrors);
       return;
@@ -537,7 +572,25 @@ export default function AgreementGroupWizardPage() {
     setCommercialFieldErrors({});
     setSavingDraft(true);
     try {
-      await persistDraft({ validateCommercialStructure: true });
+      const structureType = resolveStructureType(effectiveState.agreement?.commercials?.commercialStructure);
+      if (structureType === STRUCTURE_TYPE.FLAT && draftAgreementId) {
+        await purgeAllCommercialStructureData(draftAgreementId);
+      }
+      await persistDraft({ validateCommercialStructure: true, stateOverride: effectiveState });
+      const incomeTypeId = state.agreement?.details?.incomeTypeId ?? sourceAgreement?.incomeTypeId;
+      const incomeTypeName = state.agreement?.details?.incomeTypeName ?? sourceAgreement?.incomeTypeName;
+      if (isAssetRentalIncomeType([], incomeTypeId, incomeTypeName)) {
+        const selectedStateIds = state.agreement?.details?.stateIds ?? sourceAgreement?.stateIds ?? [];
+        const softWarning = await getAssetRentalUnmappedStatesWarning(
+          draftAgreementId,
+          selectedStateIds,
+          sourceAgreement,
+        );
+        if (softWarning) {
+          enqueueSnackbar(softWarning, { variant: 'info' });
+        }
+      }
+      enqueueSnackbar('Commercial structure saved', { variant: 'success' });
       syncStepToUrl(3);
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Complete required commercial fields', { variant: 'error' });
@@ -617,6 +670,7 @@ export default function AgreementGroupWizardPage() {
       onUpdateAsset={updateAgreementAsset}
       serverAgreementId={draftAgreementId}
       sourceAgreement={sourceAgreement}
+      onCommercialsAdvance={handleCommercialsNext}
       fieldErrors={commercialFieldErrors}
     />,
     <Step5GroupReview

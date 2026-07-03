@@ -1,0 +1,49 @@
+package com.medplus.agreement_tracker_backend.dto.response;
+
+import com.medplus.agreement_tracker_backend.enums.PriceOffApprovalStatus;
+import com.medplus.agreement_tracker_backend.enums.PriceOffDiscountType;
+import com.medplus.agreement_tracker_backend.enums.PriceOffDisplayStatus;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+public record ConsumerPriceOffCampaignResponse(
+        Long id,
+        String productCode,
+        Long productId,
+        String productName,
+        String l3Category,
+        LocalDate startDate,
+        LocalDate endDate,
+        Integer durationMonths,
+        Integer maxUnitCap,
+        Integer fromQty,
+        String remarks,
+        String campaignId,
+        LocalDateTime campaignIdUpdatedAt,
+        Long campaignIdUpdatedByUserId,
+        String locationLabel,
+        List<String> stateNames,
+        String channelLabel,
+        List<String> channelNames,
+        PriceOffDiscountType discountType,
+        String discountTypeLabel,
+        BigDecimal cp,
+        BigDecimal mrp,
+        BigDecimal baseOffer,
+        BigDecimal medplusContribution,
+        BigDecimal marginPercent,
+        BigDecimal finalOffer,
+        BigDecimal percentOff,
+        BigDecimal finalMarginPercent,
+        PriceOffApprovalStatus approvalStatus,
+        PriceOffDisplayStatus displayStatus,
+        Integer unitsConsumed,
+        Long submittedByUserId,
+        Long approvedByUserId,
+        String rejectionRemarks,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt
+) {}

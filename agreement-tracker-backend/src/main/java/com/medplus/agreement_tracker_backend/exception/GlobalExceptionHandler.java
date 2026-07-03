@@ -4,7 +4,9 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -35,6 +37,16 @@ public class GlobalExceptionHandler {
         log.warn("Incomplete agreement submission: {}", ex.getMessage());
         return ResponseEntity.badRequest()
                 .body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(ExcelValidationException.class)
+    public ResponseEntity<byte[]> handleExcelValidation(ExcelValidationException ex) {
+        log.warn("JBP Excel validation failed: {}", ex.getMessage());
+        return ResponseEntity.unprocessableEntity()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=JBP_Upload_Errors.xlsx")
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(ex.getErrorWorkbook());
     }
 
     @ExceptionHandler(BusinessException.class)

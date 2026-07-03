@@ -30,6 +30,12 @@ public class ProductMaster extends AuditableEntity {
     @Column(name = "product_name", nullable = false, length = 255)
     private String productName;
 
+    @Column(name = "l3_category", length = 255)
+    private String l3Category;
+
+    @Column(name = "mrp", precision = 12, scale = 2)
+    private java.math.BigDecimal mrp;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "manufacturer_id", nullable = false)
     private ManufacturerMaster manufacturer;

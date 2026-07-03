@@ -5,11 +5,11 @@ import com.medplus.agreement_tracker_backend.dto.response.AgreementSlabResponse;
 import com.medplus.agreement_tracker_backend.entity.AgreementSlab;
 import com.medplus.agreement_tracker_backend.entity.AgreementVersion;
 import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
+import com.medplus.agreement_tracker_backend.enums.CapUnit;
 import com.medplus.agreement_tracker_backend.enums.CommercialSlabType;
 import com.medplus.agreement_tracker_backend.exception.BusinessException;
 import com.medplus.agreement_tracker_backend.exception.ResourceNotFoundException;
 import com.medplus.agreement_tracker_backend.repository.AgreementSlabRepository;
-import com.medplus.agreement_tracker_backend.repository.AgreementTargetRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementVersionRepository;
 import com.medplus.agreement_tracker_backend.service.AgreementSlabService;
 import com.medplus.agreement_tracker_backend.service.CommercialVersionGuard;
@@ -26,7 +26,6 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
 
     private final AgreementVersionRepository agreementVersionRepository;
     private final AgreementSlabRepository slabRepository;
-    private final AgreementTargetRepository targetRepository;
     private final CommercialVersionGuard commercialVersionGuard;
 
     @Override
@@ -34,8 +33,8 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
     public List<AgreementSlabResponse> listSlabs(Long agreementId, CommercialSlabType slabType, Long currentUserId) {
         loadVersionForRead(agreementId, currentUserId);
         List<AgreementSlab> slabs = slabType != null
-                ? slabRepository.findByAgreementVersionIdAndSlabTypeOrderByFromValueAsc(agreementId, slabType)
-                : slabRepository.findByAgreementVersionIdOrderByFromValueAsc(agreementId);
+                ? slabRepository.findByAgreementVersionIdAndSlabTypeOrderByMinCapAsc(agreementId, slabType)
+                : slabRepository.findByAgreementVersionIdOrderByMinCapAsc(agreementId);
         return slabs.stream().map(this::toResponse).toList();
     }
 
@@ -44,14 +43,16 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
     public AgreementSlabResponse createSlab(Long agreementId, SlabDTO request, Long currentUserId) {
         AgreementVersion version = commercialVersionGuard.loadForCommercialMutation(agreementId, currentUserId);
         CommercialSlabType slabType = resolveSlabType(request);
-        validateSlabValues(request.fromValue(), request.toValue());
-        validateSlabUniqueness(agreementId, request, slabType, null);
+        validateSlabValues(request.minCap(), request.maxCap());
+        CapUnit capUnit = resolveCapUnit(agreementId, request.capUnit());
+        validateSlabUniqueness(agreementId, request, slabType, capUnit, null);
 
         AgreementSlab slab = AgreementSlab.builder()
                 .agreementVersion(version)
                 .slabType(slabType)
-                .fromValue(request.fromValue())
-                .toValue(request.toValue())
+                .minCap(request.minCap())
+                .maxCap(request.maxCap())
+                .capUnit(capUnit)
                 .valueType(request.valueType())
                 .commercialValue(request.commercialValue())
                 .payoutFrequency(request.payoutFrequency())
@@ -67,17 +68,20 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
         commercialVersionGuard.loadForCommercialMutation(agreementId, currentUserId);
         AgreementSlab slab = loadSlabForVersion(agreementId, slabId);
         CommercialSlabType slabType = resolveSlabType(request);
-        validateSlabValues(request.fromValue(), request.toValue());
-        validateSlabUniqueness(agreementId, request, slabType, slabId);
+        validateSlabValues(request.minCap(), request.maxCap());
+        CapUnit capUnit = resolveCapUnit(agreementId, request.capUnit());
+        validateSlabUniqueness(agreementId, request, slabType, capUnit, slabId);
 
         slab.setSlabType(slabType);
-        slab.setFromValue(request.fromValue());
-        slab.setToValue(request.toValue());
+        slab.setMinCap(request.minCap());
+        slab.setMaxCap(request.maxCap());
+        slab.setCapUnit(capUnit);
         slab.setValueType(request.valueType());
         slab.setCommercialValue(request.commercialValue());
         slab.setPayoutFrequency(request.payoutFrequency());
         slab.setUpdatedByUserId(currentUserId);
         slab = slabRepository.save(slab);
+        syncCapUnitAcrossVersion(agreementId, capUnit);
         return toResponse(slab);
     }
 
@@ -86,12 +90,33 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
     public void deleteSlab(Long agreementId, Long slabId, Long currentUserId) {
         commercialVersionGuard.loadForCommercialMutation(agreementId, currentUserId);
         AgreementSlab slab = loadSlabForVersion(agreementId, slabId);
-        targetRepository.deleteBySlabId(slab.getId());
         slabRepository.delete(slab);
     }
 
     private CommercialSlabType resolveSlabType(SlabDTO request) {
         return request.slabType() != null ? request.slabType() : CommercialSlabType.PURCHASE;
+    }
+
+    private CapUnit resolveCapUnit(Long agreementVersionId, CapUnit requested) {
+        List<AgreementSlab> existing = slabRepository.findByAgreementVersionIdOrderByMinCapAsc(agreementVersionId);
+        if (existing.isEmpty()) {
+            return requested != null ? requested : CapUnit.RUPEES;
+        }
+        CapUnit versionUnit = existing.get(0).getCapUnit();
+        if (requested != null && requested != versionUnit) {
+            throw new BusinessException("Cap unit must match the agreement slab table unit (" + versionUnit + ")");
+        }
+        return versionUnit;
+    }
+
+    private void syncCapUnitAcrossVersion(Long agreementVersionId, CapUnit capUnit) {
+        List<AgreementSlab> slabs = slabRepository.findByAgreementVersionIdOrderByMinCapAsc(agreementVersionId);
+        for (AgreementSlab slab : slabs) {
+            if (slab.getCapUnit() != capUnit) {
+                slab.setCapUnit(capUnit);
+                slabRepository.save(slab);
+            }
+        }
     }
 
     private AgreementVersion loadVersionForRead(Long agreementVersionId, Long userId) {
@@ -113,36 +138,37 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
         return slab;
     }
 
-    private void validateSlabValues(BigDecimal fromValue, BigDecimal toValue) {
-        if (fromValue.compareTo(BigDecimal.ZERO) < 0) {
-            throw new BusinessException("fromValue must be greater than or equal to 0");
+    private void validateSlabValues(BigDecimal minCap, BigDecimal maxCap) {
+        if (minCap.compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessException("minCap must be greater than or equal to 0");
         }
-        if (toValue.compareTo(fromValue) <= 0) {
-            throw new BusinessException("toValue must be greater than fromValue");
+        if (maxCap.compareTo(minCap) <= 0) {
+            throw new BusinessException("Max Cap must be strictly greater than Min Cap");
         }
     }
 
     private void validateSlabUniqueness(Long agreementVersionId, SlabDTO request,
-                                        CommercialSlabType slabType, Long excludeSlabId) {
+                                        CommercialSlabType slabType, CapUnit capUnit, Long excludeSlabId) {
         List<AgreementSlab> existing = slabRepository
-                .findByAgreementVersionIdAndSlabTypeOrderByFromValueAsc(agreementVersionId, slabType);
+                .findByAgreementVersionIdAndSlabTypeOrderByMinCapAsc(agreementVersionId, slabType);
         for (AgreementSlab slab : existing) {
             if (excludeSlabId != null && slab.getId().equals(excludeSlabId)) {
                 continue;
             }
-            if (isExactDuplicate(slab, request)) {
+            if (isExactDuplicate(slab, request, capUnit)) {
                 throw new BusinessException("This slab rule already exists");
             }
-            if (rangesOverlap(slab.getFromValue(), slab.getToValue(), request.fromValue(), request.toValue())) {
+            if (rangesOverlap(slab.getMinCap(), slab.getMaxCap(), request.minCap(), request.maxCap())) {
                 throw new BusinessException(
                         "Slab range overlaps with an existing slab (" + formatSlabRange(slab) + ")");
             }
         }
     }
 
-    private boolean isExactDuplicate(AgreementSlab slab, SlabDTO request) {
-        return slab.getFromValue().compareTo(request.fromValue()) == 0
-                && slab.getToValue().compareTo(request.toValue()) == 0
+    private boolean isExactDuplicate(AgreementSlab slab, SlabDTO request, CapUnit capUnit) {
+        return slab.getMinCap().compareTo(request.minCap()) == 0
+                && slab.getMaxCap().compareTo(request.maxCap()) == 0
+                && slab.getCapUnit() == capUnit
                 && slab.getValueType() == request.valueType()
                 && slab.getCommercialValue().compareTo(request.commercialValue()) == 0;
     }
@@ -152,8 +178,8 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
     }
 
     private String formatSlabRange(AgreementSlab slab) {
-        String range = slab.getFromValue().stripTrailingZeros().toPlainString()
-                + " - " + slab.getToValue().stripTrailingZeros().toPlainString();
+        String range = slab.getMinCap().stripTrailingZeros().toPlainString()
+                + " - " + slab.getMaxCap().stripTrailingZeros().toPlainString();
         if (slab.getValueType().name().equals("PERCENTAGE")) {
             return range + " (" + slab.getCommercialValue().stripTrailingZeros().toPlainString() + "%)";
         }
@@ -164,8 +190,9 @@ public class AgreementSlabServiceImpl implements AgreementSlabService {
         return new AgreementSlabResponse(
                 slab.getId(),
                 slab.getSlabType(),
-                slab.getFromValue(),
-                slab.getToValue(),
+                slab.getMinCap(),
+                slab.getMaxCap(),
+                slab.getCapUnit(),
                 slab.getValueType(),
                 slab.getCommercialValue(),
                 slab.getPayoutFrequency());

@@ -19,6 +19,8 @@ import AgreementGroupWizardPage from './pages/agreements/AgreementGroupWizardPag
 import AgreementDetailPage from './pages/agreements/AgreementDetailPage';
 import AgreementEditPage from './pages/agreements/AgreementEditPage';
 import ApprovalsPage from './pages/approvals/ApprovalsPage';
+import PriceOffsDashboard from './pages/price-offs/PriceOffsDashboard';
+import PriceOffsApprovalHub from './pages/price-offs/PriceOffsApprovalHub';
 import UserManagementPage from './pages/admin/UserManagementPage';
 import MasterDataLayout from './pages/master/MasterDataLayout';
 import CompanyMasterPage from './pages/master/CompanyMasterPage';
@@ -73,6 +75,14 @@ export default function App() {
 
                     <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_APPROVE]} />}>
                       <Route path={ROUTES.APPROVALS} element={<ApprovalsPage />} />
+                    </Route>
+
+                    <Route element={<RightRoute rights={[RIGHTS.PRICE_OFF_MANAGE]} />}>
+                      <Route path={ROUTES.PRICE_OFFS} element={<PriceOffsDashboard />} />
+                    </Route>
+
+                    <Route element={<RightRoute rights={[RIGHTS.PRICE_OFF_APPROVE]} />}>
+                      <Route path={ROUTES.PRICE_OFFS_APPROVALS} element={<PriceOffsApprovalHub />} />
                     </Route>
 
                     <Route element={<RightRoute rights={[RIGHTS.ADMIN_USERS]} />}>

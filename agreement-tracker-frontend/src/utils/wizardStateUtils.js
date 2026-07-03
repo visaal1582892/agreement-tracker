@@ -10,7 +10,6 @@ export function hasSubsequentStepData(state) {
     || productRules?.divisionRules?.length
     || productRules?.productRules?.length
     || details.documents?.length
-    || details.storeOutletList
     || details.invoiceVendorId
     || details.quantityCap
     || details.adhocSubType

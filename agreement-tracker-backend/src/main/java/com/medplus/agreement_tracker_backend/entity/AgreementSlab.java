@@ -1,6 +1,7 @@
 package com.medplus.agreement_tracker_backend.entity;
 
 import com.medplus.agreement_tracker_backend.entity.base.AuditableEntity;
+import com.medplus.agreement_tracker_backend.enums.CapUnit;
 import com.medplus.agreement_tracker_backend.enums.CommercialSlabType;
 import com.medplus.agreement_tracker_backend.enums.PayoutFrequency;
 import com.medplus.agreement_tracker_backend.enums.SlabValueType;
@@ -33,11 +34,16 @@ public class AgreementSlab extends AuditableEntity {
     @Builder.Default
     private CommercialSlabType slabType = CommercialSlabType.PURCHASE;
 
-    @Column(name = "from_value", nullable = false, precision = 15, scale = 2)
-    private BigDecimal fromValue;
+    @Column(name = "min_cap", nullable = false, precision = 15, scale = 2)
+    private BigDecimal minCap;
 
-    @Column(name = "to_value", nullable = false, precision = 15, scale = 2)
-    private BigDecimal toValue;
+    @Column(name = "max_cap", nullable = false, precision = 15, scale = 2)
+    private BigDecimal maxCap;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cap_unit", nullable = false, length = 20)
+    @Builder.Default
+    private CapUnit capUnit = CapUnit.RUPEES;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "value_type", nullable = false, length = 20)

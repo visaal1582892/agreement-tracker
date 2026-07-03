@@ -11,9 +11,9 @@ import java.util.List;
 
 public interface AgreementSlabRepository extends JpaRepository<AgreementSlab, Long> {
 
-    List<AgreementSlab> findByAgreementVersionIdOrderByFromValueAsc(Long agreementVersionId);
+    List<AgreementSlab> findByAgreementVersionIdOrderByMinCapAsc(Long agreementVersionId);
 
-    List<AgreementSlab> findByAgreementVersionIdAndSlabTypeOrderByFromValueAsc(
+    List<AgreementSlab> findByAgreementVersionIdAndSlabTypeOrderByMinCapAsc(
             Long agreementVersionId, CommercialSlabType slabType);
 
     @Modifying

@@ -29,11 +29,18 @@ import {
   validateCommercialStructureStep,
   collectConfigurationStepErrors,
   collectCommercialStructureStepErrorsAsync,
+  getAssetRentalUnmappedStatesWarning,
+  withCommercialsOverride,
 } from '../../utils/agreementWizardUtils';
+import { isAssetRentalIncomeType } from '../../utils/incomeTypeUtils';
 import {
+  getCommercialStepErrorSnackbar,
   getFirstWizardFieldErrorMessage,
   scrollToFirstWizardError,
 } from '../../utils/wizardValidationUx';
+import {
+  purgeAllCommercialStructureData,
+} from '../../api/commercialApi';
 import {
   buildAgreementEditPath,
   buildAgreementDetailPath,
@@ -43,6 +50,7 @@ import ConfigurationStep from './wizard/ConfigurationStep';
 import CommercialStructureStep from './wizard/CommercialStructureStep';
 import Step5Review from './wizard/Step5Review';
 import WizardErrorBoundary from '../../components/wizard/WizardErrorBoundary';
+import { resolveStructureType, STRUCTURE_TYPE } from '../../constants/commercialStructure';
 import { incomeTypeChangedFromBaseline } from '../../utils/wizardStateUtils';
 
 export default function AgreementEditPage() {
@@ -88,6 +96,7 @@ export default function AgreementEditPage() {
   const [configurationFieldErrors, setConfigurationFieldErrors] = useState({});
   const [commercialFieldErrors, setCommercialFieldErrors] = useState({});
   const [baselineIncomeTypeId, setBaselineIncomeTypeId] = useState(null);
+  const [baselineAgreementTypeId, setBaselineAgreementTypeId] = useState(null);
 
   const isFreshDraftWizard = sourceAgreement?.approvalStatus === 'DRAFT' && !versionSourceId;
 
@@ -95,17 +104,32 @@ export default function AgreementEditPage() {
     if (sourceAgreement?.incomeTypeId != null) {
       setBaselineIncomeTypeId(sourceAgreement.incomeTypeId);
     }
-  }, [sourceAgreement?.id, sourceAgreement?.incomeTypeId]);
+    if (sourceAgreement?.agreementTypeId != null) {
+      setBaselineAgreementTypeId(sourceAgreement.agreementTypeId);
+    }
+  }, [sourceAgreement?.id, sourceAgreement?.incomeTypeId, sourceAgreement?.agreementTypeId]);
 
-  const maybeSanitizeIncomeTypeChange = useCallback(() => {
-    const current = state.agreement?.details?.incomeTypeId;
-    if (!incomeTypeChangedFromBaseline(baselineIncomeTypeId, current)) return false;
+  const maybeSanitizeClassificationChange = useCallback(() => {
+    const currentIncome = state.agreement?.details?.incomeTypeId;
+    const currentAgreementType = state.agreement?.details?.agreementTypeId;
+    const incomeChanged = incomeTypeChangedFromBaseline(baselineIncomeTypeId, currentIncome);
+    const agreementTypeChanged = baselineAgreementTypeId != null
+      && String(baselineAgreementTypeId) !== String(currentAgreementType);
+    if (!incomeChanged && !agreementTypeChanged) return false;
     resetAfterIncomeTypeChange();
-    enqueueSnackbar('Income Type changed. Downstream configurations have been reset.', { variant: 'warning' });
-    setBaselineIncomeTypeId(current);
+    const message = incomeChanged && agreementTypeChanged
+      ? 'Income Type and Agreement Type changed. Downstream configurations have been reset.'
+      : incomeChanged
+        ? 'Income Type changed. Downstream configurations have been reset.'
+        : 'Agreement Type changed. Downstream configurations have been reset.';
+    enqueueSnackbar(message, { variant: 'warning' });
+    if (incomeChanged) setBaselineIncomeTypeId(currentIncome);
+    if (agreementTypeChanged) setBaselineAgreementTypeId(currentAgreementType);
     return true;
   }, [
+    baselineAgreementTypeId,
     baselineIncomeTypeId,
+    state.agreement?.details?.agreementTypeId,
     state.agreement?.details?.incomeTypeId,
     resetAfterIncomeTypeChange,
     enqueueSnackbar,
@@ -123,7 +147,7 @@ export default function AgreementEditPage() {
 
         if (loaded.approvalStatus === 'DRAFT') {
           const structure = loaded.commercialStructure;
-          const slabCount = structure === 'HYBRID' || structure === 'SLAB'
+          const slabCount = resolveStructureType(structure) === 'SLABS'
             ? await fetchSlabCountForVersion(loaded.id)
             : null;
           setSourceAgreement(loaded);
@@ -152,7 +176,7 @@ export default function AgreementEditPage() {
 
         if (existingDraft) {
           const structure = existingDraft.commercialStructure;
-          const slabCount = structure === 'HYBRID' || structure === 'SLAB'
+          const slabCount = resolveStructureType(structure) === 'SLABS'
             ? await fetchSlabCountForVersion(existingDraft.id)
             : null;
           setDraftAgreementId(existingDraft.id);
@@ -246,8 +270,19 @@ export default function AgreementEditPage() {
     navigate(buildAgreementEditPath(data.id, { step: urlStepFromInternal(state.step) }), { replace: true });
   }, [navigate, state.step]);
 
-  const persistDraft = async ({ validateStep1 = false, validateStep2 = false, validateCommercialStructure = false } = {}) => {
-    const payload = buildUpdatePayload();
+  const persistDraft = async ({
+    validateStep1 = false,
+    validateStep2 = false,
+    validateCommercialStructure = false,
+    stateOverride = null,
+  } = {}) => {
+    const effectiveState = stateOverride ?? state;
+    const payload = stateOverride
+      ? buildSanitizedStep1UpdatePayload(effectiveState, {
+        requiresReapproval: !draftAgreementId && (versionSourceId != null || detectRequiresReapproval(reapprovalBaseline, effectiveState)),
+        sourceAgreement,
+      })
+      : buildUpdatePayload();
     if (draftAgreementId) {
       const { data } = await axiosInstance.put(
         ENDPOINTS.AGREEMENT_VERSION_UPDATE(draftAgreementId),
@@ -285,7 +320,7 @@ export default function AgreementEditPage() {
 
   const handleSetupNext = async () => {
     if (!validateStep1Fields(state, enqueueSnackbar)) return;
-    maybeSanitizeIncomeTypeChange();
+    maybeSanitizeClassificationChange();
     setSavingDraft(true);
     try {
       await persistDraft({ validateStep1: true });
@@ -360,7 +395,7 @@ export default function AgreementEditPage() {
 
     if (state.step === 0 && stepIndex > 0) {
       if (!validateStep1Fields(state, enqueueSnackbar)) return;
-      maybeSanitizeIncomeTypeChange();
+      maybeSanitizeClassificationChange();
     }
 
     const target = Math.min(stepIndex, maxAccessible);
@@ -391,15 +426,20 @@ export default function AgreementEditPage() {
     }
   };
 
-  const handleCommercialsNext = async () => {
+  const handleCommercialsNext = async ({ commercialsOverride } = {}) => {
+    const effectiveState = withCommercialsOverride(state, commercialsOverride);
+    if (commercialsOverride) {
+      updateAgreementCommercials(commercialsOverride);
+    }
     const fieldErrors = await collectCommercialStructureStepErrorsAsync(
-      state,
+      effectiveState,
       [],
       sourceAgreement,
       draftAgreementId,
     );
     if (Object.keys(fieldErrors).length > 0) {
-      enqueueSnackbar(getFirstWizardFieldErrorMessage(fieldErrors), { variant: 'warning' });
+      const { message, variant } = getCommercialStepErrorSnackbar(fieldErrors);
+      enqueueSnackbar(message, { variant });
       setCommercialFieldErrors(fieldErrors);
       scrollToFirstWizardError(fieldErrors);
       return;
@@ -407,7 +447,24 @@ export default function AgreementEditPage() {
     setCommercialFieldErrors({});
     setSavingDraft(true);
     try {
-      await persistDraft({ validateCommercialStructure: true });
+      const structureType = resolveStructureType(effectiveState.agreement?.commercials?.commercialStructure);
+      if (structureType === STRUCTURE_TYPE.FLAT && draftAgreementId) {
+        await purgeAllCommercialStructureData(draftAgreementId);
+      }
+      await persistDraft({ validateCommercialStructure: true, stateOverride: effectiveState });
+      const incomeTypeId = state.agreement?.details?.incomeTypeId ?? sourceAgreement?.incomeTypeId;
+      const incomeTypeName = state.agreement?.details?.incomeTypeName ?? sourceAgreement?.incomeTypeName;
+      if (isAssetRentalIncomeType([], incomeTypeId, incomeTypeName)) {
+        const selectedStateIds = state.agreement?.details?.stateIds ?? sourceAgreement?.stateIds ?? [];
+        const softWarning = await getAssetRentalUnmappedStatesWarning(
+          draftAgreementId,
+          selectedStateIds,
+          sourceAgreement,
+        );
+        if (softWarning) {
+          enqueueSnackbar(softWarning, { variant: 'info' });
+        }
+      }
       enqueueSnackbar('Commercial structure saved', { variant: 'success' });
       syncStepToUrl(3);
     } catch (err) {
@@ -612,9 +669,7 @@ export default function AgreementEditPage() {
       onUpdateAsset={updateAgreementAsset}
       serverAgreementId={draftAgreementId}
       sourceAgreement={sourceAgreement}
-      versionSourceId={versionSourceId}
-      buildVersionedEditPayload={buildUpdatePayload}
-      onDraftVersionCreated={handleDraftVersionCreated}
+      onCommercialsAdvance={isFreshDraftWizard ? handleCommercialsNext : handleRevisionNext}
       fieldErrors={commercialFieldErrors}
     />,
     <Step5Review state={state} serverAgreementId={draftAgreementId} sourceAgreement={sourceAgreement} />,

@@ -29,7 +29,6 @@ import com.medplus.agreement_tracker_backend.repository.AgreementProductRuleRepo
 import com.medplus.agreement_tracker_backend.repository.AgreementSlabRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementReminderRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementRepository;
-import com.medplus.agreement_tracker_backend.repository.AgreementTargetRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementVendorRepository;
 import com.medplus.agreement_tracker_backend.repository.AgreementVersionRepository;
 import com.medplus.agreement_tracker_backend.repository.CompanyAgreementGroupRepository;
@@ -65,7 +64,6 @@ public class CompanyAgreementGroupServiceImpl implements CompanyAgreementGroupSe
     private final AgreementDivisionRuleRepository divisionRuleRepository;
     private final AgreementProductRuleRepository productRuleRepository;
     private final AgreementSlabRepository slabRepository;
-    private final AgreementTargetRepository targetRepository;
     private final AgreementComputedProductRepository computedProductRepository;
     private final AgreementReminderRepository reminderRepository;
     private final AgreementDocumentRepository documentRepository;

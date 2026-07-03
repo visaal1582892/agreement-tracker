@@ -18,4 +18,6 @@ public interface StateMasterRepository extends JpaRepository<StateMaster, Long>,
     boolean existsByStateCodeIgnoreCase(String stateCode);
 
     Optional<StateMaster> findByStateCodeIgnoreCase(String stateCode);
+
+    Optional<StateMaster> findByStateName(String stateName);
 }

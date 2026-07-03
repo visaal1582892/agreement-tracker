@@ -14,6 +14,9 @@ export const ROUTES = {
 
   APPROVALS: '/approvals',
 
+  PRICE_OFFS: '/price-offs',
+  PRICE_OFFS_APPROVALS: '/price-offs/approvals',
+
   ADMIN_USERS: '/admin/users',
 
   MASTER: '/master',

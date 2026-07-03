@@ -1,9 +1,21 @@
-import { Grid } from '@mui/material';
+import { useEffect } from 'react';
+import { Grid, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import CommercialValueInput from '../../../components/forms/CommercialValueInput';
-import { PAYOUT_FREQUENCY, PAYOUT_FREQUENCY_OPTIONS } from '../../../constants/commercialStructure';
-import { FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { PAYOUT_FREQUENCY, PAYOUT_FREQUENCY_OPTIONS, resolveFlatBaselineFrequency } from '../../../constants/commercialStructure';
 
 export default function DataFeeCommercialFields({ commercials, onUpdate }) {
+  useEffect(() => {
+    if (commercials.flatBaselineFrequency) return;
+    onUpdate({
+      commercialStructure: 'FLAT',
+      enableFlatBaseline: true,
+      enableSlabIncentives: false,
+      flatBaselineFrequency: PAYOUT_FREQUENCY.MONTHLY,
+    });
+  }, [commercials.flatBaselineFrequency, onUpdate]);
+
+  const flatBaselineFrequency = resolveFlatBaselineFrequency(commercials);
+
   return (
     <Grid container spacing={2}>
       <Grid size={{ xs: 12, sm: 6 }}>
@@ -26,7 +38,7 @@ export default function DataFeeCommercialFields({ commercials, onUpdate }) {
         <FormControl fullWidth size="small" required>
           <InputLabel>Payout Frequency</InputLabel>
           <Select
-            value={commercials.flatBaselineFrequency || PAYOUT_FREQUENCY.MONTHLY}
+            value={flatBaselineFrequency}
             label="Payout Frequency *"
             onChange={(e) => onUpdate({ flatBaselineFrequency: e.target.value })}
           >

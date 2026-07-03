@@ -17,6 +17,9 @@ public final class RightExpressions {
     public static final String MASTER_VIEW = "hasAnyAuthority('MASTER_VIEW', 'MASTER_MANAGE')";
     public static final String MASTER_MANAGE = "hasAuthority('MASTER_MANAGE')";
     public static final String ADMIN_USERS = "hasAuthority('ADMIN_USERS')";
+    public static final String PRICE_OFF_VIEW = "hasAnyAuthority('PRICE_OFF_VIEW', 'PRICE_OFF_MANAGE', 'PRICE_OFF_APPROVE')";
+    public static final String PRICE_OFF_MANAGE = "hasAuthority('PRICE_OFF_MANAGE')";
+    public static final String PRICE_OFF_APPROVE = "hasAuthority('PRICE_OFF_APPROVE')";
     public static final String MASTER_OR_AGREEMENT_READ =
             "hasAnyAuthority('MASTER_VIEW', 'MASTER_MANAGE', 'AGREEMENT_VIEW', 'AGREEMENT_CREATE')";
 }

@@ -2,6 +2,9 @@ import {
   Box, Typography, Grid, TextField, RadioGroup, FormControlLabel, Radio, InputAdornment,
 } from '@mui/material';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
+import AssetPayoutScheduleFields from './AssetPayoutScheduleFields';
+
+const DEFAULT_PERIOD = { periodMonths: '', payoutPerStore: '' };
 
 export default function AssetPayoutFields({
   asset,
@@ -10,6 +13,19 @@ export default function AssetPayoutFields({
   fieldErrors = {},
 }) {
   const payoutMode = asset?.payoutMode || 'FLAT';
+  const periods = asset?.assetPayoutPeriods ?? [];
+
+  const handlePayoutModeChange = (nextMode) => {
+    if (nextMode === 'FLAT') {
+      onUpdateAsset({ payoutMode: nextMode, flatPayout: asset?.flatPayout ?? '', assetPayoutPeriods: [] });
+      return;
+    }
+    onUpdateAsset({
+      payoutMode: nextMode,
+      flatPayout: '',
+      assetPayoutPeriods: periods.length > 0 ? periods : [{ ...DEFAULT_PERIOD }],
+    });
+  };
 
   return (
     <Box>
@@ -21,16 +37,16 @@ export default function AssetPayoutFields({
       <RadioGroup
         row
         value={payoutMode}
-        onChange={(e) => onUpdateAsset({ payoutMode: e.target.value })}
+        onChange={(e) => handlePayoutModeChange(e.target.value)}
         sx={{ mb: 2 }}
       >
         <FormControlLabel value="FLAT" control={<Radio size="small" />} label="Flat Payout" />
         <FormControlLabel value="PER_STORE" control={<Radio size="small" />} label="Payout per Store" />
       </RadioGroup>
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          {payoutMode === 'FLAT' ? (
+      {payoutMode === 'FLAT' ? (
+        <Grid container spacing={3}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <WizardFieldAnchor field="flatPayout" error={fieldErrors.flatPayout}>
               <TextField
                 label="Flat Payout *"
@@ -48,27 +64,15 @@ export default function AssetPayoutFields({
                 }}
               />
             </WizardFieldAnchor>
-          ) : (
-            <WizardFieldAnchor field="payoutPerStore" error={fieldErrors.payoutPerStore}>
-              <TextField
-                label="Payout per Store *"
-                type="number"
-                fullWidth
-                size="small"
-                value={asset?.payoutPerStore ?? ''}
-                onChange={(e) => onUpdateAsset({ payoutPerStore: e.target.value })}
-                error={Boolean(fieldErrors.payoutPerStore)}
-                slotProps={{
-                  input: {
-                    startAdornment: <InputAdornment position="start">₹</InputAdornment>,
-                  },
-                  htmlInput: { min: 0, step: '0.01' },
-                }}
-              />
-            </WizardFieldAnchor>
-          )}
+          </Grid>
         </Grid>
-      </Grid>
+      ) : (
+        <AssetPayoutScheduleFields
+          periods={periods}
+          onChange={(nextPeriods) => onUpdateAsset({ assetPayoutPeriods: nextPeriods })}
+          fieldError={fieldErrors.assetPayoutPeriods}
+        />
+      )}
     </Box>
   );
 }

@@ -1,39 +1,39 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Grid, TextField, RadioGroup, FormControlLabel, Radio, Divider,
+  FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material';
-import axiosInstance from '../../../api/axiosInstance';
-import { ENDPOINTS } from '../../../config/endpoints';
-import SearchableSelect from '../../../components/forms/SearchableSelect';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 import { isAssetRentalIncomeType } from '../../../utils/incomeTypeUtils';
 import {
   CALCULATION_BASIS,
   CALCULATION_BASIS_LABELS,
-  INVOICE_ROUTING_MODE,
 } from '../../../constants/calculationBasis';
 import {
   PAYMENT_REALIZATION_OPTIONS,
   PAYMENT_REALIZATION_TYPE,
 } from '../../../constants/commercialStructure';
+import { LEAD_TIME_BASIS, LEAD_TIME_BASIS_OPTIONS } from '../../../constants/leadTimeBasis';
 
-function resolveInitialRoutingMode({ isAssetRental, invoiceVendorId, vendorIds }) {
-  if (isAssetRental) {
-    return INVOICE_ROUTING_MODE.OTHER_VENDOR;
+function buildPaymentRealizationChangeUpdates(nextType) {
+  const updates = { paymentRealizationType: nextType };
+
+  if (nextType !== PAYMENT_REALIZATION_TYPE.DIRECT_PAYMENT_INVOICE) {
+    updates.leadTimeBasis = null;
+    updates.invoiceGenerationLeadTime = null;
+    updates.invoiceVendorId = null;
   }
-  if (invoiceVendorId && vendorIds.includes(invoiceVendorId)) {
-    return INVOICE_ROUTING_MODE.SUPPLY_VENDOR;
+
+  if (nextType === PAYMENT_REALIZATION_TYPE.INVOICE_DISCOUNT) {
+    updates.payoutBufferDays = null;
   }
-  if (invoiceVendorId) {
-    return INVOICE_ROUTING_MODE.OTHER_VENDOR;
-  }
-  return INVOICE_ROUTING_MODE.SUPPLY_VENDOR;
+
+  return updates;
 }
 
 export default function SettlementRoutingFields({
-  vendorIds = [],
-  invoiceVendorId,
   payoutBufferDays,
+  leadTimeBasis,
+  invoiceGenerationLeadTime,
   calculationBasis,
   paymentRealizationType,
   incomeTypeId,
@@ -43,94 +43,20 @@ export default function SettlementRoutingFields({
   fieldErrors = {},
 }) {
   const isAssetRental = isAssetRentalIncomeType([], incomeTypeId, incomeTypeName);
-  const [supplyVendorOptions, setSupplyVendorOptions] = useState([]);
-  const [searchVendorOptions, setSearchVendorOptions] = useState([]);
-  const [selectedInvoiceVendor, setSelectedInvoiceVendor] = useState(null);
-  const [loadingSupplyVendors, setLoadingSupplyVendors] = useState(false);
-  const [loadingSearchVendors, setLoadingSearchVendors] = useState(false);
-  const [invoiceRoutingMode, setInvoiceRoutingMode] = useState(
-    resolveInitialRoutingMode({ isAssetRental, invoiceVendorId, vendorIds }),
-  );
-
   const activePaymentRealization = paymentRealizationType || PAYMENT_REALIZATION_TYPE.DIRECT_PAYMENT_INVOICE;
-  const showInvoiceVendor = activePaymentRealization === PAYMENT_REALIZATION_TYPE.DIRECT_PAYMENT_INVOICE;
   const activeBasis = calculationBasis || CALCULATION_BASIS.VENDOR_INVOICE;
-  const useManualVendorSearch = isAssetRental || invoiceRoutingMode === INVOICE_ROUTING_MODE.OTHER_VENDOR;
 
-  const loadSupplyVendors = useCallback(async () => {
-    if (!vendorIds.length) {
-      setSupplyVendorOptions([]);
-      return;
+  const isCreditNote = activePaymentRealization === PAYMENT_REALIZATION_TYPE.CREDIT_NOTE;
+  const isInvoice = activePaymentRealization === PAYMENT_REALIZATION_TYPE.DIRECT_PAYMENT_INVOICE;
+  const isActivityCompletionBasis = leadTimeBasis === LEAD_TIME_BASIS.ACTIVITY_COMPLETION_DATE;
+  const isInvoiceDateBasis = leadTimeBasis === LEAD_TIME_BASIS.INVOICE_DATE;
+
+  const handleLeadTimeBasisChange = (nextBasis) => {
+    const updates = { leadTimeBasis: nextBasis };
+    if (nextBasis === LEAD_TIME_BASIS.ACTIVITY_COMPLETION_DATE) {
+      updates.invoiceGenerationLeadTime = null;
     }
-    setLoadingSupplyVendors(true);
-    try {
-      const { data } = await axiosInstance.get(ENDPOINTS.VENDORS, {
-        params: { ids: vendorIds.join(',') },
-      });
-      setSupplyVendorOptions(
-        (Array.isArray(data) ? data : []).filter((vendor) => vendorIds.includes(vendor.id)),
-      );
-    } catch (err) {
-      console.error('Failed to load supply vendor options:', err);
-      setSupplyVendorOptions([]);
-    } finally {
-      setLoadingSupplyVendors(false);
-    }
-  }, [vendorIds]);
-
-  const searchVendors = useCallback(async (query) => {
-    setLoadingSearchVendors(true);
-    try {
-      const { data } = await axiosInstance.get(ENDPOINTS.VENDORS, {
-        params: query?.trim() ? { search: query.trim() } : {},
-      });
-      setSearchVendorOptions(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('Failed to search vendors:', err);
-      setSearchVendorOptions([]);
-    } finally {
-      setLoadingSearchVendors(false);
-    }
-  }, []);
-
-  const hydrateInvoiceVendor = useCallback(async () => {
-    if (!invoiceVendorId) {
-      setSelectedInvoiceVendor(null);
-      return;
-    }
-    try {
-      const { data } = await axiosInstance.get(ENDPOINTS.VENDORS, {
-        params: { ids: String(invoiceVendorId) },
-      });
-      const match = (Array.isArray(data) ? data : []).find((vendor) => vendor.id === invoiceVendorId);
-      setSelectedInvoiceVendor(match || null);
-    } catch (err) {
-      console.error('Failed to hydrate invoice vendor:', err);
-      setSelectedInvoiceVendor(null);
-    }
-  }, [invoiceVendorId]);
-
-  useEffect(() => {
-    loadSupplyVendors();
-  }, [loadSupplyVendors]);
-
-  useEffect(() => {
-    hydrateInvoiceVendor();
-  }, [hydrateInvoiceVendor]);
-
-  useEffect(() => {
-    setInvoiceRoutingMode(resolveInitialRoutingMode({ isAssetRental, invoiceVendorId, vendorIds }));
-  }, [isAssetRental, incomeTypeId, incomeTypeName]);
-
-  const invoiceVendorOptions = useMemo(
-    () => (useManualVendorSearch ? searchVendorOptions : supplyVendorOptions),
-    [useManualVendorSearch, searchVendorOptions, supplyVendorOptions],
-  );
-
-  const handleRoutingModeChange = (mode) => {
-    setInvoiceRoutingMode(mode);
-    setSelectedInvoiceVendor(null);
-    onUpdateDetails({ invoiceVendorId: null });
+    onUpdateDetails(updates);
   };
 
   return (
@@ -148,27 +74,19 @@ export default function SettlementRoutingFields({
               Payment Realization Type *
             </Typography>
             <RadioGroup
-            row
-            value={activePaymentRealization}
-            onChange={(e) => {
-              const nextType = e.target.value;
-              onUpdateDetails({
-                paymentRealizationType: nextType,
-                ...(nextType !== PAYMENT_REALIZATION_TYPE.DIRECT_PAYMENT_INVOICE
-                  ? { invoiceVendorId: null }
-                  : {}),
-              });
-            }}
-          >
-            {PAYMENT_REALIZATION_OPTIONS.map((option) => (
-              <FormControlLabel
-                key={option.value}
-                value={option.value}
-                control={<Radio size="small" />}
-                label={option.label}
-              />
-            ))}
-          </RadioGroup>
+              row
+              value={activePaymentRealization}
+              onChange={(e) => onUpdateDetails(buildPaymentRealizationChangeUpdates(e.target.value))}
+            >
+              {PAYMENT_REALIZATION_OPTIONS.map((option) => (
+                <FormControlLabel
+                  key={option.value}
+                  value={option.value}
+                  control={<Radio size="small" />}
+                  label={option.label}
+                />
+              ))}
+            </RadioGroup>
           </WizardFieldAnchor>
         </Grid>
 
@@ -179,21 +97,21 @@ export default function SettlementRoutingFields({
                 Calculation Basis *
               </Typography>
               <RadioGroup
-              row
-              value={activeBasis}
-              onChange={(e) => onUpdateDetails({ calculationBasis: e.target.value })}
-            >
-              <FormControlLabel
-                value={CALCULATION_BASIS.VENDOR_INVOICE}
-                control={<Radio size="small" />}
-                label={CALCULATION_BASIS_LABELS.VENDOR_INVOICE}
-              />
-              <FormControlLabel
-                value={CALCULATION_BASIS.VENDOR_INWARD}
-                control={<Radio size="small" />}
-                label={CALCULATION_BASIS_LABELS.VENDOR_INWARD}
-              />
-            </RadioGroup>
+                row
+                value={activeBasis}
+                onChange={(e) => onUpdateDetails({ calculationBasis: e.target.value })}
+              >
+                <FormControlLabel
+                  value={CALCULATION_BASIS.VENDOR_INVOICE}
+                  control={<Radio size="small" />}
+                  label={CALCULATION_BASIS_LABELS.VENDOR_INVOICE}
+                />
+                <FormControlLabel
+                  value={CALCULATION_BASIS.VENDOR_INWARD}
+                  control={<Radio size="small" />}
+                  label={CALCULATION_BASIS_LABELS.VENDOR_INWARD}
+                />
+              </RadioGroup>
             </WizardFieldAnchor>
           </Grid>
         )}
@@ -202,73 +120,108 @@ export default function SettlementRoutingFields({
           <Divider sx={{ my: 0.5 }} />
         </Grid>
 
+        {/*
+        Invoice Vendor Routing hidden for now — restore when routing UI is re-enabled.
         {showInvoiceVendor && (
           <Grid size={12}>
-            <WizardFieldAnchor field="invoiceVendor" error={fieldErrors.invoiceVendor}>
-            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-              Invoice Vendor Routing *
-            </Typography>
-          {!isAssetRental && (
-            <RadioGroup
-              row
-              value={invoiceRoutingMode}
-              onChange={(e) => handleRoutingModeChange(e.target.value)}
-              sx={{ mb: 2 }}
-            >
-              <FormControlLabel
-                value={INVOICE_ROUTING_MODE.SUPPLY_VENDOR}
-                control={<Radio size="small" />}
-                label="Route to Supply Vendor"
-                disabled={!vendorIds.length}
-              />
-              <FormControlLabel
-                value={INVOICE_ROUTING_MODE.OTHER_VENDOR}
-                control={<Radio size="small" />}
-                label="Different Non-Trade Vendor"
-              />
-            </RadioGroup>
-          )}
-          {isAssetRental && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-              Asset rentals require a manual Finance / Non-Trade vendor for invoice routing.
-            </Typography>
-          )}
-          <SearchableSelect
-            label="Invoice Vendor"
-            placeholder={
-              useManualVendorSearch
-                ? 'Search Finance / Non-Trade vendor…'
-                : (vendorIds.length ? 'Select supply vendor…' : 'Select supply vendors above first')
-            }
-            isMulti={false}
-            options={invoiceVendorOptions}
-            value={selectedInvoiceVendor}
-            onChange={(vendor) => {
-              setSelectedInvoiceVendor(vendor);
-              onUpdateDetails({ invoiceVendorId: vendor?.id || null });
-            }}
-            onSearch={useManualVendorSearch ? searchVendors : loadSupplyVendors}
-            getOptionLabel={(vendor) => `${vendor.vendorCode} — ${vendor.vendorName}`}
-            isOptionEqualToValue={(option, value) => option.id === value.id}
-            loading={useManualVendorSearch ? loadingSearchVendors : loadingSupplyVendors}
-            disabled={!useManualVendorSearch && !vendorIds.length}
-            required
-          />
+            ...
+          </Grid>
+        )}
+        */}
+
+        {isInvoice && (
+          <Grid size={{ xs: 12, md: 6 }}>
+            <WizardFieldAnchor field="leadTimeBasis" error={fieldErrors.leadTimeBasis}>
+              <FormControl fullWidth size="small" required error={Boolean(fieldErrors.leadTimeBasis)}>
+                <InputLabel>Lead Time Basis</InputLabel>
+                <Select
+                  value={leadTimeBasis || ''}
+                  label="Lead Time Basis *"
+                  onChange={(e) => handleLeadTimeBasisChange(e.target.value)}
+                >
+                  {LEAD_TIME_BASIS_OPTIONS.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </WizardFieldAnchor>
           </Grid>
         )}
 
-        <Grid size={{ xs: 12, md: 6 }}>
-          <TextField
-            label="Payout Lead Time (days)"
-            type="number"
-            fullWidth
-            size="small"
-            value={payoutBufferDays ?? ''}
-            onChange={(e) => onUpdateDetails({ payoutBufferDays: e.target.value })}
-            slotProps={{ htmlInput: { min: 0 } }}
-          />
-        </Grid>
+        {isCreditNote && (
+          <Grid size={{ xs: 12, md: 6 }}>
+            <WizardFieldAnchor field="payoutBufferDays" error={fieldErrors.payoutBufferDays}>
+              <TextField
+                label="Payout Lead Time (days)"
+                type="number"
+                fullWidth
+                size="small"
+                required
+                error={Boolean(fieldErrors.payoutBufferDays)}
+                helperText={fieldErrors.payoutBufferDays}
+                value={payoutBufferDays ?? ''}
+                onChange={(e) => onUpdateDetails({ payoutBufferDays: e.target.value })}
+                slotProps={{ htmlInput: { min: 0 } }}
+              />
+            </WizardFieldAnchor>
+          </Grid>
+        )}
+
+        {isInvoice && isActivityCompletionBasis && (
+          <Grid size={{ xs: 12, md: 6 }}>
+            <WizardFieldAnchor field="payoutBufferDays" error={fieldErrors.payoutBufferDays}>
+              <TextField
+                label="Payout Lead Time (days)"
+                type="number"
+                fullWidth
+                size="small"
+                required
+                error={Boolean(fieldErrors.payoutBufferDays)}
+                helperText={fieldErrors.payoutBufferDays}
+                value={payoutBufferDays ?? ''}
+                onChange={(e) => onUpdateDetails({ payoutBufferDays: e.target.value })}
+                slotProps={{ htmlInput: { min: 0 } }}
+              />
+            </WizardFieldAnchor>
+          </Grid>
+        )}
+
+        {isInvoice && isInvoiceDateBasis && (
+          <>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <WizardFieldAnchor field="invoiceGenerationLeadTime" error={fieldErrors.invoiceGenerationLeadTime}>
+                <TextField
+                  label="Lead time for invoice generation (in days)"
+                  type="number"
+                  fullWidth
+                  size="small"
+                  required
+                  error={Boolean(fieldErrors.invoiceGenerationLeadTime)}
+                  helperText={fieldErrors.invoiceGenerationLeadTime}
+                  value={invoiceGenerationLeadTime ?? ''}
+                  onChange={(e) => onUpdateDetails({ invoiceGenerationLeadTime: e.target.value })}
+                  slotProps={{ htmlInput: { min: 0 } }}
+                />
+              </WizardFieldAnchor>
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <WizardFieldAnchor field="payoutBufferDays" error={fieldErrors.payoutBufferDays}>
+                <TextField
+                  label="Payout Lead Time (days)"
+                  type="number"
+                  fullWidth
+                  size="small"
+                  required
+                  error={Boolean(fieldErrors.payoutBufferDays)}
+                  helperText={fieldErrors.payoutBufferDays}
+                  value={payoutBufferDays ?? ''}
+                  onChange={(e) => onUpdateDetails({ payoutBufferDays: e.target.value })}
+                  slotProps={{ htmlInput: { min: 0 } }}
+                />
+              </WizardFieldAnchor>
+            </Grid>
+          </>
+        )}
       </Grid>
     </Box>
   );

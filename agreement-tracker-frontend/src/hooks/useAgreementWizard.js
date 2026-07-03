@@ -14,11 +14,12 @@ export function createBlankAgreement() {
       notes: '',
       stateIds: [],
       documents: [],
-      storeOutletList: null,
       adhocSubType: null,
       quantityCap: '',
       invoiceVendorId: null,
       payoutBufferDays: '',
+      leadTimeBasis: null,
+      invoiceGenerationLeadTime: '',
       calculationBasis: 'VENDOR_INVOICE',
       paymentRealizationType: 'DIRECT_PAYMENT_INVOICE',
     },
@@ -29,6 +30,7 @@ export function createBlankAgreement() {
       payoutMode: 'FLAT',
       flatPayout: '',
       payoutPerStore: '',
+      assetPayoutPeriods: [],
       remarks: '',
     },
     commercials: {
@@ -42,6 +44,9 @@ export function createBlankAgreement() {
       calculationFormula: '',
       selectedFrequencies: [],
       slabType: 'PURCHASE',
+      slabCapUnit: 'RUPEES',
+      jbpCommitted: false,
+      financialYearStartMonth: 4,
     },
   };
 }
@@ -73,6 +78,7 @@ function mapProductRulesFromApi(agreement) {
 
 function mapAssetFromApi(agreement) {
   const asset = agreement?.asset;
+  const apiPeriods = agreement?.assetPayoutPeriods ?? [];
   if (!asset) {
     return {
       assetCategory: 'PHYSICAL_ASSET',
@@ -81,23 +87,38 @@ function mapAssetFromApi(agreement) {
       payoutMode: 'FLAT',
       flatPayout: '',
       payoutPerStore: '',
+      assetPayoutPeriods: [],
       remarks: '',
     };
   }
+
+  const mappedPeriods = apiPeriods.length > 0
+    ? apiPeriods.map((period) => ({
+      periodMonths: period.periodMonths ?? '',
+      payoutPerStore: period.payoutPerStore ?? '',
+    }))
+    : (asset.payoutPerStore != null && asset.payoutPerStore !== ''
+      ? [{ periodMonths: 1, payoutPerStore: asset.payoutPerStore }]
+      : []);
+
   const hasFlat = asset.flatPayout != null && asset.flatPayout !== '';
-  const hasPerStore = asset.payoutPerStore != null && asset.payoutPerStore !== '';
+  const hasSchedule = mappedPeriods.length > 0;
   const payoutMode = hasFlat
     ? 'FLAT'
-    : hasPerStore
+    : hasSchedule
       ? 'PER_STORE'
       : (asset.payoutMode || 'FLAT');
+
   return {
     assetCategory: asset.assetCategory ?? 'PHYSICAL_ASSET',
     assetType: asset.assetType ?? '',
     storeCount: asset.storeCount ?? '',
     payoutMode,
     flatPayout: asset.flatPayout ?? '',
-    payoutPerStore: asset.payoutPerStore ?? '',
+    payoutPerStore: '',
+    assetPayoutPeriods: payoutMode === 'PER_STORE' && mappedPeriods.length === 0
+      ? [{ periodMonths: '', payoutPerStore: '' }]
+      : mappedPeriods,
     remarks: asset.remarks ?? '',
   };
 }
@@ -196,7 +217,6 @@ export function useAgreementWizard() {
             notes: preservedDetails.notes ?? '',
             stateIds: [],
             documents: [],
-            storeOutletList: null,
             adhocSubType: null,
             quantityCap: '',
             invoiceVendorId: null,
@@ -259,11 +279,14 @@ export function useAgreementWizard() {
           notes: agreement.notes ?? '',
           stateIds: agreement.stateIds ?? agreement.states?.map((s) => s.id) ?? [],
           documents: [],
-          storeOutletList: null,
-          adhocSubType: agreement.adhocSubType ?? null,
+          adhocSubType: agreement.adhocSubType === 'CONSUMER_PRICE_OFF' || !agreement.adhocSubType
+            ? 'QPS'
+            : agreement.adhocSubType,
           quantityCap: agreement.quantityCap ?? '',
           invoiceVendorId: agreement.invoiceVendorId ?? null,
           payoutBufferDays: agreement.payoutBufferDays ?? '',
+          leadTimeBasis: agreement.leadTimeBasis ?? null,
+          invoiceGenerationLeadTime: agreement.invoiceGenerationLeadTime ?? '',
           calculationBasis: agreement.calculationBasis ?? 'VENDOR_INVOICE',
           paymentRealizationType: agreement.paymentRealizationType ?? 'DIRECT_PAYMENT_INVOICE',
         },

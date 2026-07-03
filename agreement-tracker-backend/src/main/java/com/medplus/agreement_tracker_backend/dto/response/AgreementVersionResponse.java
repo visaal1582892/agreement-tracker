@@ -4,6 +4,7 @@ import com.medplus.agreement_tracker_backend.enums.ApprovalStatus;
 import com.medplus.agreement_tracker_backend.enums.AgreementStatus;
 import com.medplus.agreement_tracker_backend.enums.CalculationBasis;
 import com.medplus.agreement_tracker_backend.enums.CommercialStructure;
+import com.medplus.agreement_tracker_backend.enums.LeadTimeBasis;
 import com.medplus.agreement_tracker_backend.enums.PaymentRealizationType;
 import com.medplus.agreement_tracker_backend.enums.PayoutFrequency;
 import com.medplus.agreement_tracker_backend.enums.SlabValueType;
@@ -38,10 +39,13 @@ public record AgreementVersionResponse(
         Long invoiceVendorId,
         String invoiceVendorName,
         Integer payoutBufferDays,
+        LeadTimeBasis leadTimeBasis,
+        Integer invoiceGenerationLeadTime,
         CalculationBasis calculationBasis,
         PaymentRealizationType paymentRealizationType,
         LocalDate startDate,
         LocalDate expiryDate,
+        Integer financialYearStartMonth,
         ApprovalStatus approvalStatus,
         AgreementStatus computedStatus,
         boolean inProgressFlag,
@@ -56,6 +60,9 @@ public record AgreementVersionResponse(
         List<RuleSummary> productRules,
         List<ProductSummary> products,
         AssetSummary asset,
+        List<StoreMappingSummary> storeMappings,
+        List<AssetPayoutPeriodSummary> assetPayoutPeriods,
+        boolean jbpCommitted,
         PendingActionRequestInfo pendingActionRequest,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
@@ -71,5 +78,18 @@ public record AgreementVersionResponse(
             BigDecimal payoutPerStore,
             BigDecimal flatPayout,
             String remarks
+    ) {}
+    public record StoreMappingSummary(
+            Long mappingId,
+            Long storeId,
+            String storeCode,
+            String storeName,
+            Long stateId,
+            String stateName
+    ) {}
+    public record AssetPayoutPeriodSummary(
+            Long id,
+            Integer periodMonths,
+            BigDecimal payoutPerStore
     ) {}
 }

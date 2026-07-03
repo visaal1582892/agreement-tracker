@@ -2,6 +2,7 @@ package com.medplus.agreement_tracker_backend.util;
 
 import com.medplus.agreement_tracker_backend.dto.request.SlabDTO;
 import com.medplus.agreement_tracker_backend.entity.AgreementSlab;
+import com.medplus.agreement_tracker_backend.enums.CapUnit;
 import com.medplus.agreement_tracker_backend.enums.SlabValueType;
 
 import java.math.BigDecimal;
@@ -11,15 +12,21 @@ public final class SlabHeaderFormatter {
     private SlabHeaderFormatter() {}
 
     public static String format(SlabDTO slab) {
-        return format(slab.fromValue(), slab.toValue(), slab.valueType(), slab.commercialValue());
+        return format(slab.minCap(), slab.maxCap(), slab.capUnit(), slab.valueType(), slab.commercialValue());
     }
 
     public static String format(AgreementSlab slab) {
-        return format(slab.getFromValue(), slab.getToValue(), slab.getValueType(), slab.getCommercialValue());
+        return format(slab.getMinCap(), slab.getMaxCap(), slab.getCapUnit(), slab.getValueType(), slab.getCommercialValue());
     }
 
-    public static String format(BigDecimal fromValue, BigDecimal toValue, SlabValueType valueType, BigDecimal commercialValue) {
-        String range = formatNumber(fromValue) + " - " + formatNumber(toValue);
+    public static String format(
+            BigDecimal minCap,
+            BigDecimal maxCap,
+            CapUnit capUnit,
+            SlabValueType valueType,
+            BigDecimal commercialValue) {
+        String unitSuffix = capUnit == CapUnit.QUANTITY ? " Qty" : " ₹";
+        String range = formatNumber(minCap) + " - " + formatNumber(maxCap) + unitSuffix;
         if (valueType == SlabValueType.PERCENTAGE) {
             return range + " (" + formatNumber(commercialValue) + "%)";
         }

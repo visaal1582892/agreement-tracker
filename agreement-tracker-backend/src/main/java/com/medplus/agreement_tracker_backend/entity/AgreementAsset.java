@@ -31,7 +31,7 @@ public class AgreementAsset extends AuditableEntity {
     @Column(name = "asset_category", nullable = false, length = 20)
     private AssetCategory assetCategory;
 
-    @Column(name = "asset_type", nullable = false, length = 100)
+    @Column(name = "asset_type", length = 100)
     private String assetType;
 
     @Column(name = "store_count")

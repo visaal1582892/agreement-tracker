@@ -1,5 +1,5 @@
-import { resolveCommercialStructure } from '../constants/commercialStructure';
-import { isAdHocIncomeType, isAssetRentalIncomeType } from './incomeTypeUtils';
+import { resolveStructureType, resolveFlatBaselineFrequency, PAYOUT_FREQUENCY } from '../constants/commercialStructure';
+import { isAdHocIncomeType, isAssetRentalIncomeType, isCommercialContractsIncomeType } from './incomeTypeUtils';
 import { ADHOC_SUB_TYPES } from '../constants/adhocSubTypes';
 
 const BLANK_ASSET = {
@@ -9,11 +9,13 @@ const BLANK_ASSET = {
   payoutMode: 'FLAT',
   flatPayout: '',
   payoutPerStore: '',
+  assetPayoutPeriods: [],
   remarks: '',
 };
 
 export function resolveIncomeTypeProfile(incomeTypes, incomeTypeId, incomeTypeName = null) {
   if (isAssetRentalIncomeType(incomeTypes, incomeTypeId, incomeTypeName)) return 'ASSET_RENTAL';
+  if (isCommercialContractsIncomeType(incomeTypes, incomeTypeId, incomeTypeName)) return 'COMMERCIAL_CONTRACTS';
   if (isAdHocIncomeType(incomeTypes, incomeTypeId, incomeTypeName)) return 'AD_HOC';
   return 'STANDARD';
 }
@@ -48,7 +50,6 @@ export function buildIncomeTypeSwitchUpdates(incomeTypes, previousDetails, nextD
     updates.details.quantityCap = '';
   }
   if (nextProfile !== 'ASSET_RENTAL') {
-    updates.details.storeOutletList = null;
     updates.resetAsset = true;
   }
   if (nextProfile === 'ASSET_RENTAL') {
@@ -59,6 +60,10 @@ export function buildIncomeTypeSwitchUpdates(incomeTypes, previousDetails, nextD
   }
   if (nextProfile === 'AD_HOC' || prevProfile === 'AD_HOC') {
     updates.resetCommercials = true;
+  }
+  if (nextProfile === 'AD_HOC') {
+    updates.details.adhocSubType = ADHOC_SUB_TYPES.QPS;
+    updates.details.quantityCap = '';
   }
 
   return updates;
@@ -86,26 +91,53 @@ export function sanitizeAgreementPayload(payload, incomeTypes, incomeTypeId, inc
       enableSlabIncentives: false,
       calculationFormula: null,
     };
-    if (!sanitized.asset?.assetType?.trim()) {
+    if (sanitized.asset?.assetCategory === 'ACTIVITY') {
+      sanitized.asset.assetType = null;
+    } else if (!sanitized.asset?.assetType?.trim()) {
       sanitized.asset = null;
+    }
+  } else if (profile === 'COMMERCIAL_CONTRACTS') {
+    const structureType = resolveStructureType(sanitized.commercials.commercialStructure);
+    const useSlabs = structureType === 'SLABS' || sanitized.commercials.jbpCommitted;
+    if (useSlabs) {
+      sanitized.commercials.commercialStructure = 'SLAB';
+      sanitized.commercials.enableFlatBaseline = false;
+      sanitized.commercials.enableSlabIncentives = true;
+      sanitized.commercials.commercialValue = null;
+      sanitized.commercials.flatValueType = null;
+      sanitized.commercials.flatBaselineFrequency = null;
+    } else {
+      sanitized.commercials.commercialStructure = 'FLAT';
+      sanitized.commercials.enableFlatBaseline = true;
+      sanitized.commercials.enableSlabIncentives = false;
+      sanitized.commercials.flatBaselineFrequency = resolveFlatBaselineFrequency(
+        sanitized.commercials,
+        { adhocSubType: sanitized.details.adhocSubType },
+      );
     }
   } else {
     sanitized.asset = null;
     if (profile !== 'AD_HOC') {
       sanitized.details.adhocSubType = null;
       sanitized.details.quantityCap = null;
-    } else if (sanitized.details.adhocSubType === ADHOC_SUB_TYPES.QPS) {
+    } else {
+      sanitized.details.adhocSubType = ADHOC_SUB_TYPES.QPS;
       sanitized.details.quantityCap = null;
     }
 
-    const enableFlatBaseline = Boolean(sanitized.commercials.enableFlatBaseline);
-    const enableSlabIncentives = Boolean(sanitized.commercials.enableSlabIncentives);
-    sanitized.commercials.enableFlatBaseline = enableFlatBaseline;
-    sanitized.commercials.enableSlabIncentives = enableSlabIncentives;
-    sanitized.commercials.commercialStructure = resolveCommercialStructure(
-      enableFlatBaseline,
-      enableSlabIncentives,
-    ) ?? (enableFlatBaseline ? 'FLAT' : null);
+    const structureType = resolveStructureType(sanitized.commercials.commercialStructure);
+    sanitized.commercials.enableFlatBaseline = structureType === 'FLAT';
+    sanitized.commercials.enableSlabIncentives = structureType === 'SLABS';
+    sanitized.commercials.commercialStructure = structureType === 'SLABS' ? 'SLAB' : 'FLAT';
+    if (structureType === 'FLAT') {
+      sanitized.commercials.flatBaselineFrequency = resolveFlatBaselineFrequency(
+        sanitized.commercials,
+        { adhocSubType: sanitized.details.adhocSubType },
+      );
+    } else {
+      sanitized.commercials.flatBaselineFrequency = null;
+      sanitized.commercials.commercialValue = null;
+    }
   }
 
   return sanitized;

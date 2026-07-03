@@ -15,6 +15,8 @@ public record DraftDetailsPayload(
         BigDecimal quantityCap,
         Long invoiceVendorId,
         Integer payoutBufferDays,
+        String leadTimeBasis,
+        Integer invoiceGenerationLeadTime,
         String calculationBasis,
         String paymentRealizationType
 ) {}
